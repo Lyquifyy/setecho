@@ -23,18 +23,53 @@ FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "sam"
 def prep(src: Path) -> Path:
     out = src.with_name(src.stem + "_720p.mp4")
     subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(src), "-vf", "scale=-2:720", "-an",
-         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-movflags", "+faststart", str(out)],
+        [
+            "ffmpeg",
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            str(src),
+            "-vf",
+            "scale=-2:720",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20",
+            "-movflags",
+            "+faststart",
+            str(out),
+        ],
         check=True,
     )
     return out
 
 
 def size_of(path: Path) -> tuple[int, int]:
-    w, h = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
-         "-of", "csv=p=0", str(path)], capture_output=True, text=True, check=True,
-    ).stdout.strip().split(",")
+    w, h = (
+        subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height",
+                "-of",
+                "csv=p=0",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        .stdout.strip()
+        .split(",")
+    )
     return int(w), int(h)
 
 
@@ -42,9 +77,12 @@ async def run(args: argparse.Namespace) -> None:
     clip = prep(Path(args.clip))
     if args.point:
         from meta_sam_parser import FramePrompt, PromptObject, PromptPoint, build_object_prompt
+
         x, y = (int(v) for v in args.point.split(","))
-        prompt = build_object_prompt(size=size_of(clip), objects=[
-            PromptObject(id=1, prompts=[FramePrompt(frame=0, points=[PromptPoint(x, y)])])])
+        prompt = build_object_prompt(
+            size=size_of(clip),
+            objects=[PromptObject(id=1, prompts=[FramePrompt(frame=0, points=[PromptPoint(x, y)])])],
+        )
     else:
         prompt = args.concept
     t0 = time.time()
@@ -66,8 +104,11 @@ async def run(args: argparse.Namespace) -> None:
     FIXTURES.mkdir(parents=True, exist_ok=True)
     tag = "point" if args.point else "text"
     (FIXTURES / f"{clip.stem}_{tag}.txt").write_text(result.raw_output)
-    (FIXTURES / f"{clip.stem}_{tag}.json").write_text(json.dumps(
-        {"prompt": prompt, "file_id": file_id, "upload_s": t1 - t0, "segment_s": t2 - t1}, indent=2))
+    (FIXTURES / f"{clip.stem}_{tag}.json").write_text(
+        json.dumps(
+            {"prompt": prompt, "file_id": file_id, "upload_s": t1 - t0, "segment_s": t2 - t1}, indent=2
+        )
+    )
 
 
 if __name__ == "__main__":

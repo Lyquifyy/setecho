@@ -10,7 +10,9 @@ def main() -> None:
     ids = sorted(m.id for m in c.models.list().data)
     print("models:", ", ".join(ids))
     t = time.time()
-    r = c.responses.create(model=meta.SPARK_MODEL, input="Reply with exactly: chalkline ok", reasoning={"effort": "low"})
+    r = c.responses.create(
+        model=meta.SPARK_MODEL, input="Reply with exactly: chalkline ok", reasoning={"effort": "low"}
+    )
     print(f"{meta.SPARK_MODEL}: {r.output_text!r} in {time.time() - t:.1f}s")
     print("usage:", r.usage.model_dump())
 
