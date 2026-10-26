@@ -1,0 +1,49 @@
+name: Chalkline
+options:
+  bundleIdPrefix: com.chalkline
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+targets:
+  Chalkline:
+    type: application
+    platform: iOS
+    sources: [Chalkline]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.chalkline.app
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Chalkline
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_NSCameraUsageDescription: "Chalkline films your sets to measure bar speed and bar path."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Chalkline records what you say after a set so it can log your RPE and notes."
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Import program photos and set videos."
+        INFOPLIST_KEY_UIUserInterfaceStyle: Dark
+        INFOPLIST_FILE: Config/Info.plist
+  ChalklineTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [ChalklineTests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: Chalkline
+schemes:
+  Chalkline:
+    build:
+      targets:
+        Chalkline: all
+        ChalklineTests: [test]
+    test:
+      targets: [ChalklineTests]

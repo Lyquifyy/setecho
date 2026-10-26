@@ -1,0 +1,38 @@
+[project]
+name = "chalkline-backend"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Zander Erwin", email = "zandererwin2023@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.162.0",
+    "meta-sam-parser>=0.1.0",
+    "numpy>=2.5.4",
+    "openai>=3.38.0",
+    "opencv-python-headless>=5.0.0.93",
+    "python-multipart>=0.0.32",
+    "scipy>=1.18.1",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+chalkline-backend = "chalkline_backend:main"
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "ruff>=0.17.2",
+]
+
+[tool.ruff]
+line-length = 110
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
