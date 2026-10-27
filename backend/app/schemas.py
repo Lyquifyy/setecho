@@ -16,6 +16,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.reps import infer_equipment
+
 SCHEMA_VERSION = 1
 
 
@@ -41,9 +43,17 @@ class PlannedSet(StrictModel):
     rir: int | None = Field(default=None, description="Prescribed reps in reserve, else null")
 
 
+Equipment = Literal["barbell", "dumbbell", "machine", "cable", "bodyweight"]
+
+
 class PlannedExerciseOut(StrictModel):
     name: str = Field(description="Exercise name exactly as written on the sheet")
     sets: list[PlannedSet] = Field(description="One entry per set, in order")
+    equipment: Equipment | None = Field(
+        default=None,
+        description="What the athlete moves: barbell, dumbbell, machine, cable or bodyweight. Decides what "
+        "the camera tracks. Pick the likeliest from the name and add a flag when unsure",
+    )
     restSeconds: int | None = Field(
         default=None, description="Rest between sets in seconds if the sheet states it"
     )
@@ -73,6 +83,7 @@ class ProgramOut(StrictModel):
 
 class PlannedExercise(PlannedExerciseOut):
     id: str
+    equipment: Equipment  # type: ignore[assignment]  # always set: from the model, else inferred from the name
 
 
 class ProgramDay(StrictModel):
@@ -275,7 +286,10 @@ def to_program(out: ProgramOut, imported_at: datetime) -> Program:
             day_id = _unique(f"w{week.number}_{slug(day.name)}", day_ids)
             ex_ids: set[str] = set()
             exercises = [
-                PlannedExercise(id=_unique(f"{day_id}_{slug(ex.name)}", ex_ids), **ex.model_dump())
+                PlannedExercise(
+                    id=_unique(f"{day_id}_{slug(ex.name)}", ex_ids),
+                    **{**ex.model_dump(), "equipment": ex.equipment or infer_equipment(ex.name)},
+                )
                 for ex in day.exercises
             ]
             days.append(ProgramDay(id=day_id, name=day.name, exercises=exercises))

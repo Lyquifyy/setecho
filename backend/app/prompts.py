@@ -6,13 +6,15 @@ from __future__ import annotations
 
 from app.schemas import DATA_KEY_MEANINGS
 
-PROMPTS_VERSION = 1
+PROMPTS_VERSION = 2
 
 IMPORT_PROGRAM = (
     "You convert a strength coach's training spreadsheet into JSON. Copy exercise names, set counts, "
     "reps, rep ranges, loads, RPE/RIR and rest times exactly as written. Never invent a value. If a "
     "cell is ambiguous, keep your best reading and add an entry to `flags` explaining what is unclear. "
-    "Weeks and days follow the sheet's own order and names.\n\n"
+    "Weeks and days follow the sheet's own order and names. Set each exercise's `equipment` from its "
+    "name (barbell, dumbbell, machine, cable or bodyweight); if the name doesn't make it clear, pick the "
+    "likeliest and add a flag.\n\n"
     'Rules for sets: write one entry per set. "3 x 8" is three entries with reps 8. "6-8 reps" is '
     "repsMin 6 and repsMax 8 with reps null. Loads are pounds; if the sheet gives none, loadLb is null. "
     'A rest time like "2:30" or "150s" becomes restSeconds 150. Anything you cannot map to a field '

@@ -8,13 +8,14 @@ Rules (see AGENTS.md):
 Models:
 - muse-spark-1.3: reasoning and parsing (structured output via Chat Completions, tools via Responses)
 - muse-voice-transcribe-1.0: speech, file mode over multipart (not the OpenAI SDK)
-- sam-3.1: image masks for the check-in photos; video tracking only for the bar-speed stretch item
+- sam-3.1: image masks for the check-in photos; video tracking for the rep count of every set
 """
 
 from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import time
 from functools import lru_cache
@@ -22,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from openai import AsyncOpenAI, OpenAI
+from openai import AsyncOpenAI, OpenAI, OpenAIError
 
 BASE_URL = "https://api.meta.ai/v1"
 SPARK_MODEL = os.environ.get("SETECHO_SPARK_MODEL", "muse-spark-1.3")
@@ -149,13 +150,21 @@ async def segment_image(image_data_url: str, prompt_text: str = "person"):
 
 
 def upload_video(path: Path) -> str:
-    """Upload a clip once; reuse the returned file id for SAM calls. Bar-speed stretch only."""
+    """Upload a clip once; reuse the returned file id for SAM calls."""
     with open(path, "rb") as f:
         return client().files.create(purpose="user_data", file=f).id
 
 
+def delete_file(file_id: str) -> None:
+    """Best effort: the backend keeps nothing, and neither should Meta's file store."""
+    try:
+        client().files.delete(file_id)
+    except OpenAIError as e:
+        logging.getLogger(__name__).warning("could not delete file %s from Meta: %s", file_id, e)
+
+
 async def segment_video(file_id: str, prompt_text: str):
-    """Run SAM 3.1 on an uploaded clip and return the parsed VideoSegmentationResult. Stretch only.
+    """Run SAM 3.1 on an uploaded clip and return the parsed VideoSegmentationResult.
 
     `prompt_text` is either a noun phrase ("weight plate") or an object prompt built
     with meta_sam_parser.build_object_prompt (point/box on frame 0).
