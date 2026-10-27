@@ -135,7 +135,8 @@ final class AudioProbeModel {
         }
         capture.reset(sampleRate: format.sampleRate)
         let capture = self.capture
-        input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
+        input.installTap(onBus: 0, bufferSize: 4096, format: format) { @Sendable buffer, _ in
+            // @Sendable so the closure is not main-actor isolated: the tap runs on the realtime audio thread.
             capture.append(buffer)
         }
         do {
