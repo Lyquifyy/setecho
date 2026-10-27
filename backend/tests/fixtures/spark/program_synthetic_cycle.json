@@ -1,5 +1,5 @@
 {
- "source": "hand-written: what Muse Spark should return for import/synthetic_cycle_sheet.txt (replace with a live run)",
+ "source": "hand-written: what Muse Spark should return for the matching fixture in import/; a live run through Fly on 2026-10-27 returned the same cycle, add-ons, roles, totals, rest and alternates, plus 5 flags about equipment the sheet does not state",
  "schemaVersion": 2,
  "raw": {
   "name": "Synthetic cycle sheet",

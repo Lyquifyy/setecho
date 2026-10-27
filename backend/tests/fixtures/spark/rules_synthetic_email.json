@@ -1,5 +1,5 @@
 {
- "source": "hand-written: what Muse Spark should return for import/synthetic_rules_email.txt (replace with a live run)",
+ "source": "hand-written: what Muse Spark should return for the matching fixture in import/; a live run through Fly on 2026-10-27 returned the same rules, targets, rest, warm-ups, schedule and quiet day, plus a flag that 'beat the logbook' names no load change",
  "schemaVersion": 2,
  "raw": {
   "rules": [

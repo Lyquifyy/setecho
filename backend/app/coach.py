@@ -24,7 +24,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from app import audio, meta, prompts
 from app.checkin import MacroTargets
@@ -59,6 +59,11 @@ NUMERIC_KINDS = {"macroTarget", "sets", "reps", "load", "rest"}
 
 
 class PlanState(StrictModel):
+    """The phone's PlanState. Fields the reply reader does not use (rules, cycle, add-on days,
+    role targets, schedule) are ignored rather than rejected, so the plan can grow."""
+
+    model_config = ConfigDict(extra="ignore")
+
     version: int
     program: Program
     targets: MacroTargets
