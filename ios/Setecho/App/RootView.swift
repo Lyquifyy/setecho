@@ -1,23 +1,22 @@
 import SwiftUI
 
-/// Tabs: Today / History / Check-in. Each tab is a placeholder built from the design system.
-/// Build the real screens from DESIGN.md (Screens), in the look of design/cobalt-cards/screens/.
+/// Tabs: Today / History / Check-in. Settings and imports live in the More menu.
 struct RootView: View {
+    @Environment(Store.self) private var store
+
     var body: some View {
-        TabView {
-            Tab("Today", systemImage: "calendar") {
-                NavigationStack {
-                    PlaceholderScreen(title: "Today",
-                                      sections: "Today's session / This week's check-in / Check-in photos")
-                }
+        @Bindable var router = AppRouter.shared
+        TabView(selection: $router.tab) {
+            Tab("Today", systemImage: "calendar", value: AppRouter.Tab.today) {
+                NavigationStack { TodayView() }
             }
-            Tab("History", systemImage: "list.bullet.rectangle") {
+            Tab("History", systemImage: "list.bullet.rectangle", value: AppRouter.Tab.history) {
                 NavigationStack {
                     PlaceholderScreen(title: "History",
                                       sections: "This week / Previous sessions / Sent check-ins / Photos")
                 }
             }
-            Tab("Check-in", systemImage: "checklist") {
+            Tab("Check-in", systemImage: "checklist", value: AppRouter.Tab.checkIn) {
                 NavigationStack {
                     PlaceholderScreen(title: "Check-in",
                                       sections: "Wrap-up / The coach's form, field by field")
@@ -25,6 +24,9 @@ struct RootView: View {
             }
         }
         .tint(Theme.cobalt)
+        .sheet(isPresented: $router.showImport) {
+            ImportFlow().environment(store)
+        }
         .sheet(isPresented: Bindable(ProbesPresenter.shared).isShown) {
             NavigationStack { ProbeHomeView() }
                 .tint(Theme.cobalt)
@@ -50,5 +52,5 @@ private struct PlaceholderScreen: View {
 }
 
 #Preview {
-    RootView()
+    RootView().environment(Store(root: FileManager.default.temporaryDirectory.appendingPathComponent("preview-store")))
 }

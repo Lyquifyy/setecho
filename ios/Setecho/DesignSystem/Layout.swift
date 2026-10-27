@@ -14,7 +14,9 @@ struct BrandHeader: View {
                 .accessibilityAddTraits(.isHeader)
             Spacer()
             Menu {
-                Button("Program", systemImage: "doc.text.viewfinder") {}
+                Button("Import program and form", systemImage: "doc.text.viewfinder") {
+                    AppRouter.shared.showImport = true
+                }
                 Button("Settings", systemImage: "gearshape") {}
                 Divider()
                 // Temporary until M6: the M0 gate probes, testable from TestFlight.

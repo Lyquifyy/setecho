@@ -28,6 +28,20 @@ make ios                            # open in Xcode
 make ios-test                       # iOS unit tests
 ```
 
+## Deploy the backend (Fly.io)
+
+The phone needs a public URL at the gym. Once, from `backend/`:
+
+```sh
+brew install flyctl
+fly auth login
+fly launch --copy-config --no-deploy     # keeps fly.toml; pick a region near you
+fly secrets set MODEL_API_KEY=...        # the key never lives in the repo
+fly deploy
+```
+
+Then set `SETECHO_API_BASE = https://<app>.fly.dev` in `ios/Config/Local.xcconfig` and rebuild. `make testflight` archives a Release build and uploads it to TestFlight.
+
 ## Gate probes (M0)
 
 The build started with six gates (HANDOFF.md §9). Each has a probe:

@@ -1,0 +1,602 @@
+{
+  "name": "Prep Block 2 (synthetic test sheet)",
+  "weeks": [
+    {
+      "number": 1,
+      "days": [
+        {
+          "id": "w1_upper_a",
+          "name": "Upper A",
+          "exercises": [
+            {
+              "name": "Bench press",
+              "sets": [
+                {
+                  "reps": 8,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 185.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 8,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 185.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 8,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 185.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 8,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 185.0,
+                  "rpe": 8.0,
+                  "rir": null
+                }
+              ],
+              "restSeconds": 150,
+              "notes": null,
+              "id": "w1_upper_a_bench_press"
+            },
+            {
+              "name": "Barbell row",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": 165.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": 165.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": 165.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": 165.0,
+                  "rpe": 8.0,
+                  "rir": null
+                }
+              ],
+              "restSeconds": 120,
+              "notes": null,
+              "id": "w1_upper_a_barbell_row"
+            },
+            {
+              "name": "Overhead press",
+              "sets": [
+                {
+                  "reps": 10,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 95.0,
+                  "rpe": null,
+                  "rir": null
+                },
+                {
+                  "reps": 10,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 95.0,
+                  "rpe": null,
+                  "rir": null
+                },
+                {
+                  "reps": 10,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 95.0,
+                  "rpe": null,
+                  "rir": null
+                }
+              ],
+              "restSeconds": 90,
+              "notes": null,
+              "id": "w1_upper_a_overhead_press"
+            },
+            {
+              "name": "Lat pulldown",
+              "sets": [
+                {
+                  "reps": 12,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 12,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 12,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": 8.0,
+                  "rir": null
+                }
+              ],
+              "restSeconds": null,
+              "notes": null,
+              "id": "w1_upper_a_lat_pulldown"
+            }
+          ]
+        },
+        {
+          "id": "w1_lower_a",
+          "name": "Lower A",
+          "exercises": [
+            {
+              "name": "Back squat",
+              "sets": [
+                {
+                  "reps": 6,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 225.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 6,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 225.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 6,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 225.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 6,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 225.0,
+                  "rpe": 8.0,
+                  "rir": null
+                }
+              ],
+              "restSeconds": 180,
+              "notes": null,
+              "id": "w1_lower_a_back_squat"
+            },
+            {
+              "name": "Romanian deadlift",
+              "sets": [
+                {
+                  "reps": 8,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 185.0,
+                  "rpe": 7.0,
+                  "rir": null
+                },
+                {
+                  "reps": 8,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 185.0,
+                  "rpe": 7.0,
+                  "rir": null
+                },
+                {
+                  "reps": 8,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 185.0,
+                  "rpe": 7.0,
+                  "rir": null
+                }
+              ],
+              "restSeconds": null,
+              "notes": null,
+              "id": "w1_lower_a_romanian_deadlift"
+            },
+            {
+              "name": "Leg press",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null
+                }
+              ],
+              "restSeconds": null,
+              "notes": "AMRAP",
+              "id": "w1_lower_a_leg_press"
+            },
+            {
+              "name": "Walking lunge",
+              "sets": [
+                {
+                  "reps": 12,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null
+                },
+                {
+                  "reps": 12,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null
+                }
+              ],
+              "restSeconds": null,
+              "notes": "12 each",
+              "id": "w1_lower_a_walking_lunge"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "days": [
+        {
+          "id": "w2_upper_a",
+          "name": "Upper A",
+          "exercises": [
+            {
+              "name": "Bench press",
+              "sets": [
+                {
+                  "reps": 8,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 190.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 8,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 190.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 8,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 190.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 8,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 190.0,
+                  "rpe": 8.0,
+                  "rir": null
+                }
+              ],
+              "restSeconds": 150,
+              "notes": null,
+              "id": "w2_upper_a_bench_press"
+            },
+            {
+              "name": "Barbell row",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": 170.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": 170.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": 170.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": 170.0,
+                  "rpe": 8.0,
+                  "rir": null
+                }
+              ],
+              "restSeconds": 120,
+              "notes": null,
+              "id": "w2_upper_a_barbell_row"
+            },
+            {
+              "name": "Overhead press",
+              "sets": [
+                {
+                  "reps": 10,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 100.0,
+                  "rpe": null,
+                  "rir": null
+                },
+                {
+                  "reps": 10,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 100.0,
+                  "rpe": null,
+                  "rir": null
+                },
+                {
+                  "reps": 10,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 100.0,
+                  "rpe": null,
+                  "rir": null
+                }
+              ],
+              "restSeconds": 90,
+              "notes": null,
+              "id": "w2_upper_a_overhead_press"
+            },
+            {
+              "name": "Lat pulldown",
+              "sets": [
+                {
+                  "reps": 12,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 12,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 12,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": 8.0,
+                  "rir": null
+                }
+              ],
+              "restSeconds": null,
+              "notes": null,
+              "id": "w2_upper_a_lat_pulldown"
+            }
+          ]
+        },
+        {
+          "id": "w2_lower_a",
+          "name": "Lower A",
+          "exercises": [
+            {
+              "name": "Back squat",
+              "sets": [
+                {
+                  "reps": 6,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 235.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 6,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 235.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 6,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 235.0,
+                  "rpe": 8.0,
+                  "rir": null
+                },
+                {
+                  "reps": 6,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 235.0,
+                  "rpe": 8.0,
+                  "rir": null
+                }
+              ],
+              "restSeconds": 180,
+              "notes": null,
+              "id": "w2_lower_a_back_squat"
+            },
+            {
+              "name": "Romanian deadlift",
+              "sets": [
+                {
+                  "reps": 8,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 195.0,
+                  "rpe": 7.0,
+                  "rir": null
+                },
+                {
+                  "reps": 8,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 195.0,
+                  "rpe": 7.0,
+                  "rir": null
+                },
+                {
+                  "reps": 8,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": 195.0,
+                  "rpe": 7.0,
+                  "rir": null
+                }
+              ],
+              "restSeconds": null,
+              "notes": null,
+              "id": "w2_lower_a_romanian_deadlift"
+            },
+            {
+              "name": "Leg press",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null
+                }
+              ],
+              "restSeconds": null,
+              "notes": "AMRAP",
+              "id": "w2_lower_a_leg_press"
+            },
+            {
+              "name": "Walking lunge",
+              "sets": [
+                {
+                  "reps": 12,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null
+                },
+                {
+                  "reps": 12,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null
+                }
+              ],
+              "restSeconds": null,
+              "notes": "12 each",
+              "id": "w2_lower_a_walking_lunge"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "importedAt": "2026-10-27T01:47:17.767960Z",
+  "flags": [
+    {
+      "path": "week 1 / Lower A / Leg press",
+      "message": "Reps is 'AMRAP' with no numeric count; kept reps null and stored 'AMRAP' in notes"
+    },
+    {
+      "path": "week 1 / Lower A / Walking lunge",
+      "message": "Reps is '12 each'; kept reps 12 and stored '12 each' in notes; unclear if each means per leg/side"
+    },
+    {
+      "path": "week 2 / Lower A / Leg press",
+      "message": "Reps is 'AMRAP' with no numeric count; kept reps null and stored 'AMRAP' in notes"
+    },
+    {
+      "path": "week 2 / Lower A / Walking lunge",
+      "message": "Reps is '12 each'; kept reps 12 and stored '12 each' in notes; unclear if each means per leg/side"
+    }
+  ]
+}

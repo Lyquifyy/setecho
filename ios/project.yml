@@ -33,6 +33,9 @@ targets:
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "Setecho listens for your voice commands and check-in answers during hands-free sessions."
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Import a program or check-in form from a screenshot."
         INFOPLIST_KEY_NSHealthShareUsageDescription: "Setecho reads your weight, nutrition, steps and sleep to fill in your coach's check-in."
+        # Required by App Store validation whenever the HealthKit entitlement is present. Setecho never writes.
+        INFOPLIST_KEY_NSHealthUpdateUsageDescription: "Setecho never writes to Health. This permission is not used."
+        INFOPLIST_KEY_UIRequiresFullScreen: YES
         INFOPLIST_KEY_UIUserInterfaceStyle: Light
         INFOPLIST_FILE: Config/Info.plist
         CODE_SIGN_ENTITLEMENTS: Config/Setecho.entitlements
