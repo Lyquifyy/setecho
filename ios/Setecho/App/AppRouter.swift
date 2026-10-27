@@ -14,4 +14,8 @@ final class AppRouter {
     var showAddReply = false
     /// The reply the Coach reply screen shows.
     var openReply: CoachReply?
+    /// "Hey Siri, start my Setecho check-in" (HANDOFF.md §7, Check-in morning).
+    var showCheckInMorning = false
+    /// "Hey Siri, start my Setecho morning": the on-waking add-on's own session.
+    var showMorningSession = false
 }

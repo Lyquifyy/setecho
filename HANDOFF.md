@@ -817,11 +817,14 @@ Each phase ends with its checks passing, a commit, and a TestFlight build the hu
 
 **Stretch items** happen only when P1–P5 are green, in this order: Machine taken, the Garmin watch (G8 first), Withings direct, WhatsApp history import. Machine taken is about a day; plan on it being the only one that fits. Posing practice, content clips and any bar-speed or bar-path display are out of this build.
 
-### Status (Oct 27 afternoon)
+### Status (Oct 27 evening)
 - **Built Oct 26:** everything in §2.
 - **Built Oct 27:**
   - P1 rep counting: the phone count, continuous recording split at set ends, `/sets/count` with SAM, and G7 fixtures from a real Smith-machine bench set (hand count 7).
   - The P2 backend: `/coach/reply` with the validator and cues, and `/import/form` returning targets and cardio.
+  - **P1b:** SAM as the count of record, the silent phone fallback at 60 s, `repSpeeds` and `velocityLossPct` (§5 steps 8–9), 15 fps clips, `setRole`. The G7 window through Fly at 15 fps: 33 s from upload to count (SAM runs at about 0.07 s per frame, so a 40 s set lands near 50 s). The real-session median shows on the Session-over line; it is still owed.
+  - **P1c:** the cycle, rest days, add-ons, timed and role sets, day-level rest and alternates in `/import/program`; `/import/rules` with its validator; `PlanState.cycle` and the add-on planner on the phone; warm-up mode (only with his confirmed warm-up rule), holds, rest-pause sets held open; the Import review for the cycle, add-on days and his rules. Live runs on the hand-made sheet and email matched the fixtures.
+  - **Check-in morning:** `/checkin/turn` with its validator, the two-message render, the free-meal draft; the conversation screen, the App Shortcuts, his cadence and the check-in period, the three-step send, the voice picker, the reminders. **Not yet on TestFlight:** the export needs the human's Xcode sign-in (§12).
 - **Decided Oct 27:**
   - SAM is the count of record, and the phone is the silent fallback.
   - Measured effort with the coach's rules, next-set suggestions, two weekly videos for the coach, and the spotter voice.

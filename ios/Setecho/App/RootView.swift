@@ -30,6 +30,16 @@ struct RootView: View {
         .sheet(item: $router.openReply) { reply in
             CoachReplyView(reply: reply).environment(store)
         }
+        .fullScreenCover(isPresented: $router.showCheckInMorning) {
+            CheckInMorningView(coordinator: CheckInCoordinator(store: store), store: store).environment(store)
+        }
+        .fullScreenCover(isPresented: $router.showMorningSession) {
+            if let morning = store.morningAddOnDue() {
+                SessionView(day: nil, addOns: [morning.addOn], weekNumber: store.todayDay?.week.number ?? 1, store: store)
+            } else {
+                MorningNothingDueView()
+            }
+        }
         .task { await ShareInbox.drain(into: store) }
         .onOpenURL { url in WatchService.shared.handle(url: url) }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
@@ -45,4 +55,22 @@ struct RootView: View {
 
 #Preview {
     RootView().environment(Store(root: FileManager.default.temporaryDirectory.appendingPathComponent("preview-store")))
+}
+
+
+/// "Start my Setecho morning" on a day with no on-waking add-on due.
+private struct MorningNothingDueView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: Theme.Space.l) {
+            Spacer()
+            Text("Nothing due this morning").font(.hudState).foregroundStyle(Theme.navy)
+            Text("Your morning add-on is done for the week, or it's not one of its days.").font(.hudLabel).secondaryText().multilineTextAlignment(.center)
+            Spacer()
+            Button("Done") { dismiss() }.buttonStyle(.setechoPrimary)
+        }
+        .padding(Theme.gutter)
+        .background(Theme.page.ignoresSafeArea())
+    }
 }

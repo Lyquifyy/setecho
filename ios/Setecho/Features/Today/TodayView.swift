@@ -7,7 +7,7 @@ struct TodayView: View {
     @State private var showSession = false
     @State private var showMorning = false
     @State private var showPhotos = false
-    private let schedule = CheckInSchedule()
+    private var schedule: CheckInSchedule { CheckInSchedule(plan: store.plan, lastSentAt: store.lastSentCheckIn?.sentAt) }
 
     private var today: (week: ProgramWeek, day: ProgramDay)? { store.todayDay }
     private var addOnsDue: [AddOnPlanner.Due] { today.map { store.addOnsDue(on: $0.day.id) } ?? [] }
@@ -96,7 +96,12 @@ struct TodayView: View {
                 SessionView(day: nil, addOns: [morning.addOn], weekNumber: today?.week.number ?? 1, store: store)
             }
         }
-        .onAppear { store.refreshCycle() }
+        .onAppear {
+            store.refreshCycle()
+            Task {
+                if await Reminders.requestPermission() { Reminders.scheduleEveReminder(schedule: schedule) }
+            }
+        }
         .fullScreenCover(isPresented: $showPhotos) {
             PhotoSessionView(store: store).environment(store)
         }
@@ -120,20 +125,27 @@ struct TodayView: View {
 
     private var checkInCard: some View {
         let due = schedule.nextDue(from: .now)
+        let morning = schedule.isCheckInMorning(on: .now)
         let wrapUpDue = schedule.isWrapUpDue(on: .now)
         let yellowTaken = store.pendingReply != nil || !store.macroFactorReminders.isEmpty
-        return SectionCard("This week's check-in", accessory: {
-            if wrapUpDue {
-                if yellowTaken { Text("Wrap-up due").font(.subheadline.weight(.semibold)).secondaryText() } else { TargetTag(text: "Wrap-up due") }
+        let tag = morning ? "Due today" : wrapUpDue ? "Wrap-up due" : nil
+        return SectionCard(schedule.everyWeeks > 1 ? "This check-in" : "This week's check-in", accessory: {
+            if let tag {
+                if yellowTaken { Text(tag).font(.subheadline.weight(.semibold)).secondaryText() } else { TargetTag(text: tag) }
             }
         }) {
             if let template = store.currentTemplate {
                 HStack(alignment: .firstTextBaseline) {
                     MetricText(value: "0", unit: "of \(template.fields.count) ready")
                 }
-                Text("Due \(due.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) morning")
+                Text("Due \(due.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) morning, by \(schedule.dueBy)")
                     .font(.subheadline).monospacedDigit().secondaryText()
-                LinkButton(title: "Open check-in") { AppRouter.shared.tab = .checkIn }
+                if morning {
+                    LinkButton(title: "Start check-in") { AppRouter.shared.showCheckInMorning = true }
+                    Text("Or say \"Hey Siri, start my Setecho check-in\"").font(.footnote).secondaryText()
+                } else {
+                    LinkButton(title: "Open check-in") { AppRouter.shared.tab = .checkIn }
+                }
             } else {
                 Text("Import your coach's check-in form to see what fills itself.")
                     .font(.subheadline).secondaryText()

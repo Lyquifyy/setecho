@@ -13,7 +13,8 @@ final class CheckInCoordinator {
 
     let store: Store
     let settings: Settings
-    let schedule = CheckInSchedule()
+    /// His cadence once confirmed on Import, with the period running since the last sent check-in.
+    let schedule: CheckInSchedule
     private let api: APIClient
     private let health = HealthService()
 
@@ -21,6 +22,7 @@ final class CheckInCoordinator {
         self.store = store
         self.settings = settings
         self.api = api
+        self.schedule = CheckInSchedule(plan: store.plan, lastSentAt: store.lastSentCheckIn?.sentAt)
         self.draft = Self.currentDraft(in: store, schedule: schedule)
     }
 
@@ -156,6 +158,21 @@ final class CheckInCoordinator {
         draft.sentAt = .now
         self.draft = draft
         store.upsert(checkIn: draft)
+    }
+
+    /// The collage taken on check-in morning joins the draft.
+    func attachPhotoSet(_ id: UUID) {
+        guard var draft else { return }
+        draft.photoSetId = id
+        self.draft = draft
+        store.upsert(checkIn: draft)
+    }
+
+    /// Today's weigh-in from Apple Health, as the check-in writes it ("180.8"), once it is in.
+    var weightTodayText: String? {
+        guard let facts, let today = facts.daily.last(where: { $0.weighInLb != nil && $0.date == DayKey.string(.now) }),
+              let lb = today.weighInLb else { return nil }
+        return Format.number((lb * 10).rounded() / 10)
     }
 
     // MARK: Helpers

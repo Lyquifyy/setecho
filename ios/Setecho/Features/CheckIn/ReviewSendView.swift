@@ -1,17 +1,28 @@
 import SwiftUI
 import UIKit
 
-/// Review and send (DESIGN.md): the exact message the coach receives, with the collage beneath it.
-/// Footer: Send to WhatsApp. Fallback: the image through the share sheet with the text copied.
+/// Review and send (DESIGN.md): both messages in the coach's format and order (the plan message,
+/// then the check-in), with the collage beneath the check-in. The send runs in his order as
+/// steps, one share sheet each (HANDOFF.md §7, Check-in, step 6): the plan message, the check-in
+/// with the collage, then the videos (P4). The footer names the next step. If WhatsApp drops the
+/// text when an image is shared, step 2 falls back to the image with the text copied.
 struct ReviewSendView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(Store.self) private var store
     let coordinator: CheckInCoordinator
-    @State private var text: String?
+    @State private var messages: [String] = []
     @State private var error: String?
     @State private var showShare = false
     @State private var includeText = true
     @State private var banner: String?
+    /// Which of the steps goes out next: 0 the plan message, 1 the check-in with the collage.
+    @State private var sendStep = 0
+
+    private var text: String? { messages.isEmpty ? nil : messages.joined(separator: "\n\n") }
+    private var planMessage: String? { messages.count > 1 ? messages[0] : nil }
+    private var checkInMessage: String? { messages.last }
+    private var stepCount: Int { planMessage == nil ? 1 : 2 }
+    private var stepName: String { sendStep == 0 && planMessage != nil ? "the plan message" : "the check-in with the photos" }
 
     private var collage: UIImage? {
         guard let id = coordinator.draft?.photoSetId ?? store.lastPhotoSet?.id,
@@ -33,9 +44,16 @@ struct ReviewSendView: View {
                     }
                 }
             }
-            SectionCard("Message") {
-                if let text {
-                    Text(text).font(.footnote).monospacedDigit().foregroundStyle(Theme.navy)
+            if let planMessage {
+                SectionCard("Message 1 · the plan", accessory: { if sendStep > 0 { Text("Sent").font(.subheadline.weight(.semibold)).secondaryText() } }) {
+                    Text(planMessage).font(.footnote).monospacedDigit().foregroundStyle(Theme.navy)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+            }
+            SectionCard(planMessage == nil ? "Message" : "Message 2 · the check-in") {
+                if let checkInMessage {
+                    Text(checkInMessage).font(.footnote).monospacedDigit().foregroundStyle(Theme.navy)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                 } else if let error {
@@ -67,29 +85,41 @@ struct ReviewSendView: View {
                 }
             }
         } footer: {
-            Button("Send to WhatsApp") {
+            Button(sendStep == 0 ? "Send to WhatsApp" : "Next: \(stepName)") {
                 includeText = true
                 banner = nil
                 showShare = true
             }
             .buttonStyle(.setechoPrimary)
-            .disabled(text == nil)
-            Button("Photo first, then paste the text") {
-                UIPasteboard.general.string = text
-                includeText = false
-                banner = "Paste the check-in text under the photo."
-                showShare = true
+            .disabled(text == nil || sendStep >= stepCount)
+            if sendStep == stepCount - 1 || planMessage == nil {
+                Button("Photo first, then paste the text") {
+                    UIPasteboard.general.string = checkInMessage
+                    includeText = false
+                    banner = "Paste the check-in text under the photo."
+                    showShare = true
+                }
+                .buttonStyle(.setechoOutline)
+                .disabled(text == nil || collage == nil)
             }
-            .buttonStyle(.setechoOutline)
-            .disabled(text == nil || collage == nil)
+            if stepCount > 1, sendStep < stepCount {
+                Text("Step \(sendStep + 1) of \(stepCount): \(stepName). One WhatsApp message each, in his order.")
+                    .font(.footnote).secondaryText()
+            }
         }
         .task { await render() }
         .sheet(isPresented: $showShare) {
-            if let text {
-                ShareSheet(image: collage, text: includeText ? text : nil) { completed in
-                    if completed {
+            let isPlanStep = sendStep == 0 && planMessage != nil
+            let body = isPlanStep ? planMessage : checkInMessage
+            if let body {
+                ShareSheet(image: isPlanStep ? nil : collage, text: includeText ? body : nil) { completed in
+                    guard completed else { return }
+                    sendStep += 1
+                    if sendStep >= stepCount {
                         coordinator.markSent()
                         banner = "Sent. The check-in is saved under History."
+                    } else {
+                        banner = "Next: \(stepName)."
                     }
                 }
             }
@@ -100,7 +130,7 @@ struct ReviewSendView: View {
         guard let template = coordinator.template, let draft = coordinator.draft else { return }
         error = nil
         do {
-            text = try await APIClient().checkInRender(template: template, draft: draft)
+            messages = try await APIClient().checkInRenderMessages(template: template, draft: draft).messages
         } catch {
             self.error = error.localizedDescription
         }

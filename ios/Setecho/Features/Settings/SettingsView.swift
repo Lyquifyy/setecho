@@ -1,6 +1,8 @@
+import AVFoundation
 import SwiftUI
 
-/// Settings (More menu): the values the check-in can't read from anywhere else.
+/// Settings (More menu): the values the check-in can't read from anywhere else, the session
+/// switches, and the voice Setecho speaks with.
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var settings = Settings.shared
@@ -41,6 +43,26 @@ struct SettingsView: View {
                     .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
                 Text("His cues from a reply play once before that exercise, never during a set. Each cue has its own checkbox on the Coach reply screen.")
                     .font(.footnote).secondaryText()
+                CardDivider()
+                Toggle("Next-set suggestions", isOn: $settings.nextSetSuggestions)
+                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+                Text("Only with a rule your coach wrote and you confirmed. You decide each one, and he sees it in the check-in.")
+                    .font(.footnote).secondaryText()
+            }
+            SectionCard("Voice") {
+                Text("One voice everywhere: sessions, check-in morning and the wrap-up. Never your coach's.").font(.subheadline).secondaryText()
+                Picker("Voice", selection: $settings.voiceIdentifier) {
+                    Text("Best installed (premium first)").tag("")
+                    ForEach(AudioService.availableVoices(), id: \.identifier) { voice in
+                        Text("\(voice.name) · \(qualityName(voice.quality))").tag(voice.identifier)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(Theme.cobalt)
+                if !AudioService.hasNaturalVoice {
+                    Text("No premium voice is installed. Download one in Settings → Accessibility → Spoken Content → Voices → English.")
+                        .font(.footnote).secondaryText()
+                }
             }
             SectionCard("Check-in") {
                 Toggle("Current weight is the 7-day average", isOn: $settings.useSevenDayAverageWeight)
@@ -68,5 +90,14 @@ struct SettingsField: View {
             .padding(.horizontal, Theme.Space.s)
             .frame(minHeight: 44)
             .background(Theme.fieldFill, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+    }
+}
+
+
+private func qualityName(_ quality: AVSpeechSynthesisVoiceQuality) -> String {
+    switch quality {
+    case .premium: "premium"
+    case .enhanced: "enhanced"
+    default: "standard"
     }
 }

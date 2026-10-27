@@ -138,7 +138,7 @@ final class AudioService {
             lastError = "Duck: \(error.localizedDescription)"
         }
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        utterance.voice = Self.preferredVoice()
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
         await withCheckedContinuation { continuation in
             speechContinuation = continuation
@@ -156,6 +156,32 @@ final class AudioService {
     private func speechFinished() {
         speechContinuation?.resume()
         speechContinuation = nil
+    }
+
+    /// One voice everywhere (HANDOFF.md §7, The spotter voice): the athlete's pick from Settings,
+    /// else the best installed English voice, premium first, then enhanced. Never the coach's.
+    static func preferredVoice(identifier: String = Settings.shared.voiceIdentifier) -> AVSpeechSynthesisVoice? {
+        if !identifier.isEmpty, let chosen = AVSpeechSynthesisVoice(identifier: identifier) { return chosen }
+        let english = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("en") }
+        let ranked = english.sorted { a, b in
+            if a.quality != b.quality { return a.quality.rawValue > b.quality.rawValue }
+            if (a.language == "en-US") != (b.language == "en-US") { return a.language == "en-US" }
+            return a.name < b.name
+        }
+        return ranked.first ?? AVSpeechSynthesisVoice(language: "en-US")
+    }
+
+    /// English voices for the Settings picker, best first.
+    static func availableVoices() -> [AVSpeechSynthesisVoice] {
+        AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("en") }.sorted { a, b in
+            if a.quality != b.quality { return a.quality.rawValue > b.quality.rawValue }
+            return a.name < b.name
+        }
+    }
+
+    /// True when no premium or enhanced voice is installed: first run suggests downloading one.
+    static var hasNaturalVoice: Bool {
+        AVSpeechSynthesisVoice.speechVoices().contains { $0.language.hasPrefix("en") && $0.quality != .default }
     }
 
     /// Play one audio file (a coach cue) with the music ducked, then restore mixing. Serialized

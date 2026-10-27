@@ -86,7 +86,7 @@ final class WrapUpModel {
     }
 
     /// "Energy levels, 1 to 10?" or "Waist, bicep and thigh?"; the weight fallback asks "Today's weight?"
-    static func question(for group: [FieldSpec]) -> String {
+    nonisolated static func question(for group: [FieldSpec]) -> String {
         if group.count == 1, group[0].source.key == .currentWeight { return "Today's weight?" }
         if group.count > 1 {
             let names = group.map { Self.shortName($0.label) }
@@ -100,7 +100,7 @@ final class WrapUpModel {
         return text + "?"
     }
 
-    static func shortName(_ label: String) -> String {
+    nonisolated static func shortName(_ label: String) -> String {
         let lower = label.lowercased()
         for part in ["waist", "bicep", "thigh", "calf", "chest", "hips", "arm"] where lower.contains(part) { return part }
         return label
@@ -201,7 +201,7 @@ final class WrapUpModel {
     }
 
     /// "Energy 6." / "Waist 31, bicep 16, thigh 24 and three quarters."
-    static func confirmation(for group: [FieldSpec], answers: [FieldAnswer]) -> String {
+    nonisolated static func confirmation(for group: [FieldSpec], answers: [FieldAnswer]) -> String {
         if group.count > 1 {
             return answers.map { a in
                 let name = shortName(group.first { $0.id == a.fieldId }?.label ?? "")
@@ -214,7 +214,7 @@ final class WrapUpModel {
         return "\(label): \(head.replacingOccurrences(of: "/10", with: ""))."
     }
 
-    static func shortLabel(_ group: [FieldSpec]) -> String {
+    nonisolated static func shortLabel(_ group: [FieldSpec]) -> String {
         guard let field = group.first else { return "" }
         if group.count > 1 { return "measurements" }
         var label = field.label.replacingOccurrences(of: "Notes on ", with: "").replacingOccurrences(of: "Notes on", with: "")

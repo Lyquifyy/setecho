@@ -17,6 +17,10 @@ final class Settings {
     var useSevenDayAverageWeight: Bool { didSet { defaults.set(useSevenDayAverageWeight, forKey: "useSevenDayAverageWeight") } }
     /// The coach's cues play before their exercise in a session. On by default (HANDOFF.md §13).
     var coachVoiceInSessions: Bool { didSet { defaults.set(coachVoiceInSessions, forKey: "coachVoiceInSessions") } }
+    /// The voice Setecho speaks with everywhere; empty means the best installed voice, premium first.
+    var voiceIdentifier: String { didSet { defaults.set(voiceIdentifier, forKey: "voiceIdentifier") } }
+    /// Next-set suggestions (P4). On by default; only with a confirmed coach's rule.
+    var nextSetSuggestions: Bool { didSet { defaults.set(nextSetSuggestions, forKey: "nextSetSuggestions") } }
 
     private let defaults: UserDefaults
 
@@ -28,6 +32,8 @@ final class Settings {
         collageLayout = PhotoAlign.CollageLayout(rawValue: defaults.string(forKey: "collageLayout") ?? "") ?? .grid2x2
         useSevenDayAverageWeight = defaults.bool(forKey: "useSevenDayAverageWeight")
         coachVoiceInSessions = defaults.object(forKey: "coachVoiceInSessions") as? Bool ?? true
+        voiceIdentifier = defaults.string(forKey: "voiceIdentifier") ?? ""
+        nextSetSuggestions = defaults.object(forKey: "nextSetSuggestions") as? Bool ?? true
     }
 
     var showDateOrNil: String? { showDate.trimmingCharacters(in: .whitespaces).isEmpty ? nil : showDate }

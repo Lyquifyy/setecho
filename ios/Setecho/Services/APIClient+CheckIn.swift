@@ -6,8 +6,28 @@ extension APIClient {
     }
 
     func checkInRender(template: CheckInTemplate, draft: CheckInDraft) async throws -> String {
-        let response: RenderResponse = try await postJSON("/checkin/render", body: RenderRequest(template: template, draft: draft), timeout: 30)
-        return response.text
+        try await checkInRenderMessages(template: template, draft: draft).text
+    }
+
+    /// Both messages in his order: the plan message, then the questionnaire.
+    func checkInRenderMessages(template: CheckInTemplate, draft: CheckInDraft) async throws -> RenderResponse {
+        try await postJSON("/checkin/render", body: RenderRequest(template: template, draft: draft), timeout: 30)
+    }
+
+    /// One utterance of Check-in morning. The phone applies the answers and picks the next question.
+    func checkInTurn(wav: Data, context: TurnContext) async throws -> TurnResponse {
+        var request = URLRequest(url: baseURL.appendingPathComponent("/checkin/turn"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        let body = Multipart(parts: [
+            .file(name: "audio", filename: "turn.wav", mime: "audio/wav", data: wav),
+            .field(name: "context", value: String(decoding: try JSONCoding.encoder.encode(context), as: UTF8.self)),
+        ])
+        request.setValue(body.contentType, forHTTPHeaderField: "Content-Type")
+        request.httpBody = body.data
+        let (data, response) = try await session.data(for: request)
+        try Self.checkResponse(response, data)
+        return try JSONCoding.decoder.decode(TurnResponse.self, from: data)
     }
 
     /// One spoken answer for one to three fields (the tape measurements are one question).
