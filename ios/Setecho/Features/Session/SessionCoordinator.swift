@@ -33,8 +33,13 @@ final class SessionCoordinator {
     /// Retry delays for a clip upload, about ten minutes in all (HANDOFF.md §7, Rep counting).
     static let uploadRetryDelays: [Double] = [10, 30, 60, 120, 180, 200]
 
-    init(day: ProgramDay, weekNumber: Int, store: Store, api: APIClient = APIClient(), settings: Settings = .shared) {
-        self.engine = SessionEngine(day: day, weekNumber: weekNumber)
+    /// The day's session with the add-ons joining it today, or a morning session of one add-on
+    /// (day nil). The engine gets his confirmed warm-up rule and the add-ons "add abs" can bring in.
+    init(day: ProgramDay?, addOns: [AddOn] = [], weekNumber: Int, store: Store, api: APIClient = APIClient(), settings: Settings = .shared) {
+        let plan = store.plan
+        self.engine = SessionEngine(day: day, addOns: addOns,
+                                    availableAddOns: plan?.program.addOns.filter { $0.timing == .withSession } ?? [],
+                                    weekNumber: weekNumber, warmups: plan?.warmups)
         self.store = store
         self.api = api
         self.detector = SetDetector(mediaDirectory: store.mediaDirectory, sessionId: engine.session.id)
@@ -43,14 +48,18 @@ final class SessionCoordinator {
         }
     }
 
+    /// "I'm doing Day 5 today" before any set: the view rebuilds the session on that day.
+    var requestedDayNumber: Int? { engine.requestedDayNumber }
+
     var state: SessionEngine.State { engine.state }
 
     var hudState: HUDState.State {
         switch engine.state {
-        case .ready: .ready
+        case .ready: engine.warmupMode ? .warmup(engine.warmupCount + 1) : .ready
         case .recording: .recording
         case .saved: .saved
         case .rest(let remaining): .rest(remaining: remaining)
+        case .hold(let remaining): .hold(remaining: remaining)
         case .listening: .listening
         case .paused: .paused
         case .ended: .ended
@@ -106,7 +115,10 @@ final class SessionCoordinator {
 
     private var intro: String {
         guard let ex = engine.currentExercise else { return "Nothing planned for today." }
-        return "\(engine.day.name). \(ex.name), \(Callout.target(load: engine.targetLoadLb, reps: engine.targetRepsText)). Lift when ready, or say starting."
+        if engine.currentSetIsTimed { return "\(engine.title). \(ex.name), \(engine.targetRepsText). Say go." }
+        var line = "\(engine.title). \(ex.name), \(Callout.target(load: engine.targetLoadLb, reps: engine.targetRepsText))."
+        line += engine.warmupMode ? " Warm-ups first." : " Lift when ready, or say starting."
+        return line
     }
 
     /// The long-press End session, or "end session" by voice.
@@ -121,6 +133,8 @@ final class SessionCoordinator {
         clockTask?.cancel()
         detector.stop()
         audio.stopListening()
+        for file in countFilesHeld.values { try? FileManager.default.removeItem(at: store.mediaDirectory.appendingPathComponent(file)) }
+        countFilesHeld.removeAll()
         save()
     }
 
@@ -131,13 +145,17 @@ final class SessionCoordinator {
     // MARK: Set detection
 
     private func cameraSetStarted(at start: Double) {
+        // A timed set is a countdown, never a camera set (HANDOFF.md §7, Timed sets).
+        guard !engine.currentSetIsTimed else { return }
         currentSetStart = start
+        detector.restPause = engine.currentSetIsRestPause
         show(engine.setStarted())
     }
 
     private func cameraSetEnded(at end: Double) {
         let start = currentSetStart
         currentSetStart = nil
+        detector.restPause = false
         let phone = start.flatMap { detector.phoneCount(from: $0, to: end) }
         let outcome = engine.setEnded(phone: phone, willMeasure: true)
         if let start, let setId = engine.lastLoggedSetId { setsAwaitingClips[start] = setId }
@@ -152,7 +170,24 @@ final class SessionCoordinator {
             show(engine.countFailed(setId: setId))
             return
         }
+        // A warm-up is never uploaded (HANDOFF.md §7, Warm-up sets); its count file waits in case
+        // the athlete says "that was my top set".
+        guard engine.shouldUpload(setId: setId) else {
+            countFilesHeld[setId] = countFile
+            return
+        }
         Task { await upload(countFile: countFile, for: setId) }
+    }
+
+    /// Count clips of warm-ups, kept until the session ends in case a warm-up becomes a working set.
+    private var countFilesHeld: [UUID: String] = [:]
+
+    /// A warm-up reclassified by voice uploads then (HANDOFF.md §7).
+    private func uploadReclassified() {
+        for setId in engine.setsNeedingUpload() {
+            guard let file = countFilesHeld.removeValue(forKey: setId) else { continue }
+            Task { await upload(countFile: file, for: setId) }
+        }
     }
 
     /// Send the small clip to /sets/count, retrying in the background for about ten minutes.
@@ -161,7 +196,7 @@ final class SessionCoordinator {
         defer { try? FileManager.default.removeItem(at: url) }
         guard let data = try? Data(contentsOf: url),
               let set = engine.session.sets.first(where: { $0.id == setId }),
-              let exercise = engine.day.exercises.first(where: { $0.id == set.exerciseId })
+              let exercise = engine.exercises.first(where: { $0.exercise.id == set.exerciseId })?.exercise
         else {
             show(engine.countFailed(setId: setId))
             return
@@ -169,7 +204,7 @@ final class SessionCoordinator {
         let planned = exercise.sets.indices.contains(set.setIndex) ? exercise.sets[set.setIndex] : nil
         let context = CountContext(exerciseId: set.exerciseId, equipment: exercise.equipment,
                                    plannedReps: planned?.reps ?? planned?.repsMin, phoneReps: set.repCount.phone,
-                                   setRole: nil)
+                                   setRole: set.role?.rawValue)
         countsInFlight += 1
         defer { countsInFlight -= 1 }
         for (attempt, delay) in ([0.0] + Self.uploadRetryDelays).enumerated() {
@@ -212,6 +247,11 @@ final class SessionCoordinator {
                     self.show(rest)
                     if self.engine.state == .ready { await self.playCueIfDue() }
                 }
+                let hold = self.engine.tickHold(at: .now)
+                if hold != .none {
+                    self.show(hold)
+                    self.afterStateChange()
+                }
                 let fallback = self.engine.tick(now: .now)
                 if fallback != .none { self.show(fallback) }
             }
@@ -251,8 +291,10 @@ final class SessionCoordinator {
             // "Done" by voice: close the clip the camera was filming for this set.
             if let start = currentSetStart, let setId = engine.lastLoggedSetId { setsAwaitingClips[start] = setId }
             currentSetStart = nil
+            detector.restPause = false
             detector.endSetByVoice()
         }
+        if response.intent.intent == .topSet { uploadReclassified() }
         show(outcome)
         afterStateChange()
     }

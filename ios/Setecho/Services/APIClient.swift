@@ -21,6 +21,18 @@ struct APIClient: Sendable {
         try await post("/import/form", parts: parts(for: source))
     }
 
+    /// His written instructions, pasted once: the rules he states with his quotes, nothing confirmed.
+    func importRules(text: String) async throws -> RulesImport {
+        var request = URLRequest(url: baseURL.appendingPathComponent("/import/rules"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 120
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONCoding.encoder.encode(["text": text])
+        let (data, response) = try await session.data(for: request)
+        try Self.check(response, data)
+        return try JSONCoding.decoder.decode(RulesImport.self, from: data)
+    }
+
     func health() async throws -> Bool {
         let (data, response) = try await session.data(from: baseURL.appendingPathComponent("health"))
         try Self.check(response, data)

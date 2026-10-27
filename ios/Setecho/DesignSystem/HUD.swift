@@ -18,6 +18,10 @@ struct HUDState: View {
         case recording
         case saved
         case rest(remaining: Int)
+        /// A timed set running (DESIGN.md Session, Hold).
+        case hold(remaining: Int)
+        /// Warm-up mode: the counter does not move (DESIGN.md Session, Warm-up).
+        case warmup(Int)
         case listening
         case paused
         case ended
@@ -39,6 +43,8 @@ struct HUDState: View {
         case .recording: "Recording"
         case .saved: "Saved"
         case .rest(let remaining): "Rest \(Format.duration(TimeInterval(remaining)))"
+        case .hold(let remaining): "Hold \(Format.duration(TimeInterval(remaining)))"
+        case .warmup(let n): "Warm-up \(n)"
         case .listening: "Listening"
         case .paused: "Paused"
         case .ended: "Session over"
@@ -55,6 +61,10 @@ struct HUDState: View {
             Image(systemName: "checkmark.circle.fill").font(.hudState).foregroundStyle(Theme.cobalt)
         case .rest:
             Image(systemName: "timer").font(.hudState).foregroundStyle(Theme.cobalt)
+        case .hold:
+            Image(systemName: "hourglass").font(.hudState).foregroundStyle(Theme.cobalt)
+        case .warmup:
+            Image(systemName: "flame").font(.hudState).foregroundStyle(Theme.textSecondary)
         case .paused:
             Image(systemName: "pause.circle").font(.hudState).foregroundStyle(Theme.textSecondary)
         case .ready:

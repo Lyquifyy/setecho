@@ -62,6 +62,7 @@ final class Store {
         } else {
             appendPlan(PlanState.seed(program: program, template: template, targets: nil, cardioProtocol: cardioProtocol))
         }
+        refreshCycle()
     }
 
     /// A new form import: plan version +1 with its blocks, targets and cardio protocol.
@@ -86,6 +87,92 @@ final class Store {
     func appendPlan(_ plan: PlanState) {
         plans.append(plan)
         write(plans, "plans.json")
+    }
+
+    /// Edit the current plan in place: confirmations, the cycle cursor and add-on days are the
+    /// athlete's bookkeeping, not a new version the coach wrote.
+    func mutatePlan(_ body: (inout PlanState) -> Void) {
+        guard !plans.isEmpty else { return }
+        var current = plans[plans.count - 1]
+        body(&current)
+        guard current != plans[plans.count - 1] else { return }
+        plans[plans.count - 1] = current
+        write(plans, "plans.json")
+    }
+
+    /// His written instructions, read once (HANDOFF.md §5, /import/rules): a new plan version with
+    /// the rules, targets, rest, warm-ups, cadence and quiet days, each unconfirmed until the
+    /// athlete confirms it on Import. Rules from an earlier paste of his instructions are replaced.
+    func saveRules(_ imported: RulesImport) {
+        guard let plan else { return }
+        var next = plan
+        next.version += 1
+        next.replyId = nil
+        next.rules = plan.rules.filter { $0.source != "Coach's instructions" } + imported.rules
+        next.roleTargets = imported.roleTargets
+        next.restRules = imported.restRules
+        next.warmups = imported.warmups
+        next.checkInSchedule = imported.checkInSchedule
+        next.quietDays = imported.quietDays
+        appendPlan(next)
+    }
+
+    // MARK: The cycle (HANDOFF.md §7, Which day is today)
+
+    /// Seed or advance the cursor; called on launch and when the app comes to the foreground.
+    func refreshCycle(now: Date = .now) {
+        guard let plan, !plan.program.cycleDays.isEmpty else { return }
+        let next: CycleCursor?
+        if let cursor = plan.cycle {
+            next = Cycle.advanced(cursor, program: plan.program, sessions: sessions, today: now)
+        } else {
+            next = Cycle.seed(program: plan.program, sessions: sessions, today: now)
+        }
+        if let next, next != plan.cycle { mutatePlan { $0.cycle = next } }
+    }
+
+    /// "Change day" on Today, or "I'm doing Day 5 today".
+    func changeDay(to dayId: String, now: Date = .now) {
+        mutatePlan { $0.cycle = Cycle.changed(to: dayId, today: now) }
+    }
+
+    func setAddOnDays(_ days: [AddOnDays]) {
+        mutatePlan { $0.addOnDays = days }
+    }
+
+    /// The cycle day Today shows, with its week. Nil without a program.
+    var todayDay: (week: ProgramWeek, day: ProgramDay)? {
+        guard let plan, let program = currentProgram else { return nil }
+        if let cursor = plan.cycle, let found = program.day(id: cursor.dayId) { return found }
+        return program.days.first
+    }
+
+    /// Today's session is complete: a second session the same day is still fine.
+    func isDoneToday(dayId: String, now: Date = .now) -> Bool {
+        sessions.contains { $0.programDayId == dayId && $0.isComplete && !$0.workingSets.isEmpty && Calendar.current.isDate($0.startedAt, inSameDayAs: now) }
+    }
+
+    /// The with-session add-ons due with today's session, catch-up included.
+    func addOnsDue(on dayId: String?, now: Date = .now) -> [AddOnPlanner.Due] {
+        guard let plan else { return [] }
+        let schedule = CheckInSchedule()
+        let week = schedule.week(endingBefore: schedule.nextDue(from: now))
+        return plan.program.addOns.filter { $0.timing == .withSession }.compactMap { addOn in
+            let chosen = plan.addOnDays.first { $0.addOnId == addOn.id }?.dayIds ?? AddOnPlanner.proposedDays(for: addOn, in: plan.program)
+            return AddOnPlanner.due(addOn, dayId: dayId, chosenDays: chosen, sessions: sessions, today: now, week: week)
+        }
+    }
+
+    /// The on-waking add-on due this morning, if any.
+    func morningAddOnDue(now: Date = .now) -> AddOnPlanner.Due? {
+        guard let plan else { return nil }
+        let schedule = CheckInSchedule()
+        let week = schedule.week(endingBefore: schedule.nextDue(from: now))
+        let dayId = plan.cycle?.dayId
+        return plan.program.addOns.filter { $0.timing == .onWaking }.compactMap { addOn in
+            let chosen = plan.addOnDays.first { $0.addOnId == addOn.id }?.dayIds ?? AddOnPlanner.proposedDays(for: addOn, in: plan.program)
+            return AddOnPlanner.due(addOn, dayId: dayId, chosenDays: chosen, sessions: sessions, today: now, week: week)
+        }.first
     }
 
     /// Revert the latest applied reply: drop its version and mark the reply unapplied.
@@ -167,14 +254,6 @@ final class Store {
 
     // MARK: Derived
 
-    /// The next program day with no completed session, in program order. Nil without a program.
-    /// A session that ended with nothing logged (started by mistake) does not count as done.
-    var nextDay: (week: ProgramWeek, day: ProgramDay)? {
-        guard let program = currentProgram else { return nil }
-        let done = Set(sessions.filter { $0.isComplete && !$0.sets.isEmpty }.map(\.programDayId))
-        return program.days.first { !done.contains($0.day.id) } ?? program.days.first
-    }
-
     var lastPhotoSet: PhotoSet? { photoSets.max { $0.takenAt < $1.takenAt } }
     /// The first photo set ever: every later week is cropped to match it.
     var referencePhotoSet: PhotoSet? { photoSets.min { $0.takenAt < $1.takenAt } }
@@ -200,6 +279,8 @@ final class Store {
         if plans.isEmpty, let program {
             appendPlan(PlanState.seed(program: program, template: template, targets: nil, cardioProtocol: Settings.shared.cardioProtocol))
         }
+        // Migration: the cycle cursor is seeded as the day after the last completed session, then kept current.
+        refreshCycle()
     }
 
     private func read<T: Decodable>(_ name: String) -> T? {

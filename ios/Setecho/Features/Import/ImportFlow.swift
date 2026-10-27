@@ -2,15 +2,17 @@ import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Import (DESIGN.md): bring in the coach's material once. Two steps, the spreadsheet program and the
-/// check-in form. Each can be a Google Sheets link (program), pasted text, a file or a screenshot.
+/// Import (DESIGN.md): bring in the coach's material once. Three steps: the spreadsheet program,
+/// the check-in form, then his instructions (his onboarding email, pasted once). The first two can
+/// be a Google Sheets link (program), pasted text, a file or a screenshot.
 struct ImportFlow: View {
     @Environment(Store.self) private var store
     @State private var programModel = ImportModel(kind: .program)
     @State private var formModel = ImportModel(kind: .form)
+    @State private var rulesModel = ImportModel(kind: .rules)
     @State private var path: [ImportStep] = []
 
-    enum ImportStep: Hashable { case programReview, form, formReview }
+    enum ImportStep: Hashable { case programReview, form, formReview, rules, rulesReview }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -19,7 +21,10 @@ struct ImportFlow: View {
                     switch step {
                     case .programReview:
                         ProgramReviewView(model: programModel) {
-                            if let program = programModel.program { store.saveProgram(program) }
+                            if let program = programModel.program {
+                                store.saveProgram(program)
+                                store.setAddOnDays(programModel.addOnDays)
+                            }
                             path.append(.form)
                         }
                     case .form:
@@ -27,6 +32,13 @@ struct ImportFlow: View {
                     case .formReview:
                         FormReviewView(model: formModel) {
                             if let form = formModel.formImport { store.saveTemplate(form.template, targets: form.targets, cardioProtocol: form.cardioProtocol) }
+                            path.append(.rules)
+                        }
+                    case .rules:
+                        ImportInputView(model: rulesModel, step: 3, onDone: { path.append(.rulesReview) })
+                    case .rulesReview:
+                        RulesReviewView(model: rulesModel) {
+                            if let rules = rulesModel.rules { store.saveRules(rules) }
                             AppRouter.shared.showImport = false
                         }
                     }
@@ -47,20 +59,22 @@ private struct ImportInputView: View {
     @State private var photoItem: PhotosPickerItem?
 
     private var isProgram: Bool { model.kind == .program }
+    private var isRules: Bool { model.kind == .rules }
 
     var body: some View {
         ScreenScaffold {
-            if step == 2 {
-                LinkButton(title: "Back", chevron: .leading) { AppRouter.shared.showImport = false }
-            } else {
+            if step == 1 {
                 LinkButton(title: "Not now", chevron: .leading) { AppRouter.shared.showImport = false }
+            } else {
+                LinkButton(title: step == 3 ? "Skip for now" : "Back", chevron: .leading) { AppRouter.shared.showImport = false }
             }
             TitleBlock(
-                eyebrow: "Import · step \(step) of 2",
-                title: isProgram ? "Coach's program" : "Check-in form",
+                eyebrow: "Import · step \(step) of 3",
+                title: isProgram ? "Coach's program" : isRules ? "His instructions" : "Check-in form",
                 subtitle: isProgram
                     ? "The spreadsheet, exactly as your coach sent it."
-                    : "The weekly check-in, exactly as your coach wrote it."
+                    : isRules ? "His onboarding email, pasted once. Setecho reads only the rules he states, and nothing applies until you confirm it."
+                    : "The check-in, exactly as your coach wrote it."
             )
             if isProgram {
                 SectionCard("Google Sheets link") {
@@ -68,7 +82,7 @@ private struct ImportInputView: View {
                     ImportField(placeholder: "https://docs.google.com/spreadsheets/…", text: $model.link)
                 }
             }
-            SectionCard(isProgram ? "Or paste the sheet" : "Paste the form") {
+            SectionCard(isProgram ? "Or paste the sheet" : isRules ? "Paste his email" : "Paste the form") {
                 TextEditor(text: $model.text)
                     .font(.body)
                     .foregroundStyle(Theme.navy)
@@ -81,6 +95,7 @@ private struct ImportInputView: View {
                             .strokeBorder(Theme.border, lineWidth: 1)
                     )
             }
+            if !isRules {
             SectionCard("Or add a file") {
                 HStack(spacing: Theme.Space.s) {
                     Button { showFilePicker = true } label: {
@@ -102,6 +117,7 @@ private struct ImportInputView: View {
                     }
                 }
             }
+            }
             if let error = model.error {
                 SectionCard("Couldn't read it") {
                     Text(error).font(.subheadline).foregroundStyle(Theme.navy)
@@ -117,7 +133,7 @@ private struct ImportInputView: View {
                 if model.isLoading {
                     Label("Reading with Muse Spark…", systemImage: "sparkles")
                 } else {
-                    Text(isProgram ? "Read spreadsheet" : "Read form")
+                    Text(isProgram ? "Read spreadsheet" : isRules ? "Read his rules" : "Read form")
                 }
             }
             .buttonStyle(.setechoPrimary)
@@ -184,10 +200,11 @@ private struct ProgramReviewView: View {
             LinkButton(title: "Back", chevron: .leading) { dismiss() }
             if let program = model.program {
                 TitleBlock(
-                    eyebrow: "Import · step 1 of 2",
+                    eyebrow: "Import · step 1 of 3",
                     title: program.name,
-                    subtitle: "\(program.weeks.count) week\(program.weeks.count == 1 ? "" : "s") · "
-                        + "\(program.exerciseCount) exercise\(program.exerciseCount == 1 ? "" : "s"). Check it against the sheet."
+                    subtitle: "\(program.cycleDays.count) cycle day\(program.cycleDays.count == 1 ? "" : "s") · "
+                        + "\(program.exerciseCount) exercise\(program.exerciseCount == 1 ? "" : "s")"
+                        + (program.addOns.isEmpty ? "" : " · \(program.addOns.count) add-on\(program.addOns.count == 1 ? "" : "s")") + ". Check it against the sheet."
                 )
                 if !program.flags.isEmpty {
                     SectionCard("Needs a look", accessory: { TargetTag(text: "Confirm") }) {
@@ -200,9 +217,32 @@ private struct ProgramReviewView: View {
                         }
                     }
                 }
+                // The cycle in order, with rest days marked (DESIGN.md Import, Cycle and add-ons).
+                SectionCard("The cycle") {
+                    ForEach(Array(program.cycleDays.enumerated()), id: \.element.id) { index, day in
+                        if index > 0 { CardDivider() }
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(day.name).font(.body.weight(.semibold)).foregroundStyle(Theme.navy)
+                            Spacer()
+                            Text(day.isRest ? "Rest · \(day.cardio ?? "")" : "\(day.exercises.count) exercises")
+                                .font(.subheadline).monospacedDigit().secondaryText()
+                        }
+                        .frame(minHeight: 28)
+                    }
+                }
+                if !program.addOns.isEmpty {
+                    SectionCard("Add-ons", accessory: { TargetTag(text: "Confirm") }) {
+                        Text("Pick the days each one joins. Setecho proposed them evenly.").font(.subheadline).secondaryText()
+                        ForEach(Array(program.addOns.enumerated()), id: \.element.id) { index, addOn in
+                            if index > 0 { CardDivider() }
+                            AddOnRow(addOn: addOn, days: addOn.timing == .withSession ? program.trainingDays : program.cycleDays,
+                                     chosen: chosenDays(for: addOn.id))
+                        }
+                    }
+                }
                 ForEach(program.weeks, id: \.number) { week in
-                    ForEach(week.days) { day in
-                        SectionCard("\(day.name) · Week \(week.number)") {
+                    ForEach(week.days.filter { !$0.isRest }) { day in
+                        SectionCard(program.weeks.count > 1 ? "\(day.name) · Week \(week.number)" : day.name) {
                             ForEach(Array(day.exercises.enumerated()), id: \.element.id) { index, exercise in
                                 if index > 0 { CardDivider() }
                                 ExerciseRow(exercise: exercise, flagged: isFlagged(exercise, day: day, week: week, program: program))
@@ -210,10 +250,31 @@ private struct ProgramReviewView: View {
                         }
                     }
                 }
+                ForEach(program.addOns) { addOn in
+                    SectionCard(addOn.name) {
+                        ForEach(Array(addOn.exercises.enumerated()), id: \.element.id) { index, exercise in
+                            if index > 0 { CardDivider() }
+                            ExerciseRow(exercise: exercise)
+                        }
+                    }
+                }
             }
         } footer: {
             Button("Save program", action: onSave).buttonStyle(.setechoPrimary)
         }
+    }
+
+    private func chosenDays(for addOnId: String) -> Binding<[String]> {
+        Binding(
+            get: { model.addOnDays.first { $0.addOnId == addOnId }?.dayIds ?? [] },
+            set: { days in
+                if let i = model.addOnDays.firstIndex(where: { $0.addOnId == addOnId }) {
+                    model.addOnDays[i].dayIds = days
+                } else {
+                    model.addOnDays.append(AddOnDays(addOnId: addOnId, dayIds: days))
+                }
+            }
+        )
     }
 
     private func isFlagged(_ exercise: PlannedExercise, day: ProgramDay, week: ProgramWeek, program: Program) -> Bool {
@@ -237,6 +298,9 @@ struct ExerciseRow: View {
                 Text(exercise.summary).font(.subheadline).monospacedDigit().secondaryText()
                 Text([exercise.equipment.label, exercise.restText].compactMap { $0 }.joined(separator: " · "))
                     .font(.footnote).monospacedDigit().secondaryText()
+                ForEach(exercise.alternates, id: \.name) { alternate in
+                    Text("or \(alternate.name) · “\(alternate.quote)”").font(.footnote).secondaryText()
+                }
                 if let notes = exercise.notes, !notes.isEmpty {
                     Text(notes).font(.footnote).secondaryText()
                 }
@@ -261,7 +325,7 @@ private struct FormReviewView: View {
             LinkButton(title: "Back", chevron: .leading) { dismiss() }
             if let template = model.template {
                 TitleBlock(
-                    eyebrow: "Import · step 2 of 2",
+                    eyebrow: "Import · step 2 of 3",
                     title: "Check-in form",
                     subtitle: "\(template.fields.count) fields. \(template.dataFieldCount) fill from data, \(template.voiceFieldCount) are asked out loud."
                 )
@@ -315,5 +379,83 @@ private struct FieldPlanRow: View {
             if field.source.needsConfirmation { TargetTag(text: "Confirm") }
         }
         .padding(.vertical, Theme.Space.xxs)
+    }
+}
+
+
+// MARK: - Rules review (DESIGN.md Import, Rules review)
+
+/// How the coach adjusts loads, one `RuleRow` each, drafted from his instructions, beside his words.
+/// The same card lists how hard each kind of set goes, the rest after top sets, warm-ups, the
+/// check-in cadence and his quiet day. Nothing applies until it's confirmed.
+private struct RulesReviewView: View {
+    @Bindable var model: ImportModel
+    let onSave: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private let weekdays = ["", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+    var body: some View {
+        ScreenScaffold {
+            LinkButton(title: "Back", chevron: .leading) { dismiss() }
+            if let rules = model.rules {
+                TitleBlock(
+                    eyebrow: "Import · step 3 of 3",
+                    title: "His rules",
+                    subtitle: rules.isEmpty ? "No rules found in what you pasted. Setecho never invents one."
+                        : "Each one in his words. Tap to confirm it's what he wants; nothing applies until you do."
+                )
+                if !rules.rules.isEmpty {
+                    SectionCard("Adjusting loads", accessory: { if rules.rules.contains(where: { !$0.confirmed }) { TargetTag(text: "Confirm") } }) {
+                        ForEach(Array(rules.rules.enumerated()), id: \.element.id) { index, rule in
+                            if index > 0 { CardDivider() }
+                            RuleRow(text: rule.text, quote: rule.quote, confirmed: rule.confirmed) { model.rules?.rules[index].confirmed.toggle() }
+                        }
+                    }
+                }
+                if !rules.roleTargets.isEmpty || !rules.restRules.isEmpty || rules.warmups != nil {
+                    SectionCard("How hard, and the rest") {
+                        ForEach(Array(rules.roleTargets.enumerated()), id: \.offset) { index, target in
+                            if index > 0 { CardDivider() }
+                            RuleRow(text: target.text, quote: target.quote, confirmed: target.confirmed) { model.rules?.roleTargets[index].confirmed.toggle() }
+                        }
+                        ForEach(Array(rules.restRules.enumerated()), id: \.offset) { index, rest in
+                            if index > 0 || !rules.roleTargets.isEmpty { CardDivider() }
+                            RuleRow(text: rest.text, quote: rest.quote, confirmed: rest.confirmed) { model.rules?.restRules[index].confirmed.toggle() }
+                        }
+                        if let warmups = rules.warmups {
+                            if !rules.roleTargets.isEmpty || !rules.restRules.isEmpty { CardDivider() }
+                            RuleRow(text: warmups.text, quote: warmups.quote, confirmed: warmups.confirmed) { model.rules?.warmups?.confirmed.toggle() }
+                        }
+                    }
+                }
+                if rules.checkInSchedule != nil || !rules.quietDays.isEmpty {
+                    SectionCard("Check-ins") {
+                        if let cadence = rules.checkInSchedule {
+                            RuleRow(text: cadence.text, quote: cadence.quote, confirmed: cadence.confirmed) { model.rules?.checkInSchedule?.confirmed.toggle() }
+                        }
+                        if !rules.quietDays.isEmpty {
+                            if rules.checkInSchedule != nil { CardDivider() }
+                            Text("Quiet day\(rules.quietDays.count == 1 ? "" : "s"): \(rules.quietDays.map { weekdays.indices.contains($0) ? weekdays[$0] : "day \($0)" }.joined(separator: ", "))")
+                                .font(.body).foregroundStyle(Theme.navy)
+                            Text("Setecho won't put a message to him on screen that day.").font(.footnote).secondaryText()
+                        }
+                    }
+                }
+                if !rules.flags.isEmpty {
+                    SectionCard("Left out") {
+                        ForEach(Array(rules.flags.enumerated()), id: \.offset) { index, flag in
+                            if index > 0 { CardDivider() }
+                            VStack(alignment: .leading, spacing: Theme.Space.xxs) {
+                                Text(flag.path).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.navy)
+                                Text(flag.message).font(.subheadline).secondaryText()
+                            }
+                        }
+                    }
+                }
+            }
+        } footer: {
+            Button("Save his rules", action: onSave).buttonStyle(.setechoPrimary)
+        }
     }
 }

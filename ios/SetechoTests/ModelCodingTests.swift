@@ -59,7 +59,7 @@ private func fixture(_ name: String) throws -> Data {
     let reopened = Store(root: root)
     #expect(reopened.program == program)
     #expect(reopened.template == template)
-    #expect(reopened.nextDay?.day.id == "w1_upper_a")
+    #expect(reopened.todayDay?.day.id == "w1_upper_a")
     #expect(reopened.loadError == nil)
 }
 

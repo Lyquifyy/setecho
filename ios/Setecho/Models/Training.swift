@@ -4,11 +4,37 @@ import Foundation
 
 struct Session: Codable, Equatable, Identifiable {
     var id: UUID
-    var programDayId: String
+    /// Nil for a session that is only an add-on (the morning vacuums).
+    var programDayId: String?
     var startedAt: Date
     var endedAt: Date?
     var sets: [LoggedSet]
     var notes: [VoiceNote]
+    /// The add-ons this session carried, by id.
+    var addOnIds: [String]
+
+    init(id: UUID, programDayId: String?, startedAt: Date, endedAt: Date?, sets: [LoggedSet], notes: [VoiceNote], addOnIds: [String] = []) {
+        self.id = id
+        self.programDayId = programDayId
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.sets = sets
+        self.notes = notes
+        self.addOnIds = addOnIds
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, programDayId, startedAt, endedAt, sets, notes, addOnIds }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        programDayId = try c.decodeIfPresent(String.self, forKey: .programDayId)
+        startedAt = try c.decode(Date.self, forKey: .startedAt)
+        endedAt = try c.decodeIfPresent(Date.self, forKey: .endedAt)
+        sets = try c.decode([LoggedSet].self, forKey: .sets)
+        notes = try c.decodeIfPresent([VoiceNote].self, forKey: .notes) ?? []
+        addOnIds = try c.decodeIfPresent([String].self, forKey: .addOnIds) ?? []
+    }
 }
 
 struct LoggedSet: Codable, Equatable, Identifiable {
@@ -19,6 +45,12 @@ struct LoggedSet: Codable, Equatable, Identifiable {
     /// The number in the log. `repCount.source` says where it came from.
     var reps: Int
     var rpe: Double?
+    /// A timed set: how long it ran (holds, the bike).
+    var seconds: Int?
+    /// .warmup, .top, .backOff, .restPause; nil = a straight set.
+    var role: SetRole?
+    /// "Flag that": a candidate for the check-in's two videos.
+    var flaggedForCoach: Bool
     var repCount: RepCount
     var startedAt: Date
     var endedAt: Date
@@ -27,14 +59,18 @@ struct LoggedSet: Codable, Equatable, Identifiable {
     /// Audit trail for spoken corrections: "that was 7 reps".
     var edits: [SetEdit]
 
-    init(id: UUID, exerciseId: String, setIndex: Int, loadLb: Double, reps: Int, rpe: Double?,
-         repCount: RepCount = RepCount(source: .plan), startedAt: Date, endedAt: Date, clipFile: String?, edits: [SetEdit]) {
+    init(id: UUID, exerciseId: String, setIndex: Int, loadLb: Double, reps: Int, rpe: Double?, seconds: Int? = nil,
+         role: SetRole? = nil, flaggedForCoach: Bool = false, repCount: RepCount = RepCount(source: .plan),
+         startedAt: Date, endedAt: Date, clipFile: String?, edits: [SetEdit]) {
         self.id = id
         self.exerciseId = exerciseId
         self.setIndex = setIndex
         self.loadLb = loadLb
         self.reps = reps
         self.rpe = rpe
+        self.seconds = seconds
+        self.role = role
+        self.flaggedForCoach = flaggedForCoach
         self.repCount = repCount
         self.startedAt = startedAt
         self.endedAt = endedAt
@@ -43,8 +79,11 @@ struct LoggedSet: Codable, Equatable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, exerciseId, setIndex, loadLb, reps, rpe, repCount, startedAt, endedAt, clipFile, edits
+        case id, exerciseId, setIndex, loadLb, reps, rpe, seconds, role, flaggedForCoach, repCount, startedAt, endedAt, clipFile, edits
     }
+
+    /// A warm-up never counts anywhere (HANDOFF.md §7, Warm-up sets).
+    var isWarmup: Bool { role == .warmup }
 
     /// Sets logged before rep counting existed decode as counted from the plan (HANDOFF.md §4, Migrations).
     init(from decoder: Decoder) throws {
@@ -55,6 +94,9 @@ struct LoggedSet: Codable, Equatable, Identifiable {
         loadLb = try c.decode(Double.self, forKey: .loadLb)
         reps = try c.decode(Int.self, forKey: .reps)
         rpe = try c.decodeIfPresent(Double.self, forKey: .rpe)
+        seconds = try c.decodeIfPresent(Int.self, forKey: .seconds)
+        role = try c.decodeIfPresent(SetRole.self, forKey: .role)
+        flaggedForCoach = try c.decodeIfPresent(Bool.self, forKey: .flaggedForCoach) ?? false
         repCount = try c.decodeIfPresent(RepCount.self, forKey: .repCount) ?? RepCount(source: .plan)
         startedAt = try c.decode(Date.self, forKey: .startedAt)
         endedAt = try c.decode(Date.self, forKey: .endedAt)
@@ -148,4 +190,6 @@ struct VoiceNote: Codable, Equatable, Identifiable {
 
 extension Session {
     var isComplete: Bool { endedAt != nil }
+    /// The sets that count: everything but warm-ups.
+    var workingSets: [LoggedSet] { sets.filter { !$0.isWarmup } }
 }

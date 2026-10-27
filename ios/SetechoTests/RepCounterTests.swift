@@ -11,6 +11,7 @@ private struct RepFixture: Decodable {
     var t: [Double]
     var y: [Double?]
     var expectedReps: Int?
+    var expectedVelocityLossPct: Double?
 }
 
 private func fixtures() throws -> [RepFixture] {
@@ -33,6 +34,22 @@ private func fixtures() throws -> [RepFixture] {
             #expect(!result.trackFound, Comment(rawValue: f.name))
         }
     }
+}
+
+@Test func velocityLossMatchesTheBackendOnTheSlowingSet() throws {
+    let all = try fixtures()
+    let slowing = try #require(all.first { $0.name == "slowing_8" })
+    let result = RepCounter.count(t: slowing.t, y: slowing.y)
+    #expect(result.reps == 8 && result.repSpeeds.count == 8)
+    #expect(result.repSpeeds == result.repSpeeds.sorted(by: >))
+    let expected = try #require(slowing.expectedVelocityLossPct)
+    #expect(abs((result.velocityLossPct ?? 0) - expected) <= 3)
+    let clean = try #require(all.first { $0.name == "clean_8" })
+    #expect(RepCounter.count(t: clean.t, y: clean.y).velocityLossPct == 0)
+    let single = try #require(all.first { $0.name == "single_rep" })
+    #expect(RepCounter.count(t: single.t, y: single.y).velocityLossPct == nil)
+    #expect(RepCounter.velocityLoss([1, 0.9, 0.5, 0.5]) == 50 && RepCounter.velocityLoss([1, 0.9, 1.2, 1.3]) == 0)
+    #expect(RepCounter.velocityLoss([0, 0, 0.5]) == nil)
 }
 
 @Test func confidenceMatchesTheBackendRule() {

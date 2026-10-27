@@ -11,9 +11,10 @@ enum Callout {
     }
 
     /// The count, once it is known, with the next target: "8 reps, measured. Next, 225 for 8."
-    /// Falling short of the plan is stated as a fact, never a judgement.
-    static func counted(reps: Int, measured: Bool, shortBy: Int = 0, next: NextSet?) -> String {
-        var line = "\(reps) reps"
+    /// A rest-pause set's number is its total: "22 total, measured." Falling short of the plan is
+    /// stated as a fact, never a judgement.
+    static func counted(reps: Int, measured: Bool, total: Bool = false, shortBy: Int = 0, next: NextSet?) -> String {
+        var line = total ? "\(reps) total" : "\(reps) reps"
         if measured { line += ", measured" }
         if shortBy > 0 { line += ", \(shortBy) short of plan" }
         var parts = [line + "."]
@@ -36,43 +37,64 @@ enum Callout {
         "Set \(setNumber), was that \(reps)?"
     }
 
-    /// No count to say (the plan's reps stand): just the next target.
+    /// No count to say (the plan's reps stand): just the next target. A new exercise names its
+    /// add-on ("Abs"), says "Warm-ups first" when it starts in warm-up mode, and "Say go" for a hold.
     static func nextLine(_ next: NextSet) -> String {
         switch next {
-        case .sameExercise(let load, let reps): "Next, \(target(load: load, reps: reps))."
-        case .nextExercise(let name, let load, let reps): "Next exercise, \(name), \(target(load: load, reps: reps))."
+        case .sameExercise(let load, let reps):
+            return "Next, \(target(load: load, reps: reps))."
+        case .nextExercise(let name, let load, let reps, let section, let warmups, let timed):
+            var line = section.map { "Next, \($0). \(name), " } ?? "Next exercise, \(name), "
+            line += timed ? "\(reps). Say go." : "\(target(load: load, reps: reps))."
+            if warmups { line += " Warm-ups first." }
+            return line
         }
     }
 
-    static func setDone(setNumber: Int, reps: Int? = nil, shortBy: Int = 0, next: NextSet?, restSeconds: Int) -> String {
+    static func setDone(setNumber: Int, reps: Int? = nil, total: Bool = false, shortBy: Int = 0, next: NextSet?, restSeconds: Int) -> String {
         var parts: [String]
         if let reps {
             // A count is stated as a fact, and so is falling short of the plan. Never a judgement.
-            parts = [shortBy > 0 ? "\(reps) reps, \(shortBy) short of plan." : "\(reps) reps."]
+            let unit = total ? "total" : "reps"
+            parts = [shortBy > 0 ? "\(reps) \(unit), \(shortBy) short of plan." : "\(reps) \(unit)."]
         } else {
             parts = ["Set \(setNumber) done."]
         }
-        switch next {
-        case .sameExercise(let load, let reps):
-            parts.append("Next, \(target(load: load, reps: reps)).")
+        if let next {
+            parts.append(nextLine(next))
             parts.append("Rest \(spoken(seconds: restSeconds)).")
-        case .nextExercise(let name, let load, let reps):
-            parts.append("Next exercise, \(name), \(target(load: load, reps: reps)).")
-            parts.append("Rest \(spoken(seconds: restSeconds)).")
-        case nil:
+        } else {
             parts.append("That's the session.")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    /// A warm-up never gets a count spoken as a result: "Warm-up 2. Rest one thirty."
+    static func warmupDone(number: Int, restSeconds: Int) -> String {
+        "Warm-up \(number). Rest \(spoken(seconds: restSeconds))."
+    }
+
+    /// A hold ended: "Time. Next, 60 s. Rest thirty seconds." or, cut short, "Forty seconds logged."
+    static func holdDone(setNumber: Int, seconds: Int, planned: Int, next: NextSet?, restSeconds: Int, sessionOver: Bool) -> String {
+        let ran = spoken(seconds: seconds)
+        var parts = [seconds >= planned ? "Time." : "\(ran.prefix(1).uppercased() + ran.dropFirst()) logged."]
+        if sessionOver || next == nil {
+            parts.append("That's the session.")
+        } else if let next {
+            parts.append(nextLine(next))
+            parts.append("Rest \(spoken(seconds: restSeconds)).")
         }
         return parts.joined(separator: " ")
     }
 
     enum NextSet: Equatable {
         case sameExercise(loadLb: Double?, reps: String)
-        case nextExercise(name: String, loadLb: Double?, reps: String)
+        case nextExercise(name: String, loadLb: Double?, reps: String, section: String? = nil, warmups: Bool = false, timed: Bool = false)
     }
 
     static func target(load: Double?, reps: String) -> String {
         if let load { return "\(Format.number(load)) for \(reps)" }
-        return "\(reps) reps"
+        return reps.hasSuffix(" s") || reps.hasSuffix(" min") || reps.hasSuffix(" total") ? reps : "\(reps) reps"
     }
 
     /// 150 -> "two thirty", 90 -> "one thirty", 120 -> "two minutes", 45 -> "forty five seconds".

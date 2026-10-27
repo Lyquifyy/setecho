@@ -122,24 +122,46 @@ struct SessionRow: View {
             HStack(alignment: .firstTextBaseline) {
                 let dm = Format.dayAndMonth(session.startedAt)
                 Text("\(dm.day) \(dm.month)").font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(Theme.navy)
-                Text(store.currentProgram?.day(id: session.programDayId)?.day.name ?? session.programDayId).font(.subheadline).secondaryText()
+                Text(sessionName).font(.subheadline).secondaryText()
                 Spacer()
-                Text("\(session.sets.count) sets").font(.subheadline).monospacedDigit().secondaryText()
+                Text("\(session.workingSets.count) sets").font(.subheadline).monospacedDigit().secondaryText()
             }
             ForEach(session.sets) { set in
                 HStack(spacing: Theme.Space.s) {
                     if set.clipFile != nil {
                         PlayButton(accessibilityLabel: "Play set \(set.setIndex + 1)") {}
                     }
-                    Text(store.currentProgram?.exerciseName(id: set.exerciseId) ?? set.exerciseId).font(.footnote).foregroundStyle(Theme.navy)
+                    Text(exerciseName(set)).font(.footnote).foregroundStyle(Theme.navy)
                     Spacer()
-                    Text("\(Format.number(set.loadLb)) × \(set.reps)\(set.rpe.map { " · RPE \(Format.number($0))" } ?? "")")
-                        .font(.footnote).monospacedDigit().secondaryText()
-                    SourceChip(source: set.repCount.source.chipText)
+                    Text(setText(set)).font(.footnote).monospacedDigit().secondaryText()
+                    if set.seconds == nil {
+                        SourceChip(source: set.isWarmup ? "Warm-up" : set.repCount.source.chipText)
+                    }
                 }
             }
         }
         .padding(.vertical, Theme.Space.xxs)
+    }
+
+    /// The cycle day, or the add-on a morning session is made of.
+    private var sessionName: String {
+        if let dayId = session.programDayId {
+            return store.currentProgram?.day(id: dayId)?.day.name ?? dayId
+        }
+        return session.addOnIds.compactMap { store.currentProgram?.addOn(id: $0)?.name }.first ?? "Session"
+    }
+
+    private func exerciseName(_ set: LoggedSet) -> String {
+        store.currentProgram?.allExercises.first { $0.id == set.exerciseId }?.name ?? set.exerciseId
+    }
+
+    /// "225 × 8 · RPE 9", "0:45" for a hold, or "warm-up · 135 × 6".
+    private func setText(_ set: LoggedSet) -> String {
+        if let seconds = set.seconds { return Format.duration(TimeInterval(seconds)) }
+        var text = "\(Format.number(set.loadLb)) × \(set.reps)"
+        if let role = set.role, role != .warmup { text = "\(role.label.lowercased()) · " + text }
+        if let rpe = set.rpe { text += " · RPE \(Format.number(rpe))" }
+        return text
     }
 }
 

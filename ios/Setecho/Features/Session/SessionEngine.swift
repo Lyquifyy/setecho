@@ -10,6 +10,11 @@ import Observation
 /// phone's own count is a silent fallback, spoken only if SAM fails or has not answered 60 s after
 /// the set ended, and replaced when SAM lands. What the athlete said ("that was 7") beats both.
 /// RPE is spoken. Every voice action is echoed and can be undone.
+///
+/// The session's exercises are the cycle day's lifts, then any add-on that joins it, under its
+/// own name (Two workouts in one day). With his warm-up rule, each lift starts in warm-up mode and
+/// a short, easy set is logged as a warm-up that never counts (Warm-up sets). A timed set is a
+/// countdown, not a camera set; a rest-pause set's count is its total across the rounds.
 @MainActor
 @Observable
 final class SessionEngine {
@@ -18,13 +23,15 @@ final class SessionEngine {
         case recording
         case saved
         case rest(remaining: Int)
+        /// A timed set running: seconds left.
+        case hold(remaining: Int)
         case listening
         case paused
         case ended
 
         var isListeningAllowed: Bool {
             switch self {
-            case .ready, .rest, .saved, .listening, .paused: true
+            case .ready, .rest, .saved, .listening, .paused, .hold: true
             case .recording, .ended: false
             }
         }
@@ -59,13 +66,30 @@ final class SessionEngine {
         var spoken: Bool
     }
 
+    /// One exercise of the session, with the add-on it belongs to (nil for the day's own lifts).
+    struct Entry: Equatable {
+        var exercise: PlannedExercise
+        var addOnId: String?
+        var section: String?
+    }
+
     /// SAM silent for this long after a set ends: the phone's count is spoken (HANDOFF.md §7).
     static let fallbackSeconds: TimeInterval = 60
+    /// A warm-up is 8 reps or fewer with under 20% slowdown, before the first working set (§13).
+    static let warmupMaxSlowdownPct = 20.0
+    static let defaultWarmupMaxReps = 8
+    /// Rest between timed holds when the sheet gives none (§13).
+    static let defaultHoldRestSeconds = 30
 
-    let day: ProgramDay
+    let day: ProgramDay?
     let weekNumber: Int
     let defaultRestSeconds: Int
+    /// His warm-up rule, once confirmed: turns warm-up mode on for every lift.
+    let warmups: WarmupRule?
+    /// Add-ons the athlete can add by voice ("add abs").
+    let availableAddOns: [AddOn]
 
+    private(set) var exercises: [Entry]
     private(set) var session: Session
     private(set) var state: State = .ready
     private(set) var exerciseIndex = 0
@@ -82,24 +106,43 @@ final class SessionEngine {
     private(set) var pendingCounts: [PendingCount] = []
     /// Seconds from each set's end to SAM's result, for the latency report (HANDOFF.md §9, P1b).
     private(set) var countLatencies: [TimeInterval] = []
+    /// The current lift is still warming up: an easy set logs as a warm-up and the counter stays.
+    private(set) var warmupMode = false
+    /// Warm-ups logged for the current lift so far.
+    private(set) var warmupCount = 0
+    /// "I'm doing Day 5 today" before any set: the day number asked for, for the coordinator.
+    private(set) var requestedDayNumber: Int?
     private var recordingStartedAt: Date?
     private var stateBeforePause: State = .ready
     private var repsOverrideForCurrentSet: Int?
+    /// "Top set" said during the set: it is a working set whatever the count says.
+    private var forceWorkingForCurrentSet = false
+    private var holdStartedAt: Date?
     /// Approved coach cues by exercise id (HANDOFF.md §7, Coach voice cues).
     var cues: [String: VoiceCue] = [:]
     private(set) var playedCueExerciseIds: Set<String> = []
     private(set) var lastCuePlayed: VoiceCue?
 
-    init(day: ProgramDay, weekNumber: Int, defaultRestSeconds: Int = 150, now: Date = .now) {
+    init(day: ProgramDay?, addOns: [AddOn] = [], availableAddOns: [AddOn] = [], weekNumber: Int, defaultRestSeconds: Int = 150,
+         warmups: WarmupRule? = nil, now: Date = .now) {
         self.day = day
         self.weekNumber = weekNumber
         self.defaultRestSeconds = defaultRestSeconds
-        self.session = Session(id: UUID(), programDayId: day.id, startedAt: now, endedAt: nil, sets: [], notes: [])
+        self.warmups = warmups?.confirmed == true ? warmups : nil
+        self.availableAddOns = availableAddOns
+        var entries = (day?.exercises ?? []).map { Entry(exercise: $0, addOnId: nil, section: nil) }
+        for addOn in addOns { entries += addOn.exercises.map { Entry(exercise: $0, addOnId: addOn.id, section: addOn.name) } }
+        self.exercises = entries
+        self.session = Session(id: UUID(), programDayId: day?.id, startedAt: now, endedAt: nil, sets: [], notes: [], addOnIds: addOns.map(\.id))
+        enterExercise()
     }
 
     // MARK: Current target
 
-    var currentExercise: PlannedExercise? { day.exercises.indices.contains(exerciseIndex) ? day.exercises[exerciseIndex] : nil }
+    /// The session's name on the HUD: the day, or the add-on it is made of.
+    var title: String { day?.name ?? exercises.first?.section ?? "Session" }
+    var currentEntry: Entry? { exercises.indices.contains(exerciseIndex) ? exercises[exerciseIndex] : nil }
+    var currentExercise: PlannedExercise? { currentEntry?.exercise }
     var currentPlannedSet: PlannedSet? {
         guard let ex = currentExercise, ex.sets.indices.contains(setIndex) else { return nil }
         return ex.sets[setIndex]
@@ -114,6 +157,11 @@ final class SessionEngine {
     var isComplete: Bool { currentExercise == nil }
     var restSeconds: Int { currentExercise?.restSeconds ?? defaultRestSeconds }
     var lastLoggedSetId: UUID? { session.sets.last?.id }
+    var lastLoggedSet: LoggedSet? { session.sets.last }
+    /// The current set is a hold or a duration: no camera set, no clip, no SAM.
+    var currentSetIsTimed: Bool { currentPlannedSet?.isTimed == true }
+    var currentSetIsRestPause: Bool { currentPlannedSet?.isRestPause == true }
+    var warmupMaxReps: Int { warmups?.maxReps ?? Self.defaultWarmupMaxReps }
 
     var context: SessionContext {
         SessionContext(
@@ -132,10 +180,17 @@ final class SessionEngine {
         case .recording: "recording"
         case .saved: "saved"
         case .rest: "rest"
+        case .hold: "hold"
         case .listening: "listening"
         case .paused: "paused"
         case .ended: "ended"
         }
+    }
+
+    /// Entering a lift: warm-up mode when his rule is confirmed and the lift takes warm-ups.
+    private func enterExercise() {
+        warmupCount = 0
+        warmupMode = warmups != nil && currentExercise?.hasWarmups == true
     }
 
     // MARK: Coach cues
@@ -163,22 +218,30 @@ final class SessionEngine {
 
     // MARK: Set detection events
 
-    /// The bar started moving (or the athlete said "starting").
+    /// The bar started moving (or the athlete said "starting"). On a timed set, "go" starts the hold.
     @discardableResult
     func setStarted(at now: Date = .now) -> Outcome {
         guard !isComplete, state != .recording, state != .ended, state != .paused else { return .none }
+        if case .hold = state { return .none }
+        if let planned = currentPlannedSet, planned.isTimed, let seconds = planned.seconds {
+            holdStartedAt = now
+            state = .hold(remaining: seconds)
+            return Outcome(echo: "\(currentExercise?.name ?? "Hold") · \(Callout.spoken(seconds: seconds))")
+        }
         recordingStartedAt = now
         state = .recording
-        return Outcome(echo: "Set \(setNumber) recording")
+        return Outcome(echo: warmupMode ? "Warm-up \(warmupCount + 1) recording" : "Set \(setNumber) recording")
     }
 
     /// The bar stopped (or the athlete said "done"). Logs the set: what was said, else the phone's
     /// count, else the plan. `willMeasure` means a clip is on its way to SAM: the count is then
-    /// pending, the set-end line says no number, and SAM's answer is spoken during rest.
+    /// pending, the set-end line says no number, and SAM's answer is spoken during rest. In warm-up
+    /// mode a short, easy set logs as a warm-up instead: no SAM, no counter move.
     @discardableResult
     func setEnded(at now: Date = .now, phone: RepCounter.Result? = nil, willMeasure: Bool = false) -> Outcome {
+        if case .hold = state { return holdEnded(at: now) }
         guard state == .recording, let exercise = currentExercise, let planned = currentPlannedSet else { return .none }
-        let planReps = planned.reps ?? planned.repsMin ?? 0
+        let planReps = planned.minimumReps ?? planned.totalReps ?? 0
         let phoneReps = phone?.reps
         let reps: Int
         let source: RepSource
@@ -192,6 +255,7 @@ final class SessionEngine {
             reps = planReps
             source = .plan
         }
+        let isWarmup = warmupMode && !forceWorkingForCurrentSet && Self.looksLikeWarmup(reps: reps, source: source, phone: phone, maxReps: warmupMaxReps)
         let logged = LoggedSet(
             id: UUID(),
             exerciseId: exercise.id,
@@ -199,21 +263,34 @@ final class SessionEngine {
             loadLb: targetLoadLb ?? 0,
             reps: reps,
             rpe: nil,
-            repCount: RepCount(source: source, phone: phoneReps, status: willMeasure ? .counting : .done),
+            role: isWarmup ? .warmup : planned.role,
+            repCount: RepCount(source: source, phone: phoneReps, velocityLossPct: phone?.velocityLossPct,
+                               status: willMeasure && !isWarmup ? .counting : .done),
             startedAt: recordingStartedAt ?? now,
             endedAt: now,
             clipFile: nil,
             edits: []
         )
         session.sets.append(logged)
-        undoStack.append(UndoEntry(action: .loggedSet(logged.id), description: "set \(setNumber)"))
-        let doneNumber = setNumber
-        // The rest belongs to the set just finished, even when the next set is another exercise.
         let rest = exercise.restSeconds ?? defaultRestSeconds
-        let shortBy = source == .plan ? 0 : max(0, (planned.repsMin ?? planned.reps ?? 0) - reps)
         repsOverrideForCurrentSet = nil
+        forceWorkingForCurrentSet = false
         recordingStartedAt = nil
 
+        if isWarmup {
+            warmupCount += 1
+            undoStack.append(UndoEntry(action: .loggedSet(logged.id), description: "warm-up \(warmupCount)"))
+            let callout = Callout.warmupDone(number: warmupCount, restSeconds: rest)
+            lastCallout = callout
+            state = .rest(remaining: rest)
+            return Outcome(speech: callout, echo: "Warm-up \(warmupCount) saved: \(Format.number(logged.loadLb)) × \(reps)")
+        }
+
+        undoStack.append(UndoEntry(action: .loggedSet(logged.id), description: "set \(setNumber)"))
+        warmupMode = false
+        let doneNumber = setNumber
+        // The rest belongs to the set just finished, even when the next set is another exercise.
+        let shortBy = source == .plan || planned.isRestPause ? 0 : max(0, planReps - reps)
         advance()
         let callout: String
         if willMeasure, source != .spoken {
@@ -221,8 +298,8 @@ final class SessionEngine {
             pendingCounts.append(PendingCount(setId: logged.id, endedAt: now, spoken: false))
             callout = Callout.setDone(setNumber: doneNumber, restSeconds: rest, sessionOver: isComplete)
         } else {
-            callout = Callout.setDone(setNumber: doneNumber, reps: source == .plan ? nil : reps, shortBy: shortBy,
-                                      next: nextTarget, restSeconds: rest)
+            callout = Callout.setDone(setNumber: doneNumber, reps: source == .plan ? nil : reps, total: planned.isRestPause,
+                                      shortBy: shortBy, next: nextTarget, restSeconds: rest)
         }
         lastCallout = callout
         state = isComplete ? .ended : .rest(remaining: rest)
@@ -238,9 +315,55 @@ final class SessionEngine {
         return outcome
     }
 
+    /// 8 reps or fewer with under 20% slowdown is a warm-up (§13). The athlete's own number counts
+    /// as reps; with no reading of the slowdown, a short set is still a warm-up.
+    static func looksLikeWarmup(reps: Int, source: RepSource, phone: RepCounter.Result?, maxReps: Int) -> Bool {
+        guard source != .plan else { return false }
+        guard reps <= maxReps else { return false }
+        return (phone?.velocityLossPct ?? 0) < warmupMaxSlowdownPct
+    }
+
     /// The set's trimmed clip finished exporting after the set was logged.
     func attachClip(setId: UUID, file: String) {
         if let i = session.sets.firstIndex(where: { $0.id == setId }) { session.sets[i].clipFile = file }
+    }
+
+    // MARK: Timed sets (HANDOFF.md §7, Timed sets in a session)
+
+    /// One second of a hold passed: "10 seconds" near the end, "Time." at zero, then the set logs.
+    @discardableResult
+    func tickHold(at now: Date = .now) -> Outcome {
+        guard case .hold(let remaining) = state else { return .none }
+        if remaining <= 1 {
+            state = .hold(remaining: 0) // the hold ran its course
+            return holdEnded(at: now)
+        }
+        state = .hold(remaining: remaining - 1)
+        return remaining - 1 == 10 ? Outcome(speech: "10 seconds.") : .none
+    }
+
+    /// "Time." (or "done" early): the hold logs how long it ran, then rests the sheet's time, else 30 s.
+    private func holdEnded(at now: Date) -> Outcome {
+        guard case .hold(let remaining) = state, let exercise = currentExercise, let planned = currentPlannedSet,
+              let seconds = planned.seconds else { return .none }
+        let ran = max(1, seconds - remaining)
+        let logged = LoggedSet(
+            id: UUID(), exerciseId: exercise.id, setIndex: setIndex, loadLb: targetLoadLb ?? 0, reps: 0, rpe: nil,
+            seconds: ran, role: planned.role, repCount: RepCount(source: .plan, status: .done),
+            startedAt: holdStartedAt ?? now, endedAt: now, clipFile: nil, edits: []
+        )
+        session.sets.append(logged)
+        undoStack.append(UndoEntry(action: .loggedSet(logged.id), description: "set \(setNumber)"))
+        let doneNumber = setNumber
+        holdStartedAt = nil
+        let rest = exercise.restSeconds ?? Self.defaultHoldRestSeconds
+        advance()
+        let callout = Callout.holdDone(setNumber: doneNumber, seconds: ran, planned: seconds, next: nextTarget, restSeconds: rest,
+                                       sessionOver: isComplete)
+        lastCallout = callout
+        state = isComplete ? .ended : .rest(remaining: rest)
+        if isComplete { session.endedAt = now }
+        return Outcome(speech: callout, echo: "Set \(doneNumber) saved: \(Callout.spoken(seconds: ran))")
     }
 
     // MARK: Measured counts (HANDOFF.md §7, Rep counting)
@@ -268,7 +391,7 @@ final class SessionEngine {
         set.repCount.measured = response.reps
         set.repCount.confidence = response.confidence
         set.repCount.repTimes = response.repTimes
-        set.repCount.velocityLossPct = response.velocityLossPct
+        if let loss = response.velocityLossPct { set.repCount.velocityLossPct = loss }
         let pending = pendingCounts.first { $0.setId == setId }
         pendingCounts.removeAll { $0.setId == setId }
         let unspoken = pending.map { !$0.spoken } ?? false
@@ -341,7 +464,7 @@ final class SessionEngine {
     }
 
     /// The count in the log, said once it is settled: with the next target when the set is the last
-    /// one logged, else as a late mention.
+    /// one logged, else as a late mention. A rest-pause set's number is its total.
     private func speakCount(at i: Int, late: Bool) -> Outcome {
         let set = session.sets[i]
         let number = set.setIndex + 1
@@ -352,9 +475,10 @@ final class SessionEngine {
             return Outcome(speech: Callout.lateCount(setNumber: number, reps: set.reps, measured: measured), echo: lastEcho)
         }
         let planned = plannedSet(for: set)
-        let shortBy = max(0, (planned?.repsMin ?? planned?.reps ?? 0) - set.reps)
+        let total = planned?.isRestPause == true
+        let shortBy = total ? 0 : max(0, (planned?.minimumReps ?? 0) - set.reps)
         lastEcho = "Set \(number): \(set.reps) reps (\(chip))"
-        return Outcome(speech: Callout.counted(reps: set.reps, measured: measured, shortBy: shortBy, next: nextTarget), echo: lastEcho)
+        return Outcome(speech: Callout.counted(reps: set.reps, measured: measured, total: total, shortBy: shortBy, next: nextTarget), echo: lastEcho)
     }
 
     /// SAM is late or failed: the phone's count, if there is one, else just the next target.
@@ -368,7 +492,7 @@ final class SessionEngine {
     }
 
     private func plannedSet(for set: LoggedSet) -> PlannedSet? {
-        guard let ex = day.exercises.first(where: { $0.id == set.exerciseId }), ex.sets.indices.contains(set.setIndex) else { return nil }
+        guard let ex = exercises.first(where: { $0.exercise.id == set.exerciseId })?.exercise, ex.sets.indices.contains(set.setIndex) else { return nil }
         return ex.sets[set.setIndex]
     }
 
@@ -381,9 +505,11 @@ final class SessionEngine {
     }
 
     private var nextTarget: Callout.NextSet? {
-        guard let ex = currentExercise else { return nil }
-        if setIndex == 0, exerciseIndex > 0 || session.sets.isEmpty == false, session.sets.last?.exerciseId != ex.id {
-            return .nextExercise(name: ex.name, loadLb: targetLoadLb, reps: targetRepsText)
+        guard let entry = currentEntry else { return nil }
+        let ex = entry.exercise
+        if setIndex == 0, session.sets.last?.exerciseId != ex.id {
+            return .nextExercise(name: ex.name, loadLb: targetLoadLb, reps: targetRepsText, section: entry.section,
+                                 warmups: warmupMode, timed: ex.sets.first?.isTimed == true)
         }
         return .sameExercise(loadLb: targetLoadLb, reps: targetRepsText)
     }
@@ -395,10 +521,12 @@ final class SessionEngine {
         } else {
             exerciseIndex += 1
             setIndex = 0
+            enterExercise()
         }
     }
 
-    /// One second of rest passed. Returns the callout for "rest over" when it ends.
+    /// One second of rest passed. Returns the callout for "rest over" when it ends, and a quiet
+    /// "ready when you are" at the bottom of a day-level rest range.
     @discardableResult
     func tickRest() -> Outcome {
         guard case .rest(let remaining) = state else { return .none }
@@ -407,11 +535,62 @@ final class SessionEngine {
             return Outcome(speech: "Go.", echo: "Ready")
         }
         state = .rest(remaining: remaining - 1)
+        if let minimum = currentExercise?.restMinSeconds, let top = currentExercise?.restSeconds, minimum < top, remaining - 1 == top - minimum {
+            return Outcome(speech: "Ready when you are.")
+        }
         return .none
     }
 
     func skipRest() {
         if case .rest = state { state = .ready }
+    }
+
+    // MARK: Add-ons (HANDOFF.md §7, Two workouts in one day)
+
+    /// "Add abs": the add-on's exercises join after the last lift, for today only.
+    @discardableResult
+    func addAddOn(named name: String) -> Outcome {
+        let wanted = name.lowercased()
+        guard let addOn = availableAddOns.first(where: { $0.name.lowercased().contains(wanted) || wanted.contains($0.name.lowercased()) })
+        else { return say("No add-on called \(name).") }
+        guard !session.addOnIds.contains(addOn.id) else { return say("\(addOn.name) is already in today's session.") }
+        exercises += addOn.exercises.map { Entry(exercise: $0, addOnId: addOn.id, section: addOn.name) }
+        session.addOnIds.append(addOn.id)
+        if isComplete || state == .ended {
+            exerciseIndex = exercises.count - addOn.exercises.count
+            setIndex = 0
+            session.endedAt = nil
+            state = .ready
+            enterExercise()
+        } else if currentEntry == nil {
+            enterExercise()
+        }
+        undoStack.append(UndoEntry(action: .addOn(id: addOn.id, count: addOn.exercises.count), description: "adding \(addOn.name.lowercased())"))
+        return echo("Added \(addOn.name) after the last lift", speech: "Adding \(addOn.name.lowercased()) today.")
+    }
+
+    /// "Skip abs": the add-on leaves today's session, unless a set of it is already logged.
+    @discardableResult
+    func skipAddOn(named name: String) -> Outcome {
+        let wanted = name.lowercased()
+        guard let addOnId = session.addOnIds.first(where: { id in
+            let entryName = exercises.first { $0.addOnId == id }?.section?.lowercased() ?? ""
+            return entryName.contains(wanted) || wanted.contains(entryName)
+        }) else { return say("\(name) isn't in today's session.") }
+        let ids = Set(exercises.filter { $0.addOnId == addOnId }.map(\.exercise.id))
+        guard !session.sets.contains(where: { ids.contains($0.exerciseId) }) else { return say("You've already started it.") }
+        let removed = exercises.filter { $0.addOnId == addOnId }
+        let sectionName = removed.first?.section ?? name
+        exercises.removeAll { $0.addOnId == addOnId }
+        session.addOnIds.removeAll { $0 == addOnId }
+        if exerciseIndex >= exercises.count {
+            exerciseIndex = exercises.count
+            setIndex = 0
+            state = .ended
+            session.endedAt = .now
+        }
+        undoStack.append(UndoEntry(action: .skippedAddOn(entries: removed, ids: [addOnId]), description: "skipping \(sectionName.lowercased())"))
+        return echo("Skipped \(sectionName) today", speech: isComplete ? "That's the session." : "Skipping \(sectionName.lowercased()) today.")
     }
 
     // MARK: Voice
@@ -494,6 +673,7 @@ final class SessionEngine {
             let from = (exerciseIndex, setIndex)
             exerciseIndex += 1
             setIndex = 0
+            enterExercise()
             undoStack.append(UndoEntry(action: .skip(exercise: from.0, set: from.1), description: "next exercise"))
             state = isComplete ? .ended : .ready
             return echo(isComplete ? "No more exercises" : "Next: \(currentExercise?.name ?? "")", speech: isComplete ? "That's the session." : "Next exercise, \(currentExercise?.name ?? ""), \(Callout.target(load: targetLoadLb, reps: targetRepsText)).")
@@ -515,7 +695,7 @@ final class SessionEngine {
             return echo("Resumed", speech: "Resumed.")
         case .endSession:
             endSession(at: now)
-            return echo("Session ended", speech: "Session ended. \(session.sets.count) sets logged.")
+            return echo("Session ended", speech: "Session ended. \(session.workingSets.count) sets logged.")
         case .starting:
             let outcome = setStarted(at: now)
             return outcome.echo == nil ? .none : outcome
@@ -523,9 +703,102 @@ final class SessionEngine {
             return setEnded(at: now)
         case .replayCue:
             return cueToReplay() == nil ? say("No cue to replay.") : Outcome(echo: "Replaying the coach's cue")
+        case .topSet:
+            return topSet(transcript: response.transcript, now: now)
+        case .warmup:
+            return markLastAsWarmup(now: now)
+        case .addAddOn:
+            return addAddOn(named: intent.text ?? response.transcript)
+        case .skipAddOn:
+            return skipAddOn(named: intent.text ?? response.transcript)
+        case .changeDay:
+            guard let n = intent.number, session.sets.isEmpty, state != .recording else { return say("Too late to change the day.") }
+            requestedDayNumber = Int(n)
+            return echo("Switching to Day \(Int(n))")
+        case .flagSet:
+            guard let last = session.sets.indices.last else { return say("No set to flag yet.") }
+            session.sets[last].flaggedForCoach = true
+            undoStack.append(UndoEntry(action: .flag(setId: session.sets[last].id), description: "the flag"))
+            return echo("Set \(session.sets[last].setIndex + 1) flagged for your coach", speech: "Flagged for Thursday.")
         case .yes, .no, .answer, .unknown:
             return .none
         }
+    }
+
+    // MARK: Warm-ups (HANDOFF.md §7, Warm-up sets)
+
+    /// "Top set" before a set: the next set is the top set. During a set: this one is. "That was
+    /// my top set" after a warm-up: the last warm-up becomes the working set it should have been.
+    private func topSet(transcript: String, now: Date) -> Outcome {
+        let aboutTheLast = transcript.lowercased().contains("was")
+        if state == .recording {
+            forceWorkingForCurrentSet = true
+            return echo("This set → top set")
+        }
+        if aboutTheLast, let last = session.sets.indices.last, session.sets[last].isWarmup, session.sets[last].exerciseId == currentExercise?.id {
+            return reclassify(at: last, toWarmup: false, transcript: transcript, now: now)
+        }
+        guard warmupMode else { return say("Set \(setNumber) is next.") }
+        warmupMode = false
+        undoStack.append(UndoEntry(action: .warmupMode(wasOn: true), description: "top set"))
+        return echo("Next: set \(setNumber), the top set", speech: "Top set next.")
+    }
+
+    /// "That was a warm-up": the last working set of this lift becomes a warm-up, the counter moves back.
+    private func markLastAsWarmup(now: Date) -> Outcome {
+        guard let last = session.sets.indices.last, !session.sets[last].isWarmup,
+              session.sets[last].exerciseId == (currentExercise?.id ?? session.sets[last].exerciseId)
+        else { return say("Nothing to mark as a warm-up.") }
+        return reclassify(at: last, toWarmup: true, transcript: "that was a warm-up", now: now)
+    }
+
+    private func reclassify(at i: Int, toWarmup: Bool, transcript: String, now: Date) -> Outcome {
+        var set = session.sets[i]
+        let oldRole = set.role
+        let oldStatus = set.repCount.status
+        let planned = plannedSet(for: set)
+        if toWarmup {
+            set.role = .warmup
+            set.repCount.status = .done
+            pendingCounts.removeAll { $0.setId == set.id }
+            warmupCount += 1
+            warmupMode = true
+            if exerciseIndex < exercises.count, exercises[exerciseIndex].exercise.id == set.exerciseId {
+                setIndex = set.setIndex
+            } else if let index = exercises.firstIndex(where: { $0.exercise.id == set.exerciseId }) {
+                exerciseIndex = index
+                setIndex = set.setIndex
+                session.endedAt = nil
+                if state == .ended { state = .ready }
+            }
+        } else {
+            set.role = planned?.role
+            if set.repCount.status != .failed, set.repCount.measured == nil, set.repCount.source != .spoken {
+                // A warm-up reclassified by voice uploads now; its clip is still on the phone.
+                set.repCount.status = .counting
+                pendingCounts.append(PendingCount(setId: set.id, endedAt: set.endedAt, spoken: true))
+            }
+            warmupCount = max(0, warmupCount - 1)
+            warmupMode = false
+            if setIndex == set.setIndex { advance() }
+        }
+        set.edits.append(SetEdit(at: now, field: "role", from: oldRole?.rawValue ?? "", to: set.role?.rawValue ?? "", transcript: transcript))
+        session.sets[i] = set
+        undoStack.append(UndoEntry(action: .role(setId: set.id, oldRole: oldRole, oldStatus: oldStatus), description: toWarmup ? "warm-up" : "top set"))
+        let number = set.setIndex + 1
+        return toWarmup ? echo("Set \(number) → warm-up", speech: "Warm-up. Set \(number) is next.")
+                        : echo("Warm-up → set \(number)", speech: "Set \(number) logged.")
+    }
+
+    /// A set that needs a SAM upload once its clip is ready: never a warm-up or a timed set.
+    func shouldUpload(setId: UUID) -> Bool {
+        guard let set = session.sets.first(where: { $0.id == setId }) else { return false }
+        return !set.isWarmup && set.seconds == nil
+    }
+
+    /// Sets whose reclassification by voice means their clip should go to SAM now.
+    func setsNeedingUpload() -> [UUID] {
+        pendingCounts.filter { p in session.sets.first { $0.id == p.setId }?.repCount.measured == nil }.map(\.setId)
     }
 
     /// "That was N" on a logged set: the athlete's number wins over every count.
@@ -571,9 +844,13 @@ final class SessionEngine {
             pendingCounts.removeAll { $0.setId == id }
             if let i = session.sets.firstIndex(where: { $0.id == id }) {
                 let set = session.sets.remove(at: i)
-                if let exIndex = day.exercises.firstIndex(where: { $0.id == set.exerciseId }) {
+                if let exIndex = exercises.firstIndex(where: { $0.exercise.id == set.exerciseId }) {
                     exerciseIndex = exIndex
                     setIndex = set.setIndex
+                }
+                if set.isWarmup {
+                    warmupCount = max(0, warmupCount - 1)
+                    warmupMode = true
                 }
                 session.endedAt = nil
                 state = .ready
@@ -594,12 +871,57 @@ final class SessionEngine {
             state = .ready
         case .note(let id):
             session.notes.removeAll { $0.id == id }
+        case .flag(let id):
+            if let i = session.sets.firstIndex(where: { $0.id == id }) { session.sets[i].flaggedForCoach = false }
+        case .warmupMode(let wasOn):
+            warmupMode = wasOn
+        case .role(let id, let oldRole, let oldStatus):
+            if let i = session.sets.firstIndex(where: { $0.id == id }) {
+                let wasWarmup = session.sets[i].isWarmup
+                session.sets[i].role = oldRole
+                session.sets[i].repCount.status = oldStatus
+                pendingCounts.removeAll { $0.setId == id }
+                if wasWarmup {
+                    warmupCount = max(0, warmupCount - 1)
+                    warmupMode = false
+                    if setIndex == session.sets[i].setIndex { advance() }
+                } else {
+                    warmupCount += 1
+                    warmupMode = true
+                    if let exIndex = exercises.firstIndex(where: { $0.exercise.id == session.sets[i].exerciseId }) {
+                        exerciseIndex = exIndex
+                        setIndex = session.sets[i].setIndex
+                        session.endedAt = nil
+                        if state == .ended { state = .ready }
+                    }
+                }
+            }
+        case .addOn(let id, let count):
+            exercises.removeLast(count)
+            session.addOnIds.removeAll { $0 == id }
+            if exerciseIndex >= exercises.count {
+                exerciseIndex = exercises.count
+                setIndex = 0
+                state = .ended
+                session.endedAt = .now
+            }
+        case .skippedAddOn(let entries, let ids):
+            exercises += entries
+            session.addOnIds += ids
+            if state == .ended {
+                exerciseIndex = exercises.count - entries.count
+                setIndex = 0
+                session.endedAt = nil
+                state = .ready
+                enterExercise()
+            }
         }
         return echo("Undid \(entry.description)", speech: "Undid \(entry.description).")
     }
 
     func endSession(at now: Date = .now) {
         if state == .recording { _ = setEnded(at: now) }
+        if case .hold = state { _ = holdEnded(at: now) }
         session.endedAt = now
         state = .ended
     }
@@ -624,6 +946,11 @@ final class SessionEngine {
             case load(exerciseId: String, old: Double?)
             case skip(exercise: Int, set: Int)
             case note(id: UUID)
+            case flag(setId: UUID)
+            case warmupMode(wasOn: Bool)
+            case role(setId: UUID, oldRole: SetRole?, oldStatus: CountStatus)
+            case addOn(id: String, count: Int)
+            case skippedAddOn(entries: [Entry], ids: [String])
         }
 
         var action: Action

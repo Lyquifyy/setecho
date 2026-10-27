@@ -17,6 +17,12 @@ enum RepCounter {
     /// Motion smaller than this (normalized, 0…1 of the frame) is jitter, never a rep.
     static let minAmplitudeNormalized = 0.05
     static let lowConfidence = 0.6
+    /// Steps 8-9 of reps.py: the lifting phase starts where the bar leaves the deepest point (the
+    /// last sample within 90% of the peak) and ends when d falls to 20% of it; velocity loss
+    /// compares the last two reps with the fastest of the first two, and needs three reps.
+    static let liftPhaseStartFraction = 0.90
+    static let liftPhaseEndFraction = 0.20
+    static let minRepsForVelocity = 3
 
     struct Result: Equatable {
         var reps: Int?
@@ -25,6 +31,10 @@ enum RepCounter {
         var trackFound: Bool
         var frames: Int
         var trackedFrames: Int
+        /// Mean lifting speed per rep, units of the series per second (step 8).
+        var repSpeeds: [Double] = []
+        /// How much the last two reps slowed against the first two, 0–100; nil under 3 reps (step 9).
+        var velocityLossPct: Double?
     }
 
     /// `y` is the position along the direction of motion; nil where tracking dropped.
@@ -35,22 +45,29 @@ enum RepCounter {
         guard frames > 0, share >= minTrackShare else {
             return Result(reps: nil, repTimes: [], confidence: 0, trackFound: false, frames: frames, trackedFrames: tracked)
         }
-        let peaks = peakIndices(t: t, y: y, minAmplitude: minAmplitude)
+        let (peaks, d) = peaksAndDistance(t: t, y: y, minAmplitude: minAmplitude)
         let times = peaks.map { round((t[$0] - t[0]) * 1000) / 1000 }
         let confidence = (confidence(trackShare: share, repTimes: times) * 1000).rounded() / 1000
-        return Result(reps: peaks.count, repTimes: times, confidence: confidence, trackFound: true, frames: frames, trackedFrames: tracked)
+        let speeds = repSpeeds(t: t, d: d, peaks: peaks)
+        return Result(reps: peaks.count, repTimes: times, confidence: confidence, trackFound: true, frames: frames, trackedFrames: tracked,
+                      repSpeeds: speeds.map { ($0 * 1000).rounded() / 1000 }, velocityLossPct: velocityLoss(speeds))
     }
 
     // MARK: Steps 3–5
 
     static func peakIndices(t: [Double], y: [Double?], minAmplitude: Double) -> [Int] {
-        guard t.count >= 3, y.contains(where: { $0 != nil }) else { return [] }
+        peaksAndDistance(t: t, y: y, minAmplitude: minAmplitude).peaks
+    }
+
+    /// The peaks and d(t) = |smoothed − rest|, so the speeds can be read off the same series.
+    static func peaksAndDistance(t: [Double], y: [Double?], minAmplitude: Double) -> (peaks: [Int], d: [Double]) {
+        guard t.count >= 3, y.contains(where: { $0 != nil }) else { return ([], []) }
         let filled = fillGaps(t: t, y: y)
         let smoothed = smooth(filled)
         let rest = restPosition(t: t, y: smoothed)
         let d = smoothed.map { abs($0 - rest) }
         let scale = percentile(d, 95)
-        guard scale > 0, scale >= minAmplitude else { return [] }
+        guard scale > 0, scale >= minAmplitude else { return ([], d) }
         let dt = t.count > 1 ? median(zip(t.dropFirst(), t).map { $0 - $1 }) : 1
         let distance = dt > 0 ? max(1, Int((minRepIntervalSeconds / dt).rounded())) : 1
         let peaks = findPeaks(d, distance: distance, prominence: prominenceFraction * scale)
@@ -59,7 +76,37 @@ enum RepCounter {
         for p in peaks.sorted(by: { d[$0] > d[$1] }) where kept.allSatisfy({ abs(t[p] - t[$0]) >= minRepIntervalSeconds }) {
             kept.append(p)
         }
-        return kept.sorted()
+        return (kept.sorted(), d)
+    }
+
+    // MARK: Steps 8–9 (reps.py `rep_speeds` and `velocity_loss`)
+
+    /// Each rep's mean |d'(t)| over its lifting phase, unrounded.
+    static func repSpeeds(t: [Double], d: [Double], peaks: [Int]) -> [Double] {
+        var speeds: [Double] = []
+        for (k, p) in peaks.enumerated() {
+            let peak = d[p]
+            let stop = k + 1 < peaks.count ? peaks[k + 1] : d.count - 1
+            guard peak > 0, stop > p else { speeds.append(0); continue }
+            let segment = Array(d[p...stop])
+            let end = segment.firstIndex { $0 <= liftPhaseEndFraction * peak } ?? segment.indices.min { segment[$0] < segment[$1] } ?? 0
+            let start = segment[..<end].lastIndex { $0 >= liftPhaseStartFraction * peak } ?? 0
+            let duration = t[p + end] - t[p + start]
+            guard end > start, duration > 0 else { speeds.append(0); continue }
+            var travelled = 0.0
+            for i in start..<end { travelled += abs(segment[i + 1] - segment[i]) }
+            speeds.append(travelled / duration)
+        }
+        return speeds
+    }
+
+    /// 100 × (1 − mean of the last two speeds ÷ the fastest of the first two), floored at 0.
+    static func velocityLoss(_ speeds: [Double]) -> Double? {
+        guard speeds.count >= minRepsForVelocity else { return nil }
+        let fastest = max(speeds[0], speeds[1])
+        guard fastest > 0 else { return nil }
+        let loss = 100 * (1 - (speeds[speeds.count - 2] + speeds[speeds.count - 1]) / 2 / fastest)
+        return (max(0, loss) * 10).rounded() / 10
     }
 
     /// Linear interpolation across gaps of at most `gapFillSeconds`; longer gaps and untracked

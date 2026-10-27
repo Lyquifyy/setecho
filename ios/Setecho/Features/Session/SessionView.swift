@@ -7,9 +7,12 @@ struct SessionView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var coordinator: SessionCoordinator
     @State private var endProgress = false
+    private let store: Store
 
-    init(day: ProgramDay, weekNumber: Int, store: Store) {
-        _coordinator = State(initialValue: SessionCoordinator(day: day, weekNumber: weekNumber, store: store))
+    /// The day's session with the add-ons joining it, or a morning session of one add-on (day nil).
+    init(day: ProgramDay?, addOns: [AddOn] = [], weekNumber: Int, store: Store) {
+        self.store = store
+        _coordinator = State(initialValue: SessionCoordinator(day: day, addOns: addOns, weekNumber: weekNumber, store: store))
     }
 
     var body: some View {
@@ -24,19 +27,19 @@ struct SessionView: View {
                     .foregroundStyle(Theme.cobalt)
                     .accessibilityHidden(true)
                 Spacer()
-                Text("\(engine.day.name) · Week \(engine.weekNumber)").font(.hudLabel).secondaryText()
+                Text(engine.day == nil ? engine.title : "\(engine.title) · Week \(engine.weekNumber)").font(.hudLabel).secondaryText()
             }
 
             Spacer(minLength: 0)
 
             if let exercise = engine.currentExercise {
-                Text(exercise.name).font(.hudLabel).secondaryText()
+                Text([engine.currentEntry?.section, exercise.name].compactMap { $0 }.joined(separator: " · ")).font(.hudLabel).secondaryText()
                 Text(targetText(engine))
                     .font(.hudTarget)
                     .foregroundStyle(Theme.navy)
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
-                TargetTag(text: "Set \(engine.setNumber) of \(engine.setCount)")
+                TargetTag(text: engine.currentPlannedSet?.role.map { "\($0.label) · set \(engine.setNumber) of \(engine.setCount)" } ?? "Set \(engine.setNumber) of \(engine.setCount)")
                     .scaleEffect(1.4)
                     .padding(.vertical, Theme.Space.xs)
             } else {
@@ -92,6 +95,16 @@ struct SessionView: View {
                 }
             }
         }
+        .onChange(of: coordinator.requestedDayNumber) { _, number in
+            // "I'm doing Day 5 today": the cursor moves and the session restarts on that day.
+            guard let number, let program = store.currentProgram,
+                  let found = program.days.first(where: { $0.day.name.lowercased() == "day \(number)" })
+            else { return }
+            store.changeDay(to: found.day.id)
+            coordinator.end()
+            coordinator = SessionCoordinator(day: found.day, addOns: store.addOnsDue(on: found.day.id).map(\.addOn), weekNumber: found.week.number, store: store)
+            Task { await coordinator.start() }
+        }
         .animation(.default, value: coordinator.echo)
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
@@ -121,21 +134,31 @@ struct SessionView: View {
     private var engine: SessionEngine { coordinator.engine }
 
     private func targetText(_ engine: SessionEngine) -> String {
+        if case .hold(let remaining) = engine.state { return Format.duration(TimeInterval(remaining)) }
+        if engine.currentSetIsTimed { return engine.targetRepsText }
         if let load = engine.targetLoadLb { return "\(Format.number(load)) × \(engine.targetRepsText)" }
         return "× \(engine.targetRepsText)"
     }
 
-    /// The count shows once it is settled: while SAM works, the set is the load alone.
+    /// The count shows once it is settled: while SAM works, the set is the load alone. A warm-up
+    /// says so, and a hold shows its seconds.
     private func lastSetText(_ set: LoggedSet) -> String {
-        var s = set.repCount.isCounting ? "Last: set \(set.setIndex + 1), \(Format.load(set.loadLb))"
-                                        : "Last: set \(set.setIndex + 1), \(Format.number(set.loadLb)) × \(set.reps)"
+        let name = set.isWarmup ? "warm-up" : "set \(set.setIndex + 1)"
+        var s: String
+        if let seconds = set.seconds {
+            s = "Last: \(name), \(Format.duration(TimeInterval(seconds)))"
+        } else if set.repCount.isCounting {
+            s = "Last: \(name), \(Format.load(set.loadLb))"
+        } else {
+            s = "Last: \(name), \(Format.number(set.loadLb)) × \(set.reps)"
+        }
         if let rpe = set.rpe { s += " · RPE \(Format.number(rpe))" }
         return s
     }
 
     /// "12 sets logged · SAM median 24 s": the latency report the human reads off the screen (P1b).
     private func sessionOverText(_ engine: SessionEngine) -> String {
-        var s = "\(engine.session.sets.count) sets logged"
+        var s = "\(engine.session.workingSets.count) sets logged"
         if let median = coordinator.medianCountLatency { s += " · SAM median \(Int(median.rounded())) s" }
         return s
     }
@@ -146,7 +169,8 @@ struct SessionView: View {
             return "Up next: set \(engine.setNumber + 1) of \(exercise.sets.count)"
         }
         let nextIndex = engine.exerciseIndex + 1
-        guard engine.day.exercises.indices.contains(nextIndex) else { return "Up next: last set of the session" }
-        return "Up next: \(engine.day.exercises[nextIndex].name)"
+        guard engine.exercises.indices.contains(nextIndex) else { return "Up next: last set of the session" }
+        let next = engine.exercises[nextIndex]
+        return "Up next: \([next.section, next.exercise.name].compactMap { $0 }.joined(separator: " · "))"
     }
 }

@@ -1,11 +1,17 @@
 import SwiftUI
 
-/// Today (DESIGN.md): the home base. What's planned today, and where the week's check-in stands.
+/// Today (DESIGN.md): the home base. The cycle day planned today (a rest day shows his cardio line),
+/// any add-on joining it, a morning add-on when one is due, and where the current check-in stands.
 struct TodayView: View {
     @Environment(Store.self) private var store
     @State private var showSession = false
+    @State private var showMorning = false
     @State private var showPhotos = false
     private let schedule = CheckInSchedule()
+
+    private var today: (week: ProgramWeek, day: ProgramDay)? { store.todayDay }
+    private var addOnsDue: [AddOnPlanner.Due] { today.map { store.addOnsDue(on: $0.day.id) } ?? [] }
+    private var canStart: Bool { today.map { !$0.day.isRest } ?? false }
 
     var body: some View {
         ScreenScaffold {
@@ -29,14 +35,41 @@ struct TodayView: View {
                     LinkButton(title: "Done", chevron: .none) { store.clearMacroFactorReminders() }
                 }
             }
-            if let next = store.nextDay {
-                SectionCard("Today's session", accessory: {
-                    Text("\(next.day.name) · Week \(next.week.number)").font(.subheadline).monospacedDigit().secondaryText()
+            if let morning = store.morningAddOnDue() {
+                // "This morning: stomach vacuums · 4 × 20 s · 2 of 4 this week"
+                SectionCard("This morning", accessory: {
+                    if morning.catchUp { Text("Catch-up").font(.subheadline.weight(.semibold)).secondaryText() }
                 }) {
-                    ForEach(Array(next.day.exercises.enumerated()), id: \.element.id) { index, exercise in
-                        if index > 0 { CardDivider() }
-                        ExerciseRow(exercise: exercise)
+                    Text("\(morning.addOn.name) · \(morning.addOn.exercises.map(\.summary).joined(separator: ", ")) · \(morning.done) of \(morning.addOn.perWeek) this week")
+                        .font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
+                    Text(morning.addOn.quote).font(.footnote).secondaryText()
+                    LinkButton(title: "Start") { showMorning = true }
+                }
+            }
+            if let next = today {
+                SectionCard(next.day.isRest ? "Rest day" : "Today's session", accessory: {
+                    HStack(spacing: Theme.Space.s) {
+                        if !next.day.isRest, store.isDoneToday(dayId: next.day.id) {
+                            Text("Done today").font(.subheadline.weight(.semibold)).secondaryText()
+                        }
+                        Text(store.currentProgram?.weeks.count ?? 1 > 1 ? "\(next.day.name) · Week \(next.week.number)" : next.day.name)
+                            .font(.subheadline).monospacedDigit().secondaryText()
                     }
+                }) {
+                    if next.day.isRest {
+                        Text(next.day.cardio ?? "No lifting today.").font(.body).foregroundStyle(Theme.navy)
+                    } else {
+                        ForEach(Array(next.day.exercises.enumerated()), id: \.element.id) { index, exercise in
+                            if index > 0 { CardDivider() }
+                            ExerciseRow(exercise: exercise)
+                        }
+                        ForEach(addOnsDue, id: \.addOn.id) { due in
+                            CardDivider()
+                            Text("+ \(due.addOn.name) · \(due.done + 1) of \(due.addOn.perWeek) this week\(due.catchUp ? " · catch-up" : "")")
+                                .font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
+                        }
+                    }
+                    changeDayMenu
                 }
             } else {
                 SectionCard("Today's session") {
@@ -49,17 +82,39 @@ struct TodayView: View {
             photosCard
         } footer: {
             // The only tap of a training day.
-            Button("Start session") { showSession = true }
+            Button(today?.day.isRest == true ? "Rest day" : "Start session") { showSession = true }
                 .buttonStyle(.setechoPrimary)
-                .disabled(store.nextDay == nil)
+                .disabled(!canStart)
         }
         .fullScreenCover(isPresented: $showSession) {
-            if let next = store.nextDay {
-                SessionView(day: next.day, weekNumber: next.week.number, store: store)
+            if let next = today {
+                SessionView(day: next.day, addOns: addOnsDue.map(\.addOn), weekNumber: next.week.number, store: store)
             }
         }
+        .fullScreenCover(isPresented: $showMorning) {
+            if let morning = store.morningAddOnDue() {
+                SessionView(day: nil, addOns: [morning.addOn], weekNumber: today?.week.number ?? 1, store: store)
+            }
+        }
+        .onAppear { store.refreshCycle() }
         .fullScreenCover(isPresented: $showPhotos) {
             PhotoSessionView(store: store).environment(store)
+        }
+    }
+
+    /// "Change day": any day of the cycle, by hand (HANDOFF.md §7, Which day is today).
+    private var changeDayMenu: some View {
+        Menu {
+            ForEach(store.currentProgram?.cycleDays ?? []) { day in
+                Button(day.isRest ? "\(day.name) (rest)" : day.name) { store.changeDay(to: day.id) }
+            }
+        } label: {
+            HStack(spacing: Theme.Space.xxs) {
+                Text("Change day").font(.subheadline.weight(.semibold))
+                Image(systemName: "chevron.down").font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(Theme.cobalt)
+            .frame(minHeight: 44)
         }
     }
 

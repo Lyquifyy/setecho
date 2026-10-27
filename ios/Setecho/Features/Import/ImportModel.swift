@@ -2,11 +2,11 @@ import Foundation
 import SwiftUI
 
 /// One import step's state: what the athlete gave, the backend's answer, and any error.
-/// Two instances live in the flow, one for the program and one for the form.
+/// Three instances live in the flow: the program, the form, and his written instructions.
 @MainActor
 @Observable
 final class ImportModel {
-    enum Kind { case program, form }
+    enum Kind { case program, form, rules }
 
     enum Picked: Equatable {
         case file(Data, filename: String, mime: String)
@@ -28,7 +28,10 @@ final class ImportModel {
     var error: String?
     var program: Program?
     var formImport: FormImport?
+    var rules: RulesImport?
     var template: CheckInTemplate? { formImport?.template }
+    /// Which cycle days each add-on joins, proposed from the program and edited on the review.
+    var addOnDays: [AddOnDays] = []
 
     private let api: APIClient
 
@@ -42,7 +45,7 @@ final class ImportModel {
             || (kind == .program && !link.trimmingCharacters(in: .whitespaces).isEmpty)
     }
 
-    var hasResult: Bool { program != nil || template != nil }
+    var hasResult: Bool { program != nil || template != nil || rules != nil }
 
     private var source: APIClient.ImportSource? {
         if let picked {
@@ -64,8 +67,15 @@ final class ImportModel {
         defer { isLoading = false }
         do {
             switch kind {
-            case .program: program = try await api.importProgram(source)
-            case .form: formImport = try await api.importForm(source)
+            case .program:
+                let imported = try await api.importProgram(source)
+                program = imported
+                addOnDays = imported.addOns.map { AddOnDays(addOnId: $0.id, dayIds: AddOnPlanner.proposedDays(for: $0, in: imported)) }
+            case .form:
+                formImport = try await api.importForm(source)
+            case .rules:
+                guard case .text(let pasted) = source else { throw APIError(status: 0, message: "Paste his instructions as text.") }
+                rules = try await api.importRules(text: pasted)
             }
         } catch {
             self.error = error.localizedDescription
@@ -75,6 +85,8 @@ final class ImportModel {
     func reset() {
         program = nil
         formImport = nil
+        rules = nil
+        addOnDays = []
         error = nil
     }
 }

@@ -33,6 +33,7 @@ struct RootView: View {
         .task { await ShareInbox.drain(into: store) }
         .onOpenURL { url in WatchService.shared.handle(url: url) }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            store.refreshCycle()
             Task { await ShareInbox.drain(into: store) }
         }
         .sheet(isPresented: Bindable(ProbesPresenter.shared).isShown) {

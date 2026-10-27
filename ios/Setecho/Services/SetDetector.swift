@@ -53,6 +53,14 @@ final class SetDetector: NSObject {
 
     static let preRollSeconds = 3.0
     static let postRollSeconds = 1.0
+    /// A rest-pause set ends after its third round, after this long still, or on "done" (§13).
+    static let restPauseRounds = 3
+    static let restPauseStillSeconds = 75.0
+
+    /// The set being filmed is a rest-pause set: stillness between rounds does not end it.
+    var restPause = false
+    private var restPauseRound = 0
+    private var restPausePausedAt: Double?
 
     init(mediaDirectory: URL, sessionId: UUID) {
         self.mediaDirectory = mediaDirectory
@@ -111,9 +119,11 @@ final class SetDetector: NSObject {
 
     /// The set was ended by voice: close its clip now instead of waiting for stillness.
     func endSetByVoice() {
-        guard signal.isActive, let start = currentSetStart, let t = lastFrameT else { return }
+        guard let start = currentSetStart, let t = lastFrameT, signal.isActive || restPausePausedAt != nil else { return }
+        let end = restPausePausedAt ?? t
         signal.reset()
-        endSet(realEnd: t, from: start)
+        restPauseRound = 0
+        endSet(realEnd: end, from: start)
     }
 
     /// The instant count over the set that just ended (HANDOFF.md §7, Rep counting).
@@ -138,12 +148,33 @@ final class SetDetector: NSObject {
         guard !wrists.isEmpty else { return }
         let y = wrists.reduce(0, +) / Double(wrists.count)
         lastWristY = y
+        // Between rest-pause rounds: 75 s still ends the set where the last round stopped.
+        if let pausedAt = restPausePausedAt, let start = currentSetStart, sample.t - pausedAt >= Self.restPauseStillSeconds {
+            restPausePausedAt = nil
+            restPauseRound = 0
+            endSet(realEnd: pausedAt, from: start)
+            return
+        }
         switch signal.add(y: y, at: sample.t) {
         case .start(_, let realStart):
-            currentSetStart = realStart
-            onSetStart?(realStart)
+            if restPausePausedAt != nil, currentSetStart != nil {
+                restPausePausedAt = nil // the next round of the same set
+            } else {
+                currentSetStart = realStart
+                restPauseRound = 0
+                onSetStart?(realStart)
+            }
         case .end(_, let stillSince):
-            if let start = currentSetStart { endSet(realEnd: stillSince, from: start) }
+            guard let start = currentSetStart else { break }
+            if restPause {
+                restPauseRound += 1
+                if restPauseRound < Self.restPauseRounds {
+                    restPausePausedAt = stillSince // held open through the pause
+                    break
+                }
+                restPauseRound = 0
+            }
+            endSet(realEnd: stillSince, from: start)
         case nil:
             break
         }
@@ -151,6 +182,7 @@ final class SetDetector: NSObject {
 
     private func endSet(realEnd: Double, from start: Double) {
         currentSetStart = nil
+        restPausePausedAt = nil
         onSetEnd?(realEnd)
         rotateSegment(for: (start, realEnd))
     }

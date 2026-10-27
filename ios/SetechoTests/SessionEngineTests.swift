@@ -449,3 +449,197 @@ private func cue(_ exerciseId: String) -> VoiceCue {
     #expect(engine.cueDue() == nil)
     #expect(engine.apply(intent(.replayCue)).speech == "No cue to replay.")
 }
+
+// MARK: - His real sheet (HANDOFF.md §7): warm-ups, timed sets, rest-pause sets, add-ons
+
+private func planned(_ reps: Int?, min: Int? = nil, max: Int? = nil, seconds: Int? = nil, total: Int? = nil, role: SetRole? = nil) -> PlannedSet {
+    PlannedSet(reps: reps, repsMin: min, repsMax: max, loadLb: nil, rpe: nil, rir: nil, seconds: seconds, totalReps: total, role: role)
+}
+
+private let day1 = ProgramDay(id: "d1", name: "Day 1", exercises: [
+    PlannedExercise(id: "bike", name: "Stationary Bike", sets: [planned(nil, seconds: 300)], restSeconds: nil, notes: nil),
+    PlannedExercise(id: "incline", name: "Incline DB Press", sets: [planned(nil, min: 6, max: 8, role: .top), planned(nil, min: 6, max: 8, role: .backOff)], restSeconds: 180, restMinSeconds: 90, notes: nil),
+    PlannedExercise(id: "pec", name: "Pec Deck", sets: [planned(nil, total: 20, role: .restPause)], restSeconds: 180, notes: nil),
+])
+private let abs = AddOn(id: "addon_abs", name: "Abs", exercises: [
+    PlannedExercise(id: "raises", name: "Hanging Leg Raises", sets: [planned(12), planned(12)], restSeconds: nil, notes: nil),
+    PlannedExercise(id: "plank", name: "Plank", sets: [planned(nil, seconds: 60), planned(nil, seconds: 60)], restSeconds: nil, notes: nil),
+], perWeek: 2, timing: .withSession, quote: "Complete this 2x per week:")
+private let vacuums = AddOn(id: "addon_vac", name: "Stomach Vacuums", exercises: [
+    PlannedExercise(id: "vac", name: "Stomach Vacuums", sets: Array(repeating: planned(nil, seconds: 20), count: 4), restSeconds: nil, notes: nil),
+], perWeek: 4, timing: .onWaking, quote: "Complete these 4x per week upon waking:")
+private let hisWarmups = WarmupRule(minSets: 1, maxSets: 3, maxReps: 8, quote: "1-3 warm up sets of no more than 6-8 reps", confirmed: true)
+
+private func easy(_ reps: Int, slowdown: Double = 5) -> RepCounter.Result {
+    var r = phone(reps)
+    r.velocityLossPct = slowdown
+    return r
+}
+
+@Test @MainActor func aTimedSetIsACountdownThatLogsItsSeconds() {
+    let engine = SessionEngine(day: day1, weekNumber: 1, warmups: hisWarmups)
+    #expect(engine.currentSetIsTimed && engine.targetRepsText == "5 min" && !engine.warmupMode)
+    let go = engine.setStarted(at: t0)
+    #expect(engine.state == .hold(remaining: 300) && go.echo == "Stationary Bike · five minutes")
+    #expect(engine.tickHold(at: t0.addingTimeInterval(1)) == .none && engine.state == .hold(remaining: 299))
+    for _ in 0..<288 { engine.tickHold() }
+    #expect(engine.tickHold().speech == "10 seconds." && engine.state == .hold(remaining: 10))
+    for _ in 0..<9 { engine.tickHold() }
+    let time = engine.tickHold(at: t0.addingTimeInterval(300))
+    #expect(time.speech == "Time. Next exercise, Incline DB Press, 6–8 reps. Warm-ups first. Rest thirty seconds.")
+    let set = engine.session.sets[0]
+    #expect(set.seconds == 300 && set.reps == 0 && set.exerciseId == "bike" && set.repCount.status == .done)
+    #expect(engine.state == .rest(remaining: 30) && engine.currentExercise?.id == "incline" && engine.warmupMode)
+}
+
+@Test @MainActor func doneEndsAHoldEarlyAndLogsHowLongItRan() {
+    let engine = SessionEngine(day: nil, addOns: [vacuums], weekNumber: 1)
+    #expect(engine.title == "Stomach Vacuums" && engine.session.programDayId == nil && engine.session.addOnIds == ["addon_vac"])
+    engine.apply(intent(.starting))
+    for _ in 0..<8 { engine.tickHold() }
+    let out = engine.apply(intent(.endSet, transcript: "done"))
+    #expect(out.speech == "Eight seconds logged. Next, 20 s. Rest thirty seconds.")
+    #expect(engine.session.sets[0].seconds == 8 && engine.setNumber == 2)
+    // The whole morning session: four holds, hands-free, no camera.
+    engine.skipRest()
+    for n in 1...3 {
+        engine.apply(intent(.starting))
+        for _ in 0..<20 { engine.tickHold() }
+        if n < 3 { engine.skipRest() }
+    }
+    #expect(engine.state == .ended && engine.session.sets.count == 4 && engine.session.sets.last?.seconds == 20)
+}
+
+@Test @MainActor func warmupModeLogsEasyShortSetsAsWarmupsThatNeverCount() {
+    let engine = SessionEngine(day: day1, weekNumber: 1, warmups: hisWarmups)
+    engine.apply(intent(.skipSet)) // past the bike
+    #expect(engine.currentExercise?.id == "incline" && engine.warmupMode && engine.setNumber == 1)
+    engine.setStarted(at: t0)
+    let w1 = engine.setEnded(at: t0.addingTimeInterval(15), phone: easy(6), willMeasure: true)
+    #expect(w1.speech == "Warm-up 1. Rest three minutes.")
+    #expect(engine.session.sets[0].role == .warmup && engine.session.sets[0].repCount.status == .done && engine.pendingCounts.isEmpty)
+    #expect(engine.setNumber == 1 && engine.warmupCount == 1 && engine.session.workingSets.isEmpty)
+    #expect(!engine.shouldUpload(setId: engine.session.sets[0].id))
+    engine.skipRest()
+    engine.setStarted(at: t0.addingTimeInterval(100))
+    // Eight reps with a real slowdown: the top set, measured.
+    let top = engine.setEnded(at: t0.addingTimeInterval(130), phone: easy(8, slowdown: 35), willMeasure: true)
+    #expect(top.speech == "Set 1 done. Rest three minutes.")
+    #expect(engine.session.sets[1].role == .top && engine.session.sets[1].repCount.status == .counting && !engine.warmupMode)
+    #expect(engine.setNumber == 2 && engine.currentPlannedSet?.role == .backOff)
+    // Nine reps is never a warm-up, whatever the slowdown; the plan's reps (no count) never are either.
+    #expect(!SessionEngine.looksLikeWarmup(reps: 9, source: .phone, phone: easy(9), maxReps: 8))
+    #expect(!SessionEngine.looksLikeWarmup(reps: 8, source: .plan, phone: nil, maxReps: 8))
+    #expect(SessionEngine.looksLikeWarmup(reps: 5, source: .spoken, phone: nil, maxReps: 8))
+}
+
+@Test @MainActor func topSetAndThatWasAWarmupFixTheClassificationEitherWayWithUndo() {
+    let engine = SessionEngine(day: day1, weekNumber: 1, warmups: hisWarmups)
+    engine.apply(intent(.skipSet))
+    // "Top set" before the set: the next set is the top set whatever the count.
+    let next = engine.apply(intent(.topSet, transcript: "top set"))
+    #expect(next.speech == "Top set next." && !engine.warmupMode)
+    engine.setStarted(at: t0)
+    engine.setEnded(at: t0.addingTimeInterval(20), phone: easy(5), willMeasure: true)
+    #expect(engine.session.sets[0].role == .top && engine.setNumber == 2)
+    // "That was a warm-up": the set becomes a warm-up, the counter moves back, SAM is not waited for.
+    let fix = engine.apply(intent(.warmup, transcript: "that was a warm-up"))
+    #expect(fix.speech == "Warm-up. Set 1 is next." && engine.session.sets[0].isWarmup && engine.setNumber == 1 && engine.warmupMode)
+    #expect(engine.pendingCounts.isEmpty && engine.session.sets[0].repCount.status == .done)
+    // "That was my top set": back to the working set, and its clip goes to SAM now.
+    let back = engine.apply(intent(.topSet, transcript: "that was my top set"))
+    #expect(back.speech == "Set 1 logged." && engine.session.sets[0].role == .top && engine.setNumber == 2)
+    #expect(engine.setsNeedingUpload() == [engine.session.sets[0].id] && engine.session.sets[0].repCount.status == .counting)
+    engine.undo()
+    #expect(engine.session.sets[0].isWarmup && engine.setNumber == 1)
+    // "Top set" during a set forces a working set.
+    engine.setStarted(at: t0.addingTimeInterval(200))
+    engine.apply(intent(.topSet, transcript: "top set"))
+    engine.setEnded(at: t0.addingTimeInterval(215), phone: easy(4), willMeasure: true)
+    #expect(engine.session.sets[1].role == .top)
+}
+
+@Test @MainActor func withoutHisWarmupRuleEverySetIsAWorkingSet() {
+    let engine = SessionEngine(day: day1, weekNumber: 1)
+    engine.apply(intent(.skipSet))
+    #expect(!engine.warmupMode)
+    engine.setStarted(at: t0)
+    engine.setEnded(at: t0.addingTimeInterval(15), phone: easy(6), willMeasure: true)
+    #expect(engine.session.sets[0].role == .top && engine.setNumber == 2)
+    let unconfirmed = SessionEngine(day: day1, weekNumber: 1, warmups: WarmupRule(minSets: 1, maxSets: 3, maxReps: 8, quote: nil, confirmed: false))
+    unconfirmed.apply(intent(.skipSet))
+    #expect(!unconfirmed.warmupMode)
+}
+
+@Test @MainActor func aRestPauseSetCountsItsTotalAndSendsItsRole() {
+    let engine = SessionEngine(day: day1, weekNumber: 1)
+    engine.apply(intent(.nextExercise)); engine.apply(intent(.nextExercise))
+    #expect(engine.currentExercise?.id == "pec" && engine.currentSetIsRestPause && engine.targetRepsText == "20 total")
+    engine.setStarted(at: t0)
+    engine.setEnded(at: t0.addingTimeInterval(90), phone: phone(22), willMeasure: true)
+    #expect(engine.session.sets[0].role == .restPause)
+    let sam = engine.measured(setId: engine.session.sets[0].id, measured(22, confidence: 0.9, velocityLoss: nil), now: t0.addingTimeInterval(120))
+    #expect(sam.speech == "22 total, measured.")
+    #expect(engine.session.sets[0].repCount.velocityLossPct == nil && engine.state == .ended)
+}
+
+@Test @MainActor func addOnsJoinAfterTheLastLiftUnderTheirOwnName() {
+    let engine = SessionEngine(day: day1, addOns: [abs], weekNumber: 1)
+    #expect(engine.exercises.count == 5 && engine.exercises[3].section == "Abs" && engine.session.addOnIds == ["addon_abs"])
+    engine.apply(intent(.nextExercise)); engine.apply(intent(.nextExercise))
+    engine.setStarted(at: t0)
+    let out = engine.setEnded(at: t0.addingTimeInterval(60), phone: phone(20))
+    #expect(out.speech == "20 total. Next, Abs. Hanging Leg Raises, 12 reps. Rest three minutes.")
+    #expect(engine.currentEntry?.section == "Abs" && engine.currentExercise?.id == "raises")
+}
+
+@Test @MainActor func addAbsAndSkipAbsChangeTodayOnly() {
+    let engine = SessionEngine(day: day1, availableAddOns: [abs], weekNumber: 1)
+    #expect(engine.exercises.count == 3)
+    let added = engine.apply(intent(.addAddOn, text: "abs", transcript: "add abs"))
+    #expect(added.speech == "Adding abs today." && engine.exercises.count == 5 && engine.session.addOnIds == ["addon_abs"])
+    #expect(engine.apply(intent(.addAddOn, text: "abs")).speech == "Abs is already in today's session.")
+    let skipped = engine.apply(intent(.skipAddOn, text: "abs", transcript: "skip abs"))
+    #expect(skipped.speech == "Skipping abs today." && engine.exercises.count == 3 && engine.session.addOnIds.isEmpty)
+    #expect(engine.apply(intent(.addAddOn, text: "calves")).speech == "No add-on called calves.")
+    engine.undo()
+    #expect(engine.exercises.count == 5 && engine.session.addOnIds == ["addon_abs"])
+    // "Add abs" once the day's lifts are done reopens the session.
+    let done = SessionEngine(day: day1, availableAddOns: [abs], weekNumber: 1)
+    for _ in 0..<3 { done.apply(intent(.nextExercise)) }
+    #expect(done.state == .ended)
+    done.apply(intent(.addAddOn, text: "abs"))
+    #expect(done.state == .ready && done.currentExercise?.id == "raises" && done.session.endedAt == nil)
+}
+
+@Test @MainActor func changeDayAndFlagThat() {
+    let engine = SessionEngine(day: day1, weekNumber: 1)
+    let change = engine.apply(intent(.changeDay, 5, transcript: "I'm doing day 5 today"))
+    #expect(change.echo == "Switching to Day 5. Say undo to revert." && engine.requestedDayNumber == 5)
+    engine.apply(intent(.skipSet))
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), phone: phone(8))
+    #expect(engine.apply(intent(.changeDay, 2)).speech == "Too late to change the day.")
+    let flag = engine.apply(intent(.flagSet, transcript: "flag that"))
+    #expect(flag.speech == "Flagged for Thursday." && engine.session.sets[0].flaggedForCoach)
+    engine.undo()
+    #expect(!engine.session.sets[0].flaggedForCoach)
+}
+
+@Test @MainActor func dayLevelRestRangeGetsAQuietCueAtItsBottom() {
+    let engine = SessionEngine(day: day1, weekNumber: 1)
+    engine.apply(intent(.skipSet))
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), phone: phone(8))
+    #expect(engine.state == .rest(remaining: 180))
+    var cue: SessionEngine.Outcome = .none
+    for _ in 0..<90 { cue = engine.tickRest() }
+    #expect(cue.speech == "Ready when you are." && engine.state == .rest(remaining: 90))
+}
+
+@Test func plannedSetAndExerciseTextForTheRealSheet() {
+    #expect(planned(nil, seconds: 20).repsText == "20 s" && planned(nil, seconds: 300).repsText == "5 min")
+    #expect(planned(nil, total: 20, role: .restPause).repsText == "20 total")
+    #expect(day1.exercises[1].summary == "2 × 6–8 · top + back-off")
+    #expect(day1.exercises[2].summary == "1 × 20 total · rest-pause")
+    #expect(vacuums.exercises[0].summary == "4 × 20 s")
+    #expect(day1.exercises[0].hasWarmups == false && day1.exercises[1].hasWarmups)
+}
