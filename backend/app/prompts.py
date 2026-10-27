@@ -33,7 +33,10 @@ IMPORT_PROGRAM = (
     '("Hack Squat or Leg Press"), keep the first as the name and copy the other into `alternates` with his '
     'words; a slash name ("Hanging/Lying Leg Raises") stays as written with no alternate. Never add an '
     "alternate he didn't write. Anything you cannot map to a field goes into `notes` verbatim and, if it "
-    "changes the reading of a set, into `flags`."
+    "changes the reading of a set, into `flags`.\n\n"
+    'Rules: list in `rules` only the load-adjustment rules the coach actually wrote in this sheet, such as "if '
+    'RPE is over 9, drop 5%" or "when you hit 8 reps on every set, add 5 lb next week", with his words in '
+    "`quote`. If the sheet has targets but no rule, return none. Never invent a rule, and never suggest one."
 )
 
 IMPORT_RULES = (

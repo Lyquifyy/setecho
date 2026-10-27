@@ -136,6 +136,12 @@ class ProgramOut(StrictModel):
         description='Blocks the coach adds on top of days with a frequency ("4x per week"), wherever their '
         "tab sits. Empty when the sheet has none",
     )
+    rules: list[RuleOut] = Field(
+        default_factory=list,
+        description='Only the load-adjustment rules the coach actually wrote in this sheet ("if RPE is over 9, '
+        'drop 5%", "when you hit 8 reps on every set, add 5 lb next week"), with his words in `quote`. If the '
+        "sheet has targets but no rule, return none. Never invent a rule",
+    )
     flags: list[ImportFlag] = Field(description="Every ambiguous cell. Empty when nothing was unclear")
 
 
@@ -176,6 +182,7 @@ class Program(StrictModel):
     name: str
     weeks: list[ProgramWeek]
     addOns: list[AddOn] = []
+    rules: list[ProgressionRule] = []  # drafted from the sheet's notes; nothing applies until confirmed
     importedAt: datetime
     flags: list[ImportFlag]
 
@@ -434,7 +441,13 @@ def to_program(out: ProgramOut, imported_at: datetime) -> Program:
                 quote=block.quote,
             )
         )
-    return Program(name=out.name, weeks=weeks, addOns=add_ons, importedAt=imported_at, flags=out.flags)
+    rules = [
+        ProgressionRule(id=f"sheet_rule_{i + 1}", source="Sheet note", **r.model_dump())
+        for i, r in enumerate(out.rules)
+    ]
+    return Program(
+        name=out.name, weeks=weeks, addOns=add_ons, rules=rules, importedAt=imported_at, flags=out.flags
+    )
 
 
 def block_title(block: CarriedBlockOut) -> str:
@@ -621,3 +634,7 @@ class RulesImport(StrictModel):
     checkInSchedule: CheckInSchedule | None = None
     quietDays: list[int]
     flags: list[ImportFlag]
+
+
+ProgramOut.model_rebuild()
+Program.model_rebuild()

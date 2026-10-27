@@ -31,7 +31,7 @@ class RenderResponse(StrictModel):
 
 @router.post("/checkin/render", response_model=RenderResponse)
 def checkin_render(req: checkin.RenderRequest) -> RenderResponse:
-    messages = checkin.render_messages(req.template, req.draft)
+    messages = checkin.render_messages(req.template, req.draft, req.adjustments, req.deviations)
     return RenderResponse(text="\n\n".join(messages), messages=messages)
 
 

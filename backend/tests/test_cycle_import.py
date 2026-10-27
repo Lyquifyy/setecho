@@ -117,3 +117,30 @@ def test_import_program_endpoint_returns_the_cycle(monkeypatch):
     assert body["weeks"][0]["days"][3]["kind"] == "rest"
     assert body["weeks"][0]["days"][0]["exercises"][1]["sets"][1]["role"] == "backOff"
     assert body["addOns"][0]["exercises"][0]["sets"][0]["seconds"] == 20
+
+
+def test_rules_from_the_sheet_keep_his_words_and_drop_what_the_sheet_lacks(monkeypatch):
+    """§8, Rules from the sheet: a sheet with targets but no rule returns none; a rule whose words
+    aren't in the sheet moves to flags; a real note becomes a drafted, unconfirmed rule."""
+    from app import importing
+
+    raw = json.loads(json.dumps(RAW))
+    monkeypatch.setattr(meta, "spark_json", lambda *a, **k: (raw, None))
+    program, _, _ = importing.import_program(text=SHEET)
+    assert program.rules == []
+    raw["rules"] = [
+        {"appliesTo": None, "when": "aboveTarget", "byRPE": 1, "adjust": "percent", "amount": -5, "minPct": None,
+         "maxPct": None, "scope": "nextSet", "quote": "If RPE is over 9, drop 5%"},
+        {"appliesTo": "Hack Squat", "when": "allSetsAtTopOfRange", "byRPE": None, "adjust": "pounds", "amount": 5,
+         "minPct": None, "maxPct": None, "scope": "nextSession", "quote": "Hack Squat or Leg Press"},
+    ]  # fmt: skip
+    program, _, _ = importing.import_program(text=SHEET + "\nNotes: If RPE is over 9, drop 5%")
+    assert len(program.rules) == 2  # both quotes are in the sheet text
+    rule = program.rules[0]
+    assert (
+        rule.id == "sheet_rule_1" and rule.source == "Sheet note" and not rule.confirmed and rule.amount == -5
+    )
+    assert not any("left out" in f.message for f in program.flags)
+    program, _, _ = importing.import_program(text=SHEET)
+    assert len(program.rules) == 1 and program.rules[0].appliesTo == "Hack Squat"
+    assert any("left out" in f.message and "drop 5%" in f.message for f in program.flags)

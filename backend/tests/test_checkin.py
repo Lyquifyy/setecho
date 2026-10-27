@@ -177,6 +177,31 @@ def test_render_returns_the_plan_message_then_the_questionnaire():
     assert len(checkin.render_messages(bare, draft)) == 1
 
 
+def test_render_appends_the_adjustments_line_after_his_last_field():
+    draft = checkin.build_draft(request(), agent=lambda req, fields: {})
+    lines = [
+        "Incline press set 3, 225 → 215 (RPE 9.5 vs 8)",
+        "Bench set 1, 190 → 195 next session (rest-pause over goal)",
+    ]
+    _, form = checkin.render_messages(
+        TEMPLATE,
+        draft,
+        adjustments=lines,
+        deviations=["Tue, incline barbell → incline dumbbell press (bench taken)"],
+    )
+    assert form.endswith(
+        "Adjustments (your rule): Incline press set 3, 225 → 215 (RPE 9.5 vs 8); Bench set 1, 190 → 195 next session "
+        "(rest-pause over goal)\n\nGym changes: Tue, incline barbell → incline dumbbell press (bench taken)."
+    )
+    assert form.index("Additional notes or concerns") < form.index("Adjustments (your rule)")
+    assert "Adjustments" not in checkin.render_messages(TEMPLATE, draft)[1]
+    r = TestClient(app).post(
+        "/checkin/render",
+        json={"template": TEMPLATE.model_dump(), "draft": draft.model_dump(), "adjustments": lines},
+    )
+    assert r.status_code == 200 and "Adjustments (your rule)" in r.json()["messages"][1]
+
+
 def test_free_meal_is_drafted_from_a_note_then_the_untracked_meal_else_asked():
     def refeed(req):
         return by_id(checkin.build_draft(req, agent=lambda r, f: {}))["date_of_last_refeed_or_cheat_meal"]

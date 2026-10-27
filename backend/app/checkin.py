@@ -105,6 +105,11 @@ class DraftRequest(StrictModel):
 class RenderRequest(StrictModel):
     template: CheckInTemplate
     draft: CheckInDraft
+    adjustments: list[str] = Field(
+        default_factory=list,
+        description='The accepted suggestions as lines computed on the phone: "Incline press set 3, 225 → 215 (RPE 9.5 vs 8)"',
+    )
+    deviations: list[str] = Field(default_factory=list, description="Gym changes (stretch), one line each")
 
 
 # ---------------------------------------------------------------------------
@@ -564,7 +569,9 @@ def _trim(lines: list[str]) -> str:
     return "\n".join(lines)
 
 
-def render_messages(template: CheckInTemplate, draft: CheckInDraft) -> list[str]:
+def render_messages(
+    template: CheckInTemplate, draft: CheckInDraft, adjustments: list[str] = (), deviations: list[str] = ()
+) -> list[str]:
     """The check-in as the coach asked for it (HANDOFF.md §7, Check-in, step 6): two messages in his
     order. First the plan message, the carried blocks verbatim (macros, cardio, supplements); then
     the questionnaire, every field in his order as "Label (prompt): answer". Missing answers render
@@ -589,6 +596,14 @@ def render_messages(template: CheckInTemplate, draft: CheckInDraft) -> list[str]
         answer = by_id.get(field.id)
         value = answer.text.strip() if answer and answer.state != "missing" else ""
         form.append(f"{label}: {value}".rstrip())
+        form.append("")
+    # After his last field: the week's accepted suggestions, his rule applied, and any gym changes
+    # (HANDOFF.md §7, Measured effort; Machine taken). Only what the athlete accepted or kept in.
+    if adjustments:
+        form.append("Adjustments (your rule): " + "; ".join(a.strip() for a in adjustments if a.strip()))
+        form.append("")
+    if deviations:
+        form.append("Gym changes: " + " ".join(d.strip().rstrip(".") + "." for d in deviations if d.strip()))
         form.append("")
     messages = [_trim(plan), _trim(form)]
     return [m for m in messages if m]

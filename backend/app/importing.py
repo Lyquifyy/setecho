@@ -201,7 +201,23 @@ def import_program(
     """Returns the Program with ids, Spark's raw JSON, and the raw response."""
     user = _user_content(upload, text, url, "Convert this training spreadsheet.")
     raw, resp = meta.spark_json(prompts.IMPORT_PROGRAM, user, "Program", PROGRAM_SCHEMA)
-    program = to_program(_validate(ProgramOut, raw), datetime.now(UTC))
+    out = _validate(ProgramOut, raw)
+    if isinstance(user, str):
+        # A rule the sheet does not contain is dropped to flags (HANDOFF.md §8, Rules from the sheet).
+        kept, dropped = [], []
+        for r in out.rules:
+            if quote_in_text(r.quote, user) and not _personal(r.quote):
+                kept.append(r)
+            else:
+                dropped.append(r)
+        out.rules = kept
+        out.flags = list(out.flags) + [
+            ImportFlag(
+                path="rules", message=f'A rule whose words are not in the sheet was left out: "{r.quote}"'
+            )
+            for r in dropped
+        ]
+    program = to_program(out, datetime.now(UTC))
     return program, raw, resp
 
 
