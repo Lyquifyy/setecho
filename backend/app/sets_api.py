@@ -6,6 +6,9 @@ on the Standard tier, is deleted from Meta's file store afterwards, and is never
 
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 import tempfile
 import time
 from pathlib import Path
@@ -13,6 +16,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import StreamingResponse
 from pydantic import Field
 
 from app import meta, reps, video
@@ -99,12 +103,39 @@ async def count_clip(data: bytes, context: CountContext) -> CountResponse:
     )
 
 
+HEARTBEAT_SECONDS = 5.0
+
+
 @router.post("/sets/count", response_model=CountResponse)
 async def sets_count(
     video_file: Annotated[UploadFile, File(alias="video")],
     context: Annotated[str, Form()],
-) -> CountResponse:
+) -> StreamingResponse:
     """`video`: MP4, 720p, 10 fps, no audio, trimmed to the set. `context`: JSON
-    {exerciseId, equipment, plannedReps, phoneReps}."""
+    {exerciseId, equipment, plannedReps, phoneReps}.
+
+    SAM takes a minute or more and says nothing meanwhile, so the response streams a newline
+    every few seconds until the JSON is ready: proxies and the phone's connection stay open.
+    A failure comes as a final JSON {"error": ...} line, with the 200 already sent."""
     ctx = CountContext.model_validate_json(context)
-    return await count_clip(await video_file.read(), ctx)
+    data = await video_file.read()
+
+    async def body():
+        task = asyncio.create_task(count_clip(data, ctx))
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=HEARTBEAT_SECONDS)
+            if done:
+                break
+            yield "\n"
+        try:
+            result = task.result()
+        except ClipError as e:
+            yield json.dumps({"error": str(e)})
+            return
+        except Exception as e:  # the stream has started: the error must reach the phone as JSON
+            logging.getLogger(__name__).exception("count failed")
+            yield json.dumps({"error": f"count failed: {type(e).__name__}"})
+            return
+        yield result.model_dump_json()
+
+    return StreamingResponse(body(), media_type="application/json")

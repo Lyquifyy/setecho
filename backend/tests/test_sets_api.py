@@ -81,20 +81,22 @@ def test_bad_equipment_is_422(client, fake_sam):
     assert r.status_code == 422 and "error" in r.json()
 
 
-def test_unreadable_clip_is_422(client, fake_sam, monkeypatch):
+def test_unreadable_clip_streams_an_error_line(client, fake_sam, monkeypatch):
+    """Once the stream has started the status is 200; the error travels as the final JSON line."""
+
     def boom(path):
         raise RuntimeError("ffprobe: invalid data")
 
     monkeypatch.setattr(video, "frame_times", boom)
     r = _post(client)
-    assert r.status_code == 422
+    assert r.status_code == 200
     assert "could not read the clip" in r.json()["error"]
     assert fake_sam["uploaded"] == []  # nothing goes to Meta when the clip is unreadable
 
 
-def test_empty_clip_is_422(client, fake_sam):
+def test_empty_clip_streams_an_error_line(client, fake_sam):
     r = _post(client, data=b"")
-    assert r.status_code == 422
+    assert r.status_code == 200 and "empty" in r.json()["error"]
 
 
 def test_file_is_deleted_even_when_sam_fails(client, fake_sam, monkeypatch):
@@ -102,9 +104,26 @@ def test_file_is_deleted_even_when_sam_fails(client, fake_sam, monkeypatch):
         raise RuntimeError("sam down")
 
     monkeypatch.setattr(meta, "segment_video", boom)
-    with pytest.raises(RuntimeError):
-        _post(client)
+    r = _post(client)
+    assert r.status_code == 200 and r.json()["error"] == "count failed: RuntimeError"
     assert fake_sam["deleted"] == ["file_1"]
+
+
+def test_slow_count_sends_heartbeats_before_the_json(client, fake_sam, monkeypatch):
+    import asyncio
+
+    monkeypatch.setattr(sets_api, "HEARTBEAT_SECONDS", 0.05)
+    original = meta.segment_video
+
+    async def slow(file_id, prompt):
+        await asyncio.sleep(0.2)
+        return await original(file_id, prompt)
+
+    monkeypatch.setattr(meta, "segment_video", slow)
+    r = _post(client)
+    assert r.status_code == 200
+    assert r.text.startswith("\n") and r.text.count("\n") >= 2
+    assert r.json()["reps"] == 8
 
 
 def test_no_track_gives_no_count(client, fake_sam, monkeypatch):
