@@ -23,11 +23,16 @@ def checkin_draft(req: checkin.DraftRequest) -> checkin.CheckInDraft:
 
 class RenderResponse(StrictModel):
     text: str
+    messages: list[str] = Field(
+        default_factory=list,
+        description="The plan message (carried blocks), then the questionnaire, in his order",
+    )
 
 
 @router.post("/checkin/render", response_model=RenderResponse)
 def checkin_render(req: checkin.RenderRequest) -> RenderResponse:
-    return RenderResponse(text=checkin.render(req.template, req.draft))
+    messages = checkin.render_messages(req.template, req.draft)
+    return RenderResponse(text="\n\n".join(messages), messages=messages)
 
 
 # ---------------------------------------------------------------------------

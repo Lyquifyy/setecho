@@ -113,7 +113,9 @@ class RenderRequest(StrictModel):
 
 KCAL_TOLERANCE = 0.05
 GRAMS_TOLERANCE = 10.0
-REFEED_OVERSHOOT = 0.20
+# A training day logged this far under target is the day of the untracked free meal.
+UNTRACKED_MEAL_UNDER = 0.25
+_FREE_MEAL = re.compile(r"\b(free meal|cheat meal|cheat day|refeed|re-feed)\b", re.IGNORECASE)
 
 
 def _fmt(n: float) -> str:
@@ -155,7 +157,11 @@ def _range(facts: WeekFacts) -> str:
 
 
 def fill_data_field(
-    field: FieldSpec, facts: WeekFacts, training: TrainingSummary, last: CheckInDraft | None = None
+    field: FieldSpec,
+    facts: WeekFacts,
+    training: TrainingSummary,
+    last: CheckInDraft | None = None,
+    notes: list[VoiceNote] | None = None,
 ) -> FieldAnswer | None:
     """The answer for a data / drafted / calculated field, or None when it isn't one."""
     key = field.source.key
@@ -235,16 +241,30 @@ def fill_data_field(
             Provenance(source="Training log", detail=f"{training.setsLogged} sets; PRs: {', '.join(p.exercise for p in training.prs) or 'none'}")])  # fmt: skip
 
     if key == "lastRefeedDate":
-        over = [
+        # His free meal is untracked, so a high-calorie day won't show it. A spoken note ("free meal
+        # today") wins; else the latest training day logged well under target is the untracked meal;
+        # else it is asked. Always drafted, never confirmed by code.
+        spoken = [n for n in (notes or []) if _FREE_MEAL.search(n.transcript)]
+        if spoken:
+            note = max(spoken, key=lambda n: n.at)
+            return FieldAnswer(fieldId=field.id, text=_mdy(note.at[:10]), state="drafted", provenance=[
+                Provenance(source=f"You said · {_mdy(note.at[:10])}", detail=note.transcript)])  # fmt: skip
+        under = [
             d.date
             for d in facts.daily
-            if d.kcal is not None and d.kcal > _target(facts, d).kcal * (1 + REFEED_OVERSHOOT)
+            if d.isTrainingDay
+            and d.kcal is not None
+            and d.kcal < _target(facts, d).kcal * (1 - UNTRACKED_MEAL_UNDER)
         ]
-        latest = max(over) if over else None
-        text = _mdy(latest) if latest else "None this week"
-        return FieldAnswer(fieldId=field.id, text=text, state="drafted", provenance=[
+        if under:
+            latest = max(under)
+            return FieldAnswer(fieldId=field.id, text=_mdy(latest), state="drafted", provenance=[
+                Provenance(source=_source(facts, "calories", "MacroFactor via Apple Health"),
+                           detail=f"Training days logged more than 25% under target (the untracked meal): "
+                                  f"{', '.join(_mdy(x) for x in under)}")])  # fmt: skip
+        return FieldAnswer(fieldId=field.id, text="", state="missing", provenance=[
             Provenance(source=_source(facts, "calories", "MacroFactor via Apple Health"),
-                       detail=f"Days more than 20% over target: {', '.join(_mdy(x) for x in over) or 'none'}")])  # fmt: skip
+                       detail="No note and no training day logged well under target: asked on check-in morning")])  # fmt: skip
 
     if key == "avgDailySteps":
         steps = [d.steps for d in facts.daily if d.steps is not None]
@@ -483,7 +503,9 @@ def build_draft(req: DraftRequest, agent: Any = None) -> CheckInDraft:
 
     answers: list[FieldAnswer] = []
     for field in req.template.fields:
-        if (answer := fill_data_field(field, req.facts, req.training, req.lastCheckIn)) is not None:
+        if (
+            answer := fill_data_field(field, req.facts, req.training, req.lastCheckIn, req.notes)
+        ) is not None:
             if field.source.key == "performanceNotes" and field.id in drafted:
                 text = drafted[field.id]
                 bad = validate(text, known)
@@ -536,19 +558,28 @@ def build_draft(req: DraftRequest, agent: Any = None) -> CheckInDraft:
     )
 
 
-def render(template: CheckInTemplate, draft: CheckInDraft) -> str:
-    """The WhatsApp message: carried blocks verbatim, then every field in the coach's order as
-    "Label (prompt): answer". Missing answers render as an empty value, never a guess."""
+def _trim(lines: list[str]) -> str:
+    while lines and lines[-1] == "":
+        lines.pop()
+    return "\n".join(lines)
+
+
+def render_messages(template: CheckInTemplate, draft: CheckInDraft) -> list[str]:
+    """The check-in as the coach asked for it (HANDOFF.md §7, Check-in, step 6): two messages in his
+    order. First the plan message, the carried blocks verbatim (macros, cardio, supplements); then
+    the questionnaire, every field in his order as "Label (prompt): answer". Missing answers render
+    as an empty value, never a guess. With no carried blocks there is only the questionnaire."""
     by_id = {a.fieldId: a for a in draft.answers}
-    lines: list[str] = []
+    plan: list[str] = []
     for block in template.carriedBlocks:
         title = block.title.strip()
         text = block.text.strip()
         if text.startswith(title):
-            lines.append(text)
+            plan.append(text)
         else:
-            lines.append(f"{title}\n\n{text}" if title else text)
-        lines.append("")
+            plan.append(f"{title}\n\n{text}" if title else text)
+        plan.append("")
+    form: list[str] = []
     for field in sorted(template.fields, key=lambda f: f.order):
         if field.source.type == "photo":
             continue
@@ -557,8 +588,12 @@ def render(template: CheckInTemplate, draft: CheckInDraft) -> str:
             label = f"{label} {field.prompt.strip()}"
         answer = by_id.get(field.id)
         value = answer.text.strip() if answer and answer.state != "missing" else ""
-        lines.append(f"{label}: {value}".rstrip())
-        lines.append("")
-    while lines and lines[-1] == "":
-        lines.pop()
-    return "\n".join(lines)
+        form.append(f"{label}: {value}".rstrip())
+        form.append("")
+    messages = [_trim(plan), _trim(form)]
+    return [m for m in messages if m]
+
+
+def render(template: CheckInTemplate, draft: CheckInDraft) -> str:
+    """Both messages as one text, for the screen and the clipboard fallback."""
+    return "\n\n".join(render_messages(template, draft))

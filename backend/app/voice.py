@@ -35,6 +35,12 @@ Intent = Literal[
     "yes",
     "no",
     "answer",
+    "topSet",
+    "warmup",
+    "addAddOn",
+    "skipAddOn",
+    "changeDay",
+    "flagSet",
     "unknown",
 ]
 INTENTS: tuple[str, ...] = Intent.__args__  # type: ignore[attr-defined]
@@ -74,7 +80,12 @@ SYSTEM_PROMPT = (
     "endSet: the set just finished. undo. pause. resume. endSession. note: something for the weekly check-in, "
     'with the text in `text` verbatim. replayCue: play the coach\'s cue again ("say that again"). yes / no: '
     "a plain answer to a question the app asked. answer: a reply with a number or words to a question the "
-    "app asked. unknown when unsure.\n"
+    'app asked. topSet: the next set is the top set ("top set", "this is my top set"), or the last set was '
+    '("that was my top set"). warmup: the last set was only a warm-up ("that was a warm-up"). addAddOn / '
+    'skipAddOn: do or skip today\'s add-on block ("add abs", "skip abs"), with its name in `text`. changeDay: '
+    'the athlete is doing another cycle day today ("I\'m doing Day 5 today"), with the day number in `number`. '
+    'flagSet: send the last set\'s video to the coach ("flag that", "send that one to coach"). unknown when '
+    "unsure.\n"
     "Numbers are pounds for loads and counts for reps. Never invent a number: `number` holds only a value "
     "the athlete said. Keep `text` in the athlete's own words. Set confidence honestly; under 0.7 the app "
     "will ask the athlete to repeat."
@@ -210,7 +221,25 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
         "starting",
         re.compile(r"\b(starting|start(ing)? (the |this |my )?set|here we go|going now|next set)\b"),
     ),
+    (
+        "topSet",
+        re.compile(r"\b(top set|this is (the|my) top set|that was (the|my) top set|going for the top set)\b"),
+    ),
+    (
+        "warmup",
+        re.compile(r"\b(that was (just |only )?(a |my )?warm[ -]?up|warm[ -]?up set|still warming up)\b"),
+    ),
+    (
+        "flagSet",
+        re.compile(
+            r"\b(flag (that|it|this)( one)?|send (that|this)( one)? to (the )?coach|flag for (the )?coach)\b"
+        ),
+    ),
 ]
+_ADD_ON = re.compile(
+    r"^(?P<verb>add|do|include|skip|drop|no)\s+(the\s+)?(?P<name>[a-z][a-z ]{1,30}?)(\s+today)?$"
+)
+_CHANGE_DAY = re.compile(r"\b(doing|do|make it|switch to|change to|it'?s)\s+day\s+(?P<n>[\w]+)(\s+today)?\b")
 _RPE = re.compile(
     r"\b(felt like|feels like|that was|that'?s|rpe|rated?)\s+(an?\s+)?(?P<n>[\w .]+?)(\s+(rpe|out of ten))?\s*$"
 )
@@ -252,6 +281,13 @@ def classify_by_rules(transcript: str) -> VoiceIntent | None:
     for intent, pattern in _RULES:
         if pattern.search(t):
             return VoiceIntent(intent=intent, number=None, text=None, fieldId=None, confidence=0.95)
+    if (m := _CHANGE_DAY.search(t)) and (n := parse_number(m.group("n"))) is not None:
+        return VoiceIntent(intent="changeDay", number=n, text=None, fieldId=None, confidence=0.9)
+    if (m := _ADD_ON.match(t)) and m.group("name") not in ("it", "that", "this", "set", "weight"):
+        intent = "skipAddOn" if m.group("verb") in ("skip", "drop", "no") else "addAddOn"
+        return VoiceIntent(
+            intent=intent, number=None, text=m.group("name").strip(), fieldId=None, confidence=0.85
+        )
     if (m := _SET_LOAD.search(t)) and (n := parse_number(m.group("n"))) is not None:
         return VoiceIntent(intent="setLoad", number=n, text=None, fieldId=None, confidence=0.9)
     if (m := _DELTA_UP.search(t)) and (n := parse_number(m.group("n"))) is not None:

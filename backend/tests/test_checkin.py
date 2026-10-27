@@ -46,8 +46,10 @@ NOTES = [checkin.VoiceNote(id="n1", at="2026-10-25T18:00:00Z", transcript="diges
 
 
 def request(agent_answers=None, **overrides):
-    return checkin.DraftRequest(template=TEMPLATE, facts=FACTS, notes=NOTES, training=TRAINING, lastCheckIn=None,
-                                styleExamples=["100%, macros were hit every day this week!"], draftId="11111111-1111-1111-1111-111111111111", **overrides)  # fmt: skip
+    kwargs = {"template": TEMPLATE, "facts": FACTS, "notes": NOTES, "training": TRAINING, "lastCheckIn": None,
+                  "styleExamples": ["100%, macros were hit every day this week!"], "draftId": "11111111-1111-1111-1111-111111111111"}  # fmt: skip
+    kwargs.update(overrides)
+    return checkin.DraftRequest(**kwargs)
 
 
 def by_id(draft):
@@ -70,10 +72,8 @@ def test_data_fields_come_from_code_with_sources():
     assert a["current_body_weight"].text == "180.8"
     assert a["current_body_weight"].provenance[0].source == "Withings via Apple Health"
     assert a["notes_on_sleep"].text == "Avg 7.4 h/night" and a["notes_on_sleep"].state == "drafted"
-    assert (
-        a["date_of_last_refeed_or_cheat_meal"].text == "10/25/26"
-        and a["date_of_last_refeed_or_cheat_meal"].state == "drafted"
-    )
+    # His free meal is untracked: with no note and no training day logged well under target, it is asked.
+    assert a["date_of_last_refeed_or_cheat_meal"].state == "missing"
     assert a["notes_on_performance"].text == "Beat the logbook on Bench press 190 for 8"
     # Voice fields with nothing said are missing; a mid-week note lands in its field as a draft.
     assert a["energy_levels"].state == "missing"
@@ -159,6 +159,43 @@ def test_render_endpoint():
     )
     assert r.status_code == 200
     assert r.json()["text"].startswith("Nutrition:")
+    assert len(r.json()["messages"]) == 2
+
+
+def test_render_returns_the_plan_message_then_the_questionnaire():
+    """His email asks for two separate messages (HANDOFF.md §7, Check-in, step 6)."""
+    draft = checkin.build_draft(request(), agent=lambda req, fields: {})
+    messages = checkin.render_messages(TEMPLATE, draft)
+    assert len(messages) == 2
+    plan, form = messages
+    assert plan.startswith("Nutrition:") and "Current Supplements:" in plan
+    assert "Weeks away from target date" not in plan
+    assert form.startswith("Weeks away from target date") and "Nutrition:" not in form
+    assert checkin.render(TEMPLATE, draft) == plan + "\n\n" + form
+    # A form with no carried blocks is one message.
+    bare = TEMPLATE.model_copy(update={"carriedBlocks": []})
+    assert len(checkin.render_messages(bare, draft)) == 1
+
+
+def test_free_meal_is_drafted_from_a_note_then_the_untracked_meal_else_asked():
+    def refeed(req):
+        return by_id(checkin.build_draft(req, agent=lambda r, f: {}))["date_of_last_refeed_or_cheat_meal"]
+
+    # A spoken note wins, with the note's day.
+    noted = request(
+        notes=NOTES
+        + [checkin.VoiceNote(id="n2", at="2026-10-24T20:10:00Z", transcript="free meal today, pizza")]
+    )
+    a = refeed(noted)
+    assert a.text == "10/24/26" and a.state == "drafted" and a.provenance[0].source == "You said · 10/24/26"
+    # Else the latest training day logged more than 25% under target: the untracked meal.
+    facts = FACTS.model_copy(
+        update={"daily": FACTS.daily[:3] + [day("2026-10-26", True, 1700, 150, 150, 50)] + FACTS.daily[4:]}
+    )
+    a = refeed(request(facts=facts))
+    assert a.text == "10/26/26" and a.state == "drafted" and "untracked" in a.provenance[0].detail
+    # A high-calorie day no longer counts: his free meal never shows in the log.
+    assert refeed(request()).state == "missing"
 
 
 def test_draft_endpoint(monkeypatch):

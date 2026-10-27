@@ -55,6 +55,14 @@ def test_parse_number(said, expected):
         ("Done", "endSet", None),
         ("That's the set", "endSet", None),
         ("Setecho, undo", "undo", None),
+        ("Top set", "topSet", None),
+        ("That was my top set", "topSet", None),
+        ("That was a warm-up", "warmup", None),
+        ("that was just a warmup", "warmup", None),
+        ("Flag that", "flagSet", None),
+        ("Send that one to coach", "flagSet", None),
+        ("I'm doing day 5 today", "changeDay", 5),
+        ("Doing day five", "changeDay", 5),
     ],
 )
 def test_rules_cover_the_plain_commands(transcript, intent, number):
@@ -63,6 +71,15 @@ def test_rules_cover_the_plain_commands(transcript, intent, number):
     assert result.intent == intent
     assert result.number == number
     assert result.confidence >= 0.7
+
+
+def test_add_on_commands_carry_the_block_name():
+    add = voice.classify_by_rules("Add abs")
+    assert add is not None and add.intent == "addAddOn" and add.text == "abs"
+    skip = voice.classify_by_rules("skip abs today")
+    assert skip is not None and skip.intent == "skipAddOn" and skip.text == "abs"
+    assert voice.classify_by_rules("skip it").intent == "skipSet"  # "skip it" is the set, not a block
+    assert voice.classify_by_rules("add 5").intent == "loadDelta"
 
 
 def test_rules_keep_note_text_verbatim():
