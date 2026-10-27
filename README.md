@@ -30,17 +30,13 @@ make ios-test                       # iOS unit tests
 
 ## Deploy the backend (Fly.io)
 
-The phone needs a public URL at the gym. Once, from `backend/`:
+The phone needs a public URL at the gym. The API runs as the Fly app `setecho-api` (org zander-erwin, region dfw) at `https://setecho-api.fly.dev`. To redeploy after a backend change, from `backend/`:
 
 ```sh
-brew install flyctl
-fly auth login
-fly launch --copy-config --no-deploy     # keeps fly.toml; pick a region near you
-fly secrets set MODEL_API_KEY=...        # the key never lives in the repo
 fly deploy
 ```
 
-Then set `SETECHO_API_BASE = https://<app>.fly.dev` in `ios/Config/Local.xcconfig` and rebuild. `make testflight` archives a Release build and uploads it to TestFlight.
+First-time setup on a new machine or account: `brew install flyctl`, `fly auth login`, `fly launch --copy-config --no-deploy`, then `fly secrets set MODEL_API_KEY=...` (the key never lives in the repo). The iOS build points at the URL through `SETECHO_API_BASE` in `ios/Config/Local.xcconfig`. `make testflight` archives a Release build and uploads it to TestFlight.
 
 ## Gate probes (M0)
 

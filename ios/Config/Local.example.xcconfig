@@ -1,4 +1,4 @@
 // Copy to Local.xcconfig (gitignored).
 DEVELOPMENT_TEAM = YOUR_TEAM_ID
-// Your Mac's LAN address while developing on a real phone, then the hosted URL.
+// Your Mac's LAN address while developing on a real phone, or the hosted URL (https:/$()/setecho-api.fly.dev).
 SETECHO_API_BASE = http:/$()/192.168.1.50:8000
