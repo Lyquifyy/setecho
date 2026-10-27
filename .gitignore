@@ -34,8 +34,6 @@ ios/Probes/output/
 *.jpg
 *.jpeg
 *.png
-!design/**/*.png
-!design/**/*.jpg
 !ios/Setecho/Assets.xcassets/**/*.png
 
 # Coach voice notes and any audio outside the fixtures (HANDOFF.md §11)
@@ -44,3 +42,6 @@ ios/Probes/output/
 
 # Compiled watch app and the simulator's output
 watch/bin/
+
+# Working files and references, local only: never committed, never linked from the README (HANDOFF.md §11)
+design/

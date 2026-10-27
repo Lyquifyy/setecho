@@ -1,4 +1,4 @@
-<p><img src="design/cobalt-cards/brand/final/png/setecho-lockup-sloped-e-cobalt-2400w.png" alt="Setecho" width="320"></p>
+<p><img src="ios/Setecho/Assets.xcassets/Lockup.imageset/Lockup.svg" alt="Setecho" width="320"></p>
 
 Setecho takes the manual work out of a coached bodybuilding prep. Import your coach's spreadsheet and check-in form once. After that:
 - your sets log themselves while you train hands-free, with every rep counted from the video
@@ -11,8 +11,6 @@ Built on Meta Model API:
 - **Muse Voice Transcribe** runs the hands-free session and the wrap-up, and transcribes the coach's voice notes.
 - **SAM 3.1** counts the reps in every set, and frames and aligns the check-in photos.
 
-![Workout and history](design/cobalt-cards/screens/workout-history.png)
-![Filming, results and coach](design/cobalt-cards/screens/filming-results-coach.png)
 
 ## Run it
 
