@@ -220,8 +220,8 @@ final class SetDetector: NSObject {
     }
 }
 
-/// Trims one set out of a recorded segment: a full-quality MOV for History, and a 720p, 10 fps,
-/// silent MP4 for /sets/count. Both exports run off the main actor.
+/// Trims one set out of a recorded segment: a full-quality MOV for History, and a 720p, 15 fps,
+/// silent MP4 for /sets/count (rep speed needs the extra frames). Both exports run off the main actor.
 enum ClipExporter {
     struct Exported: Sendable {
         var clipFile: String?
@@ -265,10 +265,13 @@ enum ClipExporter {
         return out
     }
 
-    /// 10 fps, with the recording's own orientation applied.
+    /// The frame rate of the clip that goes to /sets/count (HANDOFF.md §6, SAM on video).
+    static let countFPS: Int32 = 15
+
+    /// 15 fps, with the recording's own orientation applied.
     private static func countComposition(for asset: AVURLAsset) async throws -> AVMutableVideoComposition {
         let composition = try await AVMutableVideoComposition.videoComposition(withPropertiesOf: asset)
-        composition.frameDuration = CMTime(value: 1, timescale: 10)
+        composition.frameDuration = CMTime(value: 1, timescale: countFPS)
         return composition
     }
 

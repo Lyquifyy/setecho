@@ -1,8 +1,49 @@
 import Foundation
 
 /// The spoken callouts, deterministic and template-only (HANDOFF.md §7). No model writes these.
-/// "8 reps. Next, 225 for 8. Rest two thirty." With no count: "Set 3 done. Next, …".
+/// On a tripod set the set-end line carries no count ("Set 3 done. Rest two thirty."): SAM is the
+/// count of record, and its number comes during rest ("8 reps, measured. Next, 225 for 8."). A set
+/// nothing will measure keeps the full line: "8 reps. Next, 225 for 8. Rest two thirty."
 enum Callout {
+    /// The instant set-end line while SAM counts: no number yet.
+    static func setDone(setNumber: Int, restSeconds: Int, sessionOver: Bool) -> String {
+        sessionOver ? "Set \(setNumber) done. That's the session." : "Set \(setNumber) done. Rest \(spoken(seconds: restSeconds))."
+    }
+
+    /// The count, once it is known, with the next target: "8 reps, measured. Next, 225 for 8."
+    /// Falling short of the plan is stated as a fact, never a judgement.
+    static func counted(reps: Int, measured: Bool, shortBy: Int = 0, next: NextSet?) -> String {
+        var line = "\(reps) reps"
+        if measured { line += ", measured" }
+        if shortBy > 0 { line += ", \(shortBy) short of plan" }
+        var parts = [line + "."]
+        if let next { parts.append(nextLine(next)) }
+        return parts.joined(separator: " ")
+    }
+
+    /// SAM answered after another set had started, and nothing had been said about this one yet.
+    static func lateCount(setNumber: Int, reps: Int, measured: Bool) -> String {
+        "Set \(setNumber): \(reps)\(measured ? ", measured" : "")."
+    }
+
+    /// SAM's count replaced a number already spoken: "Set 3 updated: 7, measured."
+    static func updated(setNumber: Int, reps: Int) -> String {
+        "Set \(setNumber) updated: \(reps), measured."
+    }
+
+    /// SAM is unsure: "Set 3, was that 8?" A yes logs it as Measured, a number as You said.
+    static func confirmCount(setNumber: Int, reps: Int) -> String {
+        "Set \(setNumber), was that \(reps)?"
+    }
+
+    /// No count to say (the plan's reps stand): just the next target.
+    static func nextLine(_ next: NextSet) -> String {
+        switch next {
+        case .sameExercise(let load, let reps): "Next, \(target(load: load, reps: reps))."
+        case .nextExercise(let name, let load, let reps): "Next exercise, \(name), \(target(load: load, reps: reps))."
+        }
+    }
+
     static func setDone(setNumber: Int, reps: Int? = nil, shortBy: Int = 0, next: NextSet?, restSeconds: Int) -> String {
         var parts: [String]
         if let reps {
@@ -67,15 +108,5 @@ enum Callout {
 
     static func askBack(_ transcript: String) -> String {
         "Did you say \(transcript)?"
-    }
-
-    /// SAM disagreed and is confident: "Set 3: 7, not 8."
-    static func measuredCorrection(setNumber: Int, measured: Int, was: Int) -> String {
-        "Set \(setNumber): \(measured), not \(was)."
-    }
-
-    /// SAM disagreed and is unsure: "Set 3, was that 7 or 8?"
-    static func whichCount(setNumber: Int, measured: Int, current: Int) -> String {
-        "Set \(setNumber), was that \(measured) or \(current)?"
     }
 }

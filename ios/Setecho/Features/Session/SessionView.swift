@@ -41,7 +41,7 @@ struct SessionView: View {
                     .padding(.vertical, Theme.Space.xs)
             } else {
                 Text("Session over").font(.hudTarget).foregroundStyle(Theme.navy).minimumScaleFactor(0.5)
-                Text("\(engine.session.sets.count) sets logged").font(.hudLabel).secondaryText()
+                Text(sessionOverText(engine)).font(.hudLabel).secondaryText()
             }
 
             HStack(spacing: Theme.Space.m) {
@@ -52,7 +52,8 @@ struct SessionView: View {
             if let last = engine.session.sets.last {
                 HStack(spacing: Theme.Space.s) {
                     Text(lastSetText(last)).font(.hudLabel).foregroundStyle(Theme.navy)
-                    SourceChip(source: last.repCount.source.chipText)
+                    // "Measured" from SAM; "Phone" only as the fallback; "Counting" while SAM works.
+                    SourceChip(source: last.repCount.isCounting ? "Counting" : last.repCount.source.chipText)
                         .scaleEffect(1.3)
                         .padding(.horizontal, Theme.Space.xs)
                 }
@@ -124,9 +125,18 @@ struct SessionView: View {
         return "× \(engine.targetRepsText)"
     }
 
+    /// The count shows once it is settled: while SAM works, the set is the load alone.
     private func lastSetText(_ set: LoggedSet) -> String {
-        var s = "Last: set \(set.setIndex + 1), \(Format.number(set.loadLb)) × \(set.reps)"
+        var s = set.repCount.isCounting ? "Last: set \(set.setIndex + 1), \(Format.load(set.loadLb))"
+                                        : "Last: set \(set.setIndex + 1), \(Format.number(set.loadLb)) × \(set.reps)"
         if let rpe = set.rpe { s += " · RPE \(Format.number(rpe))" }
+        return s
+    }
+
+    /// "12 sets logged · SAM median 24 s": the latency report the human reads off the screen (P1b).
+    private func sessionOverText(_ engine: SessionEngine) -> String {
+        var s = "\(engine.session.sets.count) sets logged"
+        if let median = coordinator.medianCountLatency { s += " · SAM median \(Int(median.rounded())) s" }
         return s
     }
 

@@ -77,10 +77,15 @@ struct RepCount: Codable, Equatable {
     var confidence: Double?
     /// Seconds from the clip's start, one per measured rep.
     var repTimes: [Double]
+    /// How much the reps slowed, 0–100 (SAM; the phone's pose signal as the fallback).
+    var velocityLossPct: Double?
+    /// Reps in reserve estimated from `velocityLossPct`; always shown as "estimated" (P4).
+    var estimatedRIR: Double?
     var status: CountStatus
 
     init(source: RepSource, watch: Int? = nil, watchConfidence: Double? = nil, phone: Int? = nil,
-         measured: Int? = nil, confidence: Double? = nil, repTimes: [Double] = [], status: CountStatus = .done) {
+         measured: Int? = nil, confidence: Double? = nil, repTimes: [Double] = [], velocityLossPct: Double? = nil,
+         estimatedRIR: Double? = nil, status: CountStatus = .done) {
         self.source = source
         self.watch = watch
         self.watchConfidence = watchConfidence
@@ -88,6 +93,8 @@ struct RepCount: Codable, Equatable {
         self.measured = measured
         self.confidence = confidence
         self.repTimes = repTimes
+        self.velocityLossPct = velocityLossPct
+        self.estimatedRIR = estimatedRIR
         self.status = status
     }
 
@@ -112,11 +119,16 @@ enum RepSource: String, Codable {
 }
 
 enum CountStatus: String, Codable {
-    /// The clip is on its way to /sets/count.
+    /// The clip is on its way to /sets/count: SAM is the count of record, so nothing is spoken yet.
     case counting
     case done
     /// Offline or no track: the phone count stands.
     case failed
+}
+
+extension RepCount {
+    /// SAM's answer is still pending and the athlete has not overridden it: the HUD shows "Counting".
+    var isCounting: Bool { status == .counting && source != .spoken && source != .measured }
 }
 
 struct SetEdit: Codable, Equatable {

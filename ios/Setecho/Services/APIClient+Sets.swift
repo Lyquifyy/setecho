@@ -6,22 +6,59 @@ struct CountContext: Codable, Equatable {
     var equipment: Equipment
     var plannedReps: Int?
     var phoneReps: Int?
+    /// warmup, top, backOff or restPause (a rest-pause set gets no velocity loss); nil for a straight set.
+    var setRole: String?
 }
 
 /// /sets/count response (HANDOFF.md §5).
 struct CountResponse: Codable, Equatable {
     var reps: Int?
     var repTimes: [Double]
+    /// Mean lifting speed per rep, px/s at 720p (step 8).
+    var repSpeeds: [Double]
+    /// How much the last two reps slowed against the first two, 0–100; nil under 3 reps or on a rest-pause set (step 9).
+    var velocityLossPct: Double?
     var confidence: Double
     var trackFound: Bool
     var frames: Int
     var trackedFrames: Int
     var prompt: String
+
+    init(reps: Int?, repTimes: [Double], repSpeeds: [Double] = [], velocityLossPct: Double? = nil, confidence: Double,
+         trackFound: Bool, frames: Int, trackedFrames: Int, prompt: String) {
+        self.reps = reps
+        self.repTimes = repTimes
+        self.repSpeeds = repSpeeds
+        self.velocityLossPct = velocityLossPct
+        self.confidence = confidence
+        self.trackFound = trackFound
+        self.frames = frames
+        self.trackedFrames = trackedFrames
+        self.prompt = prompt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case reps, repTimes, repSpeeds, velocityLossPct, confidence, trackFound, frames, trackedFrames, prompt
+    }
+
+    /// A backend from before step 8 sends no speeds; the count still lands.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        reps = try c.decodeIfPresent(Int.self, forKey: .reps)
+        repTimes = try c.decode([Double].self, forKey: .repTimes)
+        repSpeeds = try c.decodeIfPresent([Double].self, forKey: .repSpeeds) ?? []
+        velocityLossPct = try c.decodeIfPresent(Double.self, forKey: .velocityLossPct)
+        confidence = try c.decode(Double.self, forKey: .confidence)
+        trackFound = try c.decode(Bool.self, forKey: .trackFound)
+        frames = try c.decode(Int.self, forKey: .frames)
+        trackedFrames = try c.decode(Int.self, forKey: .trackedFrames)
+        prompt = try c.decode(String.self, forKey: .prompt)
+    }
 }
 
 extension APIClient {
-    /// One set's small silent clip -> SAM's rep count. The clip is 720p at 10 fps; the backend
-    /// forwards it to Meta, deletes it there, and keeps nothing.
+    /// One set's small silent clip -> SAM's rep count and how much the reps slowed. The clip is
+    /// 720p at 15 fps; the backend forwards it to Meta, deletes it there, and keeps nothing.
     func countSet(mp4: Data, context: CountContext) async throws -> CountResponse {
         var request = URLRequest(url: baseURL.appendingPathComponent("/sets/count"))
         request.httpMethod = "POST"

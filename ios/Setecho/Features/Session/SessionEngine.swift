@@ -5,9 +5,11 @@ import Observation
 /// microphone and speech live in services that feed it events, so every rule is unit-tested.
 ///
 /// Logging rule: load comes from the plan, or the last spoken override for that exercise. Reps
-/// follow the rep-counting rules: what the athlete said, else the phone's instant count, else the
-/// plan; SAM's measured count arrives during rest and corrects the log when it is confident. RPE
-/// is spoken. Every voice action is echoed and can be undone.
+/// follow the rep-counting rules (HANDOFF.md §7): SAM is the count of record on a tripod set, so
+/// the set-end line carries no number and the count is said during rest when SAM answers. The
+/// phone's own count is a silent fallback, spoken only if SAM fails or has not answered 60 s after
+/// the set ended, and replaced when SAM lands. What the athlete said ("that was 7") beats both.
+/// RPE is spoken. Every voice action is echoed and can be undone.
 @MainActor
 @Observable
 final class SessionEngine {
@@ -34,14 +36,31 @@ final class SessionEngine {
         var echo: String?
         var askBack: String?
         static let none = Outcome()
+
+        /// Two outcomes in one breath: the speeches in order, the later echo and ask-back.
+        func merged(with other: Outcome) -> Outcome {
+            let speeches = [speech, other.speech].compactMap { $0 }
+            return Outcome(speech: speeches.isEmpty ? nil : speeches.joined(separator: " "),
+                           echo: other.echo ?? echo, askBack: other.askBack ?? askBack)
+        }
     }
 
-    /// "Set 3, was that 7 or 8?" waiting for a spoken number.
+    /// "Set 3, was that 7?" waiting for a yes, a no or a number.
     struct PendingQuestion: Equatable {
         var setId: UUID
         var measured: Int
         var current: Int
     }
+
+    /// A set SAM is still counting: when it ended, and whether a number has been said for it yet.
+    struct PendingCount: Equatable {
+        var setId: UUID
+        var endedAt: Date
+        var spoken: Bool
+    }
+
+    /// SAM silent for this long after a set ends: the phone's count is spoken (HANDOFF.md §7).
+    static let fallbackSeconds: TimeInterval = 60
 
     let day: ProgramDay
     let weekNumber: Int
@@ -59,6 +78,10 @@ final class SessionEngine {
     private(set) var undoStack: [UndoEntry] = []
     /// Measured counts that arrived during a set, applied at the next rest. Never spoken mid-set.
     private(set) var heldMeasurements: [(setId: UUID, response: CountResponse)] = []
+    /// Sets whose SAM count is pending, oldest first.
+    private(set) var pendingCounts: [PendingCount] = []
+    /// Seconds from each set's end to SAM's result, for the latency report (HANDOFF.md §9, P1b).
+    private(set) var countLatencies: [TimeInterval] = []
     private var recordingStartedAt: Date?
     private var stateBeforePause: State = .ready
     private var repsOverrideForCurrentSet: Int?
@@ -150,7 +173,8 @@ final class SessionEngine {
     }
 
     /// The bar stopped (or the athlete said "done"). Logs the set: what was said, else the phone's
-    /// count, else the plan. `willMeasure` marks the count as pending SAM's answer.
+    /// count, else the plan. `willMeasure` means a clip is on its way to SAM: the count is then
+    /// pending, the set-end line says no number, and SAM's answer is spoken during rest.
     @discardableResult
     func setEnded(at now: Date = .now, phone: RepCounter.Result? = nil, willMeasure: Bool = false) -> Outcome {
         guard state == .recording, let exercise = currentExercise, let planned = currentPlannedSet else { return .none }
@@ -191,18 +215,24 @@ final class SessionEngine {
         recordingStartedAt = nil
 
         advance()
-        let callout = Callout.setDone(setNumber: doneNumber, reps: source == .plan ? nil : reps, shortBy: shortBy,
+        let callout: String
+        if willMeasure, source != .spoken {
+            // SAM is the count of record: no number until it answers, or 60 s pass.
+            pendingCounts.append(PendingCount(setId: logged.id, endedAt: now, spoken: false))
+            callout = Callout.setDone(setNumber: doneNumber, restSeconds: rest, sessionOver: isComplete)
+        } else {
+            callout = Callout.setDone(setNumber: doneNumber, reps: source == .plan ? nil : reps, shortBy: shortBy,
                                       next: nextTarget, restSeconds: rest)
+        }
         lastCallout = callout
         state = isComplete ? .ended : .rest(remaining: rest)
         if isComplete { session.endedAt = now }
-        var outcome = Outcome(speech: callout, echo: "Set \(doneNumber) saved: \(Format.number(logged.loadLb)) × \(reps)")
-        // Measured counts that arrived mid-set are spoken now, during rest.
+        let saved = willMeasure && source != .spoken ? "Set \(doneNumber) saved: \(Format.number(logged.loadLb)) lb, counting"
+                                                    : "Set \(doneNumber) saved: \(Format.number(logged.loadLb)) × \(reps)"
+        var outcome = Outcome(speech: callout, echo: saved)
+        // Measured counts that arrived mid-set land now, during rest, and are mentioned only if they matter.
         for held in heldMeasurements {
-            let late = applyMeasured(setId: held.setId, held.response, now: now)
-            if let speech = late.speech { outcome.speech = [outcome.speech, speech].compactMap { $0 }.joined(separator: " ") }
-            if let echo = late.echo { outcome.echo = echo }
-            if let ask = late.askBack { outcome.askBack = ask }
+            outcome = outcome.merged(with: applyMeasured(setId: held.setId, held.response, now: now, late: true))
         }
         heldMeasurements.removeAll()
         return outcome
@@ -215,61 +245,139 @@ final class SessionEngine {
 
     // MARK: Measured counts (HANDOFF.md §7, Rep counting)
 
-    /// SAM's count came back. During a set it is held; otherwise: same number, the chip changes
-    /// and nothing is said; different and confident, the log changes (undoable) and it is said;
-    /// different and unsure, the athlete is asked. "That was N" always wins.
+    /// SAM's count came back. During a set it is held and lands at the next rest. Otherwise, with
+    /// confidence 0.6 or more it is logged as Measured and said with the next target; under 0.6 the
+    /// athlete is asked "Set 3, was that 8?"; a count already spoken (the 60 s fallback) is replaced
+    /// and mentioned only if it changed. "That was N" always wins and SAM's number is just recorded.
     @discardableResult
     func measured(setId: UUID, _ response: CountResponse, now: Date = .now) -> Outcome {
+        if let set = session.sets.first(where: { $0.id == setId }) {
+            countLatencies.append(max(0, now.timeIntervalSince(set.endedAt)))
+        }
         if state == .recording {
             heldMeasurements.append((setId, response))
             return .none
         }
-        return applyMeasured(setId: setId, response, now: now)
+        return applyMeasured(setId: setId, response, now: now, late: false)
     }
 
-    private func applyMeasured(setId: UUID, _ response: CountResponse, now: Date) -> Outcome {
+    private func applyMeasured(setId: UUID, _ response: CountResponse, now: Date, late: Bool) -> Outcome {
         guard let i = session.sets.firstIndex(where: { $0.id == setId }) else { return .none }
+        let late = late || session.sets.last?.id != setId
         var set = session.sets[i]
         set.repCount.measured = response.reps
         set.repCount.confidence = response.confidence
         set.repCount.repTimes = response.repTimes
+        set.repCount.velocityLossPct = response.velocityLossPct
+        let pending = pendingCounts.first { $0.setId == setId }
+        pendingCounts.removeAll { $0.setId == setId }
+        let unspoken = pending.map { !$0.spoken } ?? false
+        let number = set.setIndex + 1
         guard response.trackFound, let measured = response.reps else {
+            // No track: the phone's count stands, and it is said now if nothing has been.
             set.repCount.status = .failed
             session.sets[i] = set
-            return .none
+            return unspoken ? speakFallback(at: i) : .none
         }
         set.repCount.status = .done
-        let number = set.setIndex + 1
         if set.repCount.source == .spoken {
             session.sets[i] = set
             return .none
         }
-        if measured == set.reps {
+        let current = set.reps
+        if measured == current {
             set.repCount.source = .measured
             session.sets[i] = set
-            return .none
+            return unspoken ? speakCount(at: i, late: late) : .none
         }
         if response.confidence >= RepCount.confidentThreshold {
-            let old = set.reps
             let oldSource = set.repCount.source
             set.reps = measured
             set.repCount.source = .measured
-            set.edits.append(SetEdit(at: now, field: "reps", from: "\(old)", to: "\(measured)", transcript: "measured"))
+            set.edits.append(SetEdit(at: now, field: "reps", from: "\(current)", to: "\(measured)", transcript: "measured"))
             session.sets[i] = set
-            undoStack.append(UndoEntry(action: .measured(setId: setId, oldReps: old, oldSource: oldSource), description: "measured count"))
-            lastEcho = "Set \(number) → \(measured) reps (measured)"
-            return Outcome(speech: Callout.measuredCorrection(setNumber: number, measured: measured, was: old),
-                           echo: "Set \(number) → \(measured) reps (measured). Say undo to revert.")
+            undoStack.append(UndoEntry(action: .measured(setId: setId, oldReps: current, oldSource: oldSource), description: "measured count"))
+            if unspoken { return speakCount(at: i, late: late) }
+            lastEcho = "Set \(number) updated: \(measured) reps (measured)"
+            return Outcome(speech: Callout.updated(setNumber: number, reps: measured),
+                           echo: "Set \(number) updated: \(measured) reps (measured). Say undo to revert.")
         }
+        // Unsure: ask. A yes logs it as Measured, a number as You said, and no answer keeps the current count.
         session.sets[i] = set
-        pendingQuestion = PendingQuestion(setId: setId, measured: measured, current: set.reps)
-        let ask = Callout.whichCount(setNumber: number, measured: measured, current: set.reps)
+        pendingQuestion = PendingQuestion(setId: setId, measured: measured, current: current)
+        let ask = Callout.confirmCount(setNumber: number, reps: measured)
         return Outcome(speech: ask, askBack: ask)
     }
 
-    /// The clip never reached the backend: the phone count stands.
-    func countFailed(setId: UUID) {
-        if let i = session.sets.firstIndex(where: { $0.id == setId }) { session.sets[i].repCount.status = .failed }
+    /// The clip never reached the backend: the phone count stands, and is said now if nothing has
+    /// been said about the set (or at the next rest, if a set is under way).
+    @discardableResult
+    func countFailed(setId: UUID) -> Outcome {
+        guard let i = session.sets.firstIndex(where: { $0.id == setId }) else { return .none }
+        session.sets[i].repCount.status = .failed
+        guard let k = pendingCounts.firstIndex(where: { $0.setId == setId }), state != .recording else { return .none }
+        let unspoken = !pendingCounts[k].spoken
+        pendingCounts.remove(at: k)
+        return unspoken ? speakFallback(at: i) : .none
+    }
+
+    /// One second passed. A set SAM has not answered within 60 s of its end, or whose upload
+    /// failed during the next set, gets the phone's count spoken now. Never during a set.
+    @discardableResult
+    func tick(now: Date) -> Outcome {
+        guard state != .recording else { return .none }
+        var outcome = Outcome.none
+        for k in pendingCounts.indices where !pendingCounts[k].spoken {
+            let p = pendingCounts[k]
+            let failed = session.sets.first { $0.id == p.setId }?.repCount.status == .failed
+            guard failed || now.timeIntervalSince(p.endedAt) >= Self.fallbackSeconds else { continue }
+            pendingCounts[k].spoken = true
+            if let i = session.sets.firstIndex(where: { $0.id == p.setId }) {
+                outcome = outcome.merged(with: speakFallback(at: i))
+            }
+        }
+        pendingCounts.removeAll { p in session.sets.first { $0.id == p.setId }?.repCount.status == .failed }
+        return outcome
+    }
+
+    /// The count in the log, said once it is settled: with the next target when the set is the last
+    /// one logged, else as a late mention.
+    private func speakCount(at i: Int, late: Bool) -> Outcome {
+        let set = session.sets[i]
+        let number = set.setIndex + 1
+        let measured = set.repCount.source == .measured
+        let chip = set.repCount.source.chipText
+        if late {
+            lastEcho = "Set \(number): \(set.reps) reps (\(chip))"
+            return Outcome(speech: Callout.lateCount(setNumber: number, reps: set.reps, measured: measured), echo: lastEcho)
+        }
+        let planned = plannedSet(for: set)
+        let shortBy = max(0, (planned?.repsMin ?? planned?.reps ?? 0) - set.reps)
+        lastEcho = "Set \(number): \(set.reps) reps (\(chip))"
+        return Outcome(speech: Callout.counted(reps: set.reps, measured: measured, shortBy: shortBy, next: nextTarget), echo: lastEcho)
+    }
+
+    /// SAM is late or failed: the phone's count, if there is one, else just the next target.
+    private func speakFallback(at i: Int) -> Outcome {
+        let set = session.sets[i]
+        let late = session.sets.last?.id != set.id
+        if set.repCount.source == .phone { return speakCount(at: i, late: late) }
+        guard !late, let next = nextTarget else { return .none }
+        lastEcho = "Set \(set.setIndex + 1): \(set.reps) reps (Plan)"
+        return Outcome(speech: Callout.nextLine(next), echo: lastEcho)
+    }
+
+    private func plannedSet(for set: LoggedSet) -> PlannedSet? {
+        guard let ex = day.exercises.first(where: { $0.id == set.exerciseId }), ex.sets.indices.contains(set.setIndex) else { return nil }
+        return ex.sets[set.setIndex]
+    }
+
+    /// The median seconds from set end to SAM's result this session, for the latency report.
+    var medianCountLatency: TimeInterval? {
+        guard !countLatencies.isEmpty else { return nil }
+        let sorted = countLatencies.sorted()
+        let n = sorted.count
+        return n % 2 == 1 ? sorted[n / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2
     }
 
     private var nextTarget: Callout.NextSet? {
@@ -321,11 +429,21 @@ final class SessionEngine {
     @discardableResult
     func apply(_ response: VoiceCommandResponse, now: Date = .now) -> Outcome {
         let intent = response.intent
-        // A number answers "was that 7 or 8?"; any other command lets the question lapse.
-        if let question = pendingQuestion {
-            if let n = intent.number, intent.intent == .answer || intent.intent == .reps, intent.confidence >= VoiceIntent.actThreshold {
+        // "Set 3, was that 8?": yes logs SAM's count as Measured, a number is the athlete's word, no
+        // keeps the current count. Any other command lets the question lapse with the count unchanged.
+        if let question = pendingQuestion, intent.confidence >= VoiceIntent.actThreshold {
+            if let n = intent.number, intent.intent == .answer || intent.intent == .reps {
                 pendingQuestion = nil
                 return answerQuestion(question, with: Int(n), transcript: response.transcript, now: now)
+            }
+            if intent.intent == .yes {
+                pendingQuestion = nil
+                return acceptMeasured(question, transcript: response.transcript, now: now)
+            }
+            if intent.intent == .no {
+                pendingQuestion = nil
+                lastEcho = "Set \(setNumber(of: question.setId)) stays at \(question.current) reps"
+                return Outcome(speech: "Keeping \(question.current).", echo: lastEcho)
             }
             if intent.isActionable { pendingQuestion = nil }
         }
@@ -414,6 +532,7 @@ final class SessionEngine {
     private func spokenReps(at index: Int, _ n: Int, transcript: String, now: Date) -> Outcome {
         let old = session.sets[index].reps
         let oldSource = session.sets[index].repCount.source
+        pendingCounts.removeAll { $0.setId == session.sets[index].id }
         session.sets[index].reps = n
         session.sets[index].repCount.source = .spoken
         session.sets[index].edits.append(SetEdit(at: now, field: "reps", from: "\(old)", to: "\(n)", transcript: transcript))
@@ -426,12 +545,30 @@ final class SessionEngine {
         return spokenReps(at: i, n, transcript: transcript, now: now)
     }
 
+    /// "Yes" to "was that 7?": SAM's count goes in the log as Measured.
+    private func acceptMeasured(_ question: PendingQuestion, transcript: String, now: Date) -> Outcome {
+        guard let i = session.sets.firstIndex(where: { $0.id == question.setId }) else { return .none }
+        let old = session.sets[i].reps
+        let oldSource = session.sets[i].repCount.source
+        session.sets[i].reps = question.measured
+        session.sets[i].repCount.source = .measured
+        session.sets[i].edits.append(SetEdit(at: now, field: "reps", from: "\(old)", to: "\(question.measured)", transcript: transcript))
+        undoStack.append(UndoEntry(action: .measured(setId: question.setId, oldReps: old, oldSource: oldSource), description: "measured count"))
+        let number = session.sets[i].setIndex + 1
+        return echo("Set \(number) → \(question.measured) reps (measured)", speech: Callout.repsLogged(question.measured, setNumber: number))
+    }
+
+    private func setNumber(of setId: UUID) -> Int {
+        (session.sets.first { $0.id == setId }?.setIndex ?? 0) + 1
+    }
+
     /// Revert the last action and say what was reverted.
     @discardableResult
     func undo() -> Outcome {
         guard let entry = undoStack.popLast() else { return say("Nothing to undo.") }
         switch entry.action {
         case .loggedSet(let id):
+            pendingCounts.removeAll { $0.setId == id }
             if let i = session.sets.firstIndex(where: { $0.id == id }) {
                 let set = session.sets.remove(at: i)
                 if let exIndex = day.exercises.firstIndex(where: { $0.id == set.exerciseId }) {

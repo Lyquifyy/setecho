@@ -3,7 +3,8 @@ import Observation
 
 /// Wires the session together: the engine decides, the audio service listens and speaks, the set
 /// detector watches the bar and counts, the backend reads commands and measures reps from the
-/// clip, the store keeps the result.
+/// clip (SAM is the count of record; the phone's count is the silent fallback), the store keeps
+/// the result.
 @MainActor
 @Observable
 final class SessionCoordinator {
@@ -20,7 +21,8 @@ final class SessionCoordinator {
 
     private let api: APIClient
     private let store: Store
-    private var restTask: Task<Void, Never>?
+    /// One tick a second: the rest countdown, and the 60 s fallback when SAM is late (HANDOFF.md §7).
+    private var clockTask: Task<Void, Never>?
     private var echoTask: Task<Void, Never>?
     private var cameraOn = false
     /// The set the camera is filming, by its real start on the capture clock.
@@ -71,6 +73,7 @@ final class SessionCoordinator {
             Task { await self?.handle(utterance) }
         }
         audio.startListening()
+        startClock()
         if camera {
             cameraOn = true
             detector.onSetStart = { [weak self] start in self?.cameraSetStarted(at: start) }
@@ -115,7 +118,7 @@ final class SessionCoordinator {
     private func finish() {
         guard !didSave else { return }
         didSave = true
-        restTask?.cancel()
+        clockTask?.cancel()
         detector.stop()
         audio.stopListening()
         save()
@@ -146,7 +149,7 @@ final class SessionCoordinator {
         guard let setId = setsAwaitingClips.removeValue(forKey: clips.setStart) else { return }
         if let clip = clips.clipFile { engine.attachClip(setId: setId, file: clip) }
         guard let countFile = clips.countFile else {
-            engine.countFailed(setId: setId)
+            show(engine.countFailed(setId: setId))
             return
         }
         Task { await upload(countFile: countFile, for: setId) }
@@ -160,12 +163,13 @@ final class SessionCoordinator {
               let set = engine.session.sets.first(where: { $0.id == setId }),
               let exercise = engine.day.exercises.first(where: { $0.id == set.exerciseId })
         else {
-            engine.countFailed(setId: setId)
+            show(engine.countFailed(setId: setId))
             return
         }
         let planned = exercise.sets.indices.contains(set.setIndex) ? exercise.sets[set.setIndex] : nil
         let context = CountContext(exerciseId: set.exerciseId, equipment: exercise.equipment,
-                                   plannedReps: planned?.reps ?? planned?.repsMin, phoneReps: set.repCount.phone)
+                                   plannedReps: planned?.reps ?? planned?.repsMin, phoneReps: set.repCount.phone,
+                                   setRole: nil)
         countsInFlight += 1
         defer { countsInFlight -= 1 }
         for (attempt, delay) in ([0.0] + Self.uploadRetryDelays).enumerated() {
@@ -173,7 +177,7 @@ final class SessionCoordinator {
             guard !didSave || attempt == 0 else { break } // the session is over: stop retrying
             do {
                 let response = try await api.countSet(mp4: data, context: context)
-                let outcome = engine.measured(setId: setId, response)
+                let outcome = engine.measured(setId: setId, response, now: .now)
                 show(outcome)
                 if didSave { save() }
                 return
@@ -183,28 +187,33 @@ final class SessionCoordinator {
                 continue
             }
         }
-        engine.countFailed(setId: setId)
+        show(engine.countFailed(setId: setId))
         if didSave { save() }
     }
 
+    /// Median seconds from set end to SAM's result this session (HANDOFF.md §9, P1b latency report).
+    var medianCountLatency: TimeInterval? { engine.medianCountLatency }
+
     private func afterStateChange() {
-        if case .rest = engine.state { startRestTimer() }
         if engine.state == .ended { finish() }
         if engine.state == .ready { Task { await playCueIfDue() } }
     }
 
-    private func startRestTimer() {
-        restTask?.cancel()
-        restTask = Task { [weak self] in
+    /// The session clock: every second, the rest countdown ticks, and a set SAM has not answered
+    /// within 60 s gets the phone's count spoken.
+    private func startClock() {
+        clockTask?.cancel()
+        clockTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
-                guard let self else { return }
-                guard case .rest = self.engine.state else { return }
-                let outcome = self.engine.tickRest()
-                if outcome != .none {
-                    self.show(outcome)
+                guard let self, !self.didSave else { return }
+                let rest = self.engine.tickRest()
+                if rest != .none {
+                    self.show(rest)
                     if self.engine.state == .ready { await self.playCueIfDue() }
                 }
+                let fallback = self.engine.tick(now: .now)
+                if fallback != .none { self.show(fallback) }
             }
         }
     }
