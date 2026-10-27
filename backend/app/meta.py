@@ -195,7 +195,7 @@ async def segment_video(file_id: str, prompt_text: str):
     """
     from meta_sam_parser import parse_responses_stream, video_segmentation_format
 
-    events = await aclient().responses.create(
+    stream = await aclient().responses.create(
         model=SAM_MODEL,
         input=[
             {
@@ -210,6 +210,16 @@ async def segment_video(file_id: str, prompt_text: str):
         stream=True,
         metadata={"mask_encoding": "one_bit"},
     )
-    parsed = parse_responses_stream(events, video_segmentation_format())
+    # Drain the stream first and parse afterwards. Parsing thousands of mask records while the
+    # stream is open made a small server a slow consumer, and the stream died before the end.
+    buffered: list[Any] = []
+    async for event in stream:
+        buffered.append(event)
+
+    async def replay():
+        for event in buffered:
+            yield event
+
+    parsed = parse_responses_stream(replay(), video_segmentation_format())
     final = parsed.final_result
     return await (final() if callable(final) else final)
