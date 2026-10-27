@@ -2,7 +2,7 @@
 
 Setecho takes the manual work out of a coached bodybuilding prep. Sets log and count themselves, check-in photos take themselves, the weekly WhatsApp check-in is half written before the athlete says a word, and the coach's reply updates the plan. Built for the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026, indie track).
 
-Plan of record: "Setecho hackathon build plan" (Claude Docs), which holds the schedule, gates, cut list and check-in field map. The older "Meta Hackathon Build Plan" (Chalkline) is superseded. If this file and the plan disagree, the plan wins.
+Plan of record: "Setecho hackathon build plan" (Claude Docs), which holds the schedule, gates, cut list and check-in field map. If this file and the plan disagree, the plan wins.
 
 **Read `HANDOFF.md` before building anything.** It has the architecture, API contract, Meta API details, milestones and acceptance checks. **UI work: read `DESIGN.md` first.** The design system (tokens, type, components, brand assets) is built. Build the screens listed in DESIGN.md using only those components and tokens.
 
@@ -16,7 +16,7 @@ Plan of record: "Setecho hackathon build plan" (Claude Docs), which holds the sc
   - `Setecho/Assets.xcassets` holds the app icon, lockup, logo and wordmark. `TabCoach` is unused; delete it.
   - `Setecho/App/` holds placeholder tabs (Today / History / Check-in). Replace them with the real screens.
 - `watch/`: the Garmin watch app (Monkey C, Connect IQ) for the Venu 4. Motion, haptics and messages to the phone only. `make watch` / `make watch-sim`.
-- `design/` holds the approved boards and brand files. It's read-only for agents.
+- `design/` holds the approved boards and brand files, **local only**: it's gitignored and never committed (HANDOFF §11). Read it for reference; never add it to git or link it from the README.
 
 ## Commands
 - `make test`: offline backend tests. Must pass before every commit.

@@ -48,7 +48,7 @@ Built on Oct 26 (commits up to `7596d21`). **None of it has been used in a real 
 | `ios/project.yml` | XcodeGen. iOS 26, Swift 6 (strict concurrency), bundle id `com.getsetecho.app`. Never edit the `.xcodeproj`. `make testflight` uploads a build. |
 | `backend/app/` | `/health`, `/import/program` (incl. Google Sheets links), `/import/form`, `/voice/command`, `/photos/segment`, `/checkin/draft`, `/checkin/answer`, `/checkin/render`. `meta.py` is the only Meta client. |
 | Deploy | Fly app `setecho-api` at `https://setecho-api.fly.dev` (README, "Deploy the backend"). |
-| `design/` | Approved boards and brand files. Read-only. |
+| `design/` | Approved boards and brand files, **local only**: gitignored and never committed (§11). Read-only. |
 
 **Not built yet:** rep counting, the coach reply loop and voice cues, the Garmin watch app, and the stretch items. §9 has the order.
 
@@ -672,6 +672,7 @@ In the order above. Specs:
 
 ### P9 — Submit (Wed Nov 4)
 - [ ] The README states what was built during Oct 26 – Nov 4 and which Meta model does what.
+- [ ] `design/` purged from git history (§11), with the human's go-ahead, before the first push.
 - [ ] Repo flipped public. Video and write-up submitted by 9:00 PM ET. The human edits the video.
 
 ---
@@ -700,6 +701,12 @@ In the order above. Specs:
   - API keys, `.env` files or `Local.xcconfig`
 - `.gitignore` already blocks clips, `.env` and `Local.xcconfig`. Add `*.wav`, `*.opus`, `*.ogg`, `*.m4a`, `*.jpg` outside `design/`, and `ios/Probes/output/`.
 - **Fixtures use synthetic values.** The form fixture keeps the coach's field labels, with placeholder numbers for macro targets and supplement doses.
+- **`design/` stays out of the repo (decided Oct 27).** It's local reference only.
+  - **Now, in its own commit:** add `design/` to `.gitignore`, drop the `!design/**` exceptions, and run `git rm -r --cached design`. The files stay on disk for reference.
+  - **The README and docs must not link anything under `design/`.** The repo goes public. If the README needs an image, use a screenshot of the real app taken after kickoff, kept in `docs/`.
+  - **Why:** it holds working files and references, not product code, and only work from after the kickoff cutoff (12:24 PM ET, Oct 26) belongs in the submitted repo.
+  - **History:** the folder is already in history from `6fc246f`. In P9, before the first push and only with the human's go-ahead, purge it with `git filter-repo --invert-paths --path design/`, which keeps commit dates.
+  - **The app's logo, wordmark and icon** in `ios/Setecho/Assets.xcassets` stay.
 - Photos go to Meta only through `/photos/segment`, set clips only through `/sets/count` (downscaled, no audio), and the coach's voice notes only through `/coach/reply`. All Standard tier: gyms have bystanders. Cut cue clips of the coach's voice stay on the phone, under `media/cues/`. Withings tokens live in the Keychain, never on the backend or in the repo.
 
 ## 12. Things only the human can do
