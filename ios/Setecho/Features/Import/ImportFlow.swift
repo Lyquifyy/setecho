@@ -186,7 +186,8 @@ private struct ProgramReviewView: View {
                 TitleBlock(
                     eyebrow: "Import · step 1 of 2",
                     title: program.name,
-                    subtitle: "\(program.weeks.count) weeks · \(program.exerciseCount) exercises. Check it against the sheet."
+                    subtitle: "\(program.weeks.count) week\(program.weeks.count == 1 ? "" : "s") · "
+                        + "\(program.exerciseCount) exercise\(program.exerciseCount == 1 ? "" : "s"). Check it against the sheet."
                 )
                 if !program.flags.isEmpty {
                     SectionCard("Needs a look", accessory: { TargetTag(text: "Confirm") }) {
