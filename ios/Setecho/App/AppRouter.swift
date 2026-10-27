@@ -10,4 +10,5 @@ final class AppRouter {
 
     var tab: Tab = .today
     var showImport = false
+    var showSettings = false
 }

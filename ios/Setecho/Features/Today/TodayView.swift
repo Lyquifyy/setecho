@@ -4,6 +4,7 @@ import SwiftUI
 struct TodayView: View {
     @Environment(Store.self) private var store
     @State private var showSession = false
+    @State private var showPhotos = false
     private let schedule = CheckInSchedule()
 
     var body: some View {
@@ -38,6 +39,9 @@ struct TodayView: View {
                 SessionView(day: next.day, weekNumber: next.week.number, store: store)
             }
         }
+        .fullScreenCover(isPresented: $showPhotos) {
+            PhotoSessionView(store: store).environment(store)
+        }
     }
 
     private var checkInCard: some View {
@@ -65,7 +69,7 @@ struct TodayView: View {
             LabeledValue("Last taken", store.lastPhotoSet.map { Format.shortDate($0.takenAt) } ?? "Not yet")
             CardDivider()
             LabeledValue("Next due", Format.shortDate(due))
-            Text("The hands-free photo session arrives in M4.").font(.footnote).secondaryText()
+            LinkButton(title: "Take photos") { showPhotos = true }
         }
     }
 }

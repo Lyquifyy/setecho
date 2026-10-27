@@ -11,42 +11,22 @@ struct RootView: View {
                 NavigationStack { TodayView() }
             }
             Tab("History", systemImage: "list.bullet.rectangle", value: AppRouter.Tab.history) {
-                NavigationStack {
-                    PlaceholderScreen(title: "History",
-                                      sections: "This week / Previous sessions / Sent check-ins / Photos")
-                }
+                NavigationStack { HistoryView() }
             }
             Tab("Check-in", systemImage: "checklist", value: AppRouter.Tab.checkIn) {
-                NavigationStack {
-                    PlaceholderScreen(title: "Check-in",
-                                      sections: "Wrap-up / The coach's form, field by field")
-                }
+                NavigationStack { CheckInView(store: store) }
             }
         }
         .tint(Theme.cobalt)
         .sheet(isPresented: $router.showImport) {
             ImportFlow().environment(store)
         }
+        .sheet(isPresented: $router.showSettings) {
+            SettingsView()
+        }
         .sheet(isPresented: Bindable(ProbesPresenter.shared).isShown) {
             NavigationStack { ProbeHomeView() }
                 .tint(Theme.cobalt)
-        }
-    }
-}
-
-private struct PlaceholderScreen: View {
-    let title: String
-    let sections: String
-
-    var body: some View {
-        ScreenScaffold {
-            TitleBlock(title: title)
-            SectionCard("Not built yet") {
-                Text("Sections: \(sections)").font(.body).foregroundStyle(Theme.navy)
-                CardDivider()
-                Text("Spec: DESIGN.md, Screens. Look: design/cobalt-cards/screens/.")
-                    .font(.subheadline).secondaryText()
-            }
         }
     }
 }

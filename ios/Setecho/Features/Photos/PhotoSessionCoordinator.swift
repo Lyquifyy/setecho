@@ -1,0 +1,190 @@
+import Foundation
+import Observation
+import UIKit
+
+/// The hands-free photo session (DESIGN.md Photo session, HANDOFF.md §7): speak the pose, wait
+/// until the athlete is framed and still, capture, say "Got it", move on. Then align each still
+/// through /photos/segment against the reference week, build the collage and save the set.
+@MainActor
+@Observable
+final class PhotoSessionCoordinator {
+    enum Phase: Equatable {
+        case starting
+        case posing(Pose)
+        case aligning
+        case review
+        case failed(String)
+    }
+
+    private(set) var phase: Phase = .starting
+    private(set) var captured: [Pose: Data] = [:]
+    private(set) var thumbnails: [Pose: UIImage] = [:]
+    private(set) var cue: String?
+    private(set) var photoSet: PhotoSet?
+    private(set) var collage: UIImage?
+    private(set) var alignmentNotes: [String] = []
+
+    let capture = PhotoCapture()
+    let audio = AudioService()
+    private let store: Store
+    private let api: APIClient
+    private var loop: Task<Void, Never>?
+    private var lastCueAt: Date = .distantPast
+    private var cancelled = false
+
+    init(store: Store, api: APIClient = APIClient()) {
+        self.store = store
+        self.api = api
+    }
+
+    var currentPose: Pose? {
+        if case .posing(let pose) = phase { return pose }
+        return nil
+    }
+
+    var slots: [(pose: Pose, slot: PoseSlots.Slot)] {
+        Pose.allCases.map { pose in
+            if captured[pose] != nil { return (pose, .captured(thumbnails[pose])) }
+            if currentPose == pose { return (pose, .current) }
+            return (pose, .empty)
+        }
+    }
+
+    /// Last week's mask for the current pose, as the faint alignment outline.
+    var outlineImage: UIImage? {
+        guard let pose = currentPose, let last = store.lastPhotoSet, let file = last.photo(for: pose)?.maskFile,
+              let data = try? Data(contentsOf: store.mediaDirectory.appendingPathComponent(file))
+        else { return nil }
+        return UIImage(data: data)
+    }
+
+    // MARK: Run
+
+    func start() async {
+        guard loop == nil else { return }
+        guard await PhotoCapture.requestCamera() else {
+            phase = .failed("Camera access is needed for the photo session.")
+            return
+        }
+        _ = await audio.requestMicrophone()
+        audio.configure()
+        capture.start()
+        if let error = capture.lastError {
+            phase = .failed(error)
+            return
+        }
+        loop = Task { await run() }
+    }
+
+    func cancel() {
+        cancelled = true
+        loop?.cancel()
+        capture.stop()
+        audio.stopSpeaking()
+    }
+
+    private func run() async {
+        for pose in Pose.allCases {
+            guard !cancelled else { return }
+            phase = .posing(pose)
+            capture.resetStillness()
+            await audio.speak(pose.spokenCue)
+            guard await waitUntilStill() else { return }
+            do {
+                let data = try await capture.capture()
+                captured[pose] = data
+                thumbnails[pose] = UIImage(data: data).map { Self.thumbnail($0) }
+                await audio.speak("Got it")
+            } catch {
+                phase = .failed("Capture failed: \(error.localizedDescription)")
+                return
+            }
+        }
+        capture.stop()
+        phase = .aligning
+        await audio.speak("All four. Lining them up.")
+        await align()
+    }
+
+    /// Framing cues at most every 3 s, then capture when still for 1.2 s. False if cancelled.
+    private func waitUntilStill() async -> Bool {
+        while !cancelled {
+            try? await Task.sleep(for: .milliseconds(100))
+            if Task.isCancelled { return false }
+            let framing = capture.framing
+            if framing != .good {
+                cue = framing.spoken
+                if let line = framing.spoken, Date.now.timeIntervalSince(lastCueAt) > 3 {
+                    lastCueAt = .now
+                    await audio.speak(line)
+                }
+                continue
+            }
+            cue = capture.stillness.isStill ? nil : "Hold still"
+            if capture.stillness.isStill { return true }
+        }
+        return false
+    }
+
+    // MARK: Align and save
+
+    private func align() async {
+        let setId = UUID()
+        let reference = store.referencePhotoSet
+        var poses: [PosePhoto] = []
+        var tiles: [Pose: UIImage] = [:]
+        for pose in Pose.allCases {
+            guard let jpeg = captured[pose] else { continue }
+            let prefix = "pose-\(setId.uuidString.prefix(8))-\(pose.rawValue)"
+            let file = "\(prefix).jpg"
+            let alignedFile = "\(prefix)-aligned.jpg"
+            let maskFile = "\(prefix)-mask.png"
+            do {
+                try jpeg.write(to: store.mediaDirectory.appendingPathComponent(file))
+                let referenceFraction = reference?.photo(for: pose)?.bodyFraction
+                let result = try await api.segment(jpeg: jpeg, referenceFraction: referenceFraction)
+                guard let aligned = PhotoAlign.crop(jpeg: jpeg, to: result.cropRect) else {
+                    throw APIError(status: 0, message: "Could not crop \(pose.title)")
+                }
+                try aligned.write(to: store.mediaDirectory.appendingPathComponent(alignedFile))
+                if let mask = result.maskData {
+                    try mask.write(to: store.mediaDirectory.appendingPathComponent(maskFile))
+                }
+                if result.clamped { alignmentNotes.append("\(pose.title): stood too close or off-centre; cropped as far as possible.") }
+                poses.append(PosePhoto(pose: pose, file: file, bodyBox: result.boxRect, alignedFile: alignedFile,
+                                       cropRect: result.cropRect, maskFile: result.maskData == nil ? nil : maskFile))
+                if let image = UIImage(data: aligned) { tiles[pose] = image }
+            } catch {
+                phase = .failed("\(pose.title): \(error.localizedDescription)")
+                return
+            }
+        }
+        let collageImage = PhotoAlign.collage(tiles)
+        let collageFile = "collage-\(setId.uuidString.prefix(8)).jpg"
+        guard let collageData = collageImage.jpegData(compressionQuality: 0.9) else {
+            phase = .failed("Could not build the collage")
+            return
+        }
+        do {
+            try collageData.write(to: store.mediaDirectory.appendingPathComponent(collageFile))
+        } catch {
+            phase = .failed("Could not save the collage: \(error.localizedDescription)")
+            return
+        }
+        let set = PhotoSet(id: setId, takenAt: .now, poses: poses, collageFile: collageFile)
+        store.upsert(photoSet: set)
+        photoSet = set
+        collage = collageImage
+        phase = .review
+        await audio.speak("Done. Your collage is ready.")
+    }
+
+    private static func thumbnail(_ image: UIImage) -> UIImage {
+        let target = CGSize(width: 150, height: 200)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: target, format: format).image { _ in
+            image.draw(in: PhotoAlign.aspectFill(image.size, in: CGRect(origin: .zero, size: target)))
+        }
+    }
+}

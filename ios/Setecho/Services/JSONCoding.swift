@@ -17,6 +17,9 @@ enum JSONCoding {
             if let date = try? Date(s, strategy: .iso8601) {
                 return snapped(date)
             }
+            if let day = DayKey.date(s) {   // "2026-10-23": a calendar day from the backend
+                return day
+            }
             throw DecodingError.dataCorrupted(
                 .init(codingPath: decoder.codingPath, debugDescription: "Not an ISO 8601 date: \(s)")
             )

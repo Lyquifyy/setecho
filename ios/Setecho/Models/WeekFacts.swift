@@ -13,6 +13,8 @@ struct WeekFacts: Codable, Equatable {
     var lastCheckInWeightLb: Double?
     /// Metric -> the app that wrote it to Apple Health, e.g. "weight": "Withings".
     var sources: [String: String]
+    /// The coach's assigned cardio, from Settings. Text only; the LISS numbers come from Health.
+    var cardioProtocol: String? = nil
 }
 
 struct DayFacts: Codable, Equatable {

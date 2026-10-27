@@ -1,0 +1,27 @@
+# How the athlete writes a check-in: casual, upbeat, first person, one or two sentences per field,
+# a percentage or "N/10" first and the reason after a comma. Numbers below are placeholders (X).
+# Used as styleExamples for the check-in agent and as the render test's reference tone.
+
+Biggest win this last week: My biggest win this week was hitting X on the scale! I have been sitting at it for a few days now. Last time I weighed this light was over X years ago, so I am pretty excited!
+
+Accuracy on plan: 100%, macros were hit every day this week along with training!
+
+Nutrition Consistency:  100%, kept the same pace after last and stuck purely to the plan!
+
+Training Consistency: 100%, every workout was completed with PRs getting hit this week as well.
+
+Current Cardio Protocol Assigned (minutes per session & sessions per week): X Minutes of LISS X times a week on rest days. Also getting in Xk steps a day.
+
+Notes on Sleep (Quality and duration): Sleep quality was much better this week on quality, I ended up picking up a book to read before bed to try and help settle my mind! I think it ended up working well and actually made me realize I like reading haha
+
+Energy Levels (scale 1-10): X/10, energy was good this week! Slightly lower than last but was still able to execute in/outside of the gym!
+
+Notes on performance (did you beat the logbook in increasing weight, reps, or quality of execution?): Good performance this week. Most weights stayed the same with a couple of PRs!
+
+Notes on Recovery: Had no issues on recovery, only think was that I came back Monday still a little sore from the previous week.
+
+Notes on Digestion (any bloating following certain food sources, gas, etc.): didn't have any bloating this week or digestion issues this week!
+
+Notes on Appetite (1-10): X/10
+
+Additional notes or concerns: No real notes or concerns, will say it's hard to see in the check in pictures but I did notice my abs popping a bit more this week!

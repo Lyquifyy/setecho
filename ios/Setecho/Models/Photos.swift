@@ -16,6 +16,13 @@ struct PosePhoto: Codable, Equatable {
     /// The person box from the SAM mask, in image pixels.
     var bodyBox: CGRect
     var alignedFile: String
+    /// The 3:4 crop the aligned file was cut from, in image pixels. Reference for later weeks.
+    var cropRect: CGRect
+    /// The SAM mask as a PNG, for next week's alignment outline.
+    var maskFile: String?
+
+    /// Body box height over crop height: what later weeks match.
+    var bodyFraction: Double { cropRect.height > 0 ? bodyBox.height / cropRect.height : 0 }
 }
 
 /// The coach's order.
@@ -40,4 +47,18 @@ enum Pose: String, Codable, CaseIterable {
         case .leftArmsUp: "Turn left, arms up"
         }
     }
+
+    /// The short pose name on the HUD.
+    var hudTitle: String {
+        switch self {
+        case .front: "Front"
+        case .rightArmsUp: "Turn right · arms up"
+        case .back: "Back"
+        case .leftArmsUp: "Turn left · arms up"
+        }
+    }
+}
+
+extension PhotoSet {
+    func photo(for pose: Pose) -> PosePhoto? { poses.first { $0.pose == pose } }
 }

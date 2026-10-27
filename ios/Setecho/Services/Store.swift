@@ -78,6 +78,8 @@ final class Store {
     }
 
     var lastPhotoSet: PhotoSet? { photoSets.max { $0.takenAt < $1.takenAt } }
+    /// The first photo set ever: every later week is cropped to match it.
+    var referencePhotoSet: PhotoSet? { photoSets.min { $0.takenAt < $1.takenAt } }
     var lastSentCheckIn: CheckInDraft? { checkIns.filter(\.isSent).max { $0.sentAt! < $1.sentAt! } }
 
     // MARK: Files

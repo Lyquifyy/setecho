@@ -17,7 +17,7 @@ struct BrandHeader: View {
                 Button("Import program and form", systemImage: "doc.text.viewfinder") {
                     AppRouter.shared.showImport = true
                 }
-                Button("Settings", systemImage: "gearshape") {}
+                Button("Settings", systemImage: "gearshape") { AppRouter.shared.showSettings = true }
                 Divider()
                 // Temporary until M6: the M0 gate probes, testable from TestFlight.
                 Button("Gate probes", systemImage: "stethoscope") { ProbesPresenter.shared.isShown = true }
