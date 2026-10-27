@@ -1,0 +1,231 @@
+{
+  "latency_s": 15.955411195755005,
+  "drafted": {
+    "biggest_win_this_last_week": "My biggest win this week was hitting 180.6 on the scale! I've been trending down all week from 181.6 so I am pretty excited to see it moving!",
+    "notes_on_performance": "Good performance this week! I hit a PR on bench at 190 for 8 and everything else felt solid in my 4 sessions!",
+    "notes_on_digestion": "My digestion has been a bit off since Wednesday with some bloating! I'll keep an eye on it heading into next week!"
+  },
+  "draft": {
+    "id": "probe",
+    "weekStart": "2026-10-23",
+    "weekEnd": "2026-10-29",
+    "answers": [
+      {
+        "fieldId": "weeks_away_from_target_date",
+        "text": "N/A",
+        "state": "filled",
+        "provenance": [
+          {
+            "source": "Settings",
+            "detail": "No show date set"
+          }
+        ]
+      },
+      {
+        "fieldId": "biggest_win_this_last_week",
+        "text": "My biggest win this week was hitting 180.6 on the scale! I've been trending down all week from 181.6 so I am pretty excited to see it moving!",
+        "state": "drafted",
+        "provenance": [
+          {
+            "source": "Drafted by Muse Spark",
+            "detail": "From your notes and the week's data"
+          }
+        ]
+      },
+      {
+        "fieldId": "accuracy_on_plan",
+        "text": "80% (4 of 5 days on macros, 4 of 5 sessions)",
+        "state": "filled",
+        "provenance": [
+          {
+            "source": "MacroFactor via Apple Health",
+            "detail": "10/23/26\u201310/29/26: 4 of 5 days within targets"
+          },
+          {
+            "source": "Training log",
+            "detail": "4 of 5 sessions"
+          }
+        ]
+      },
+      {
+        "fieldId": "nutrition_consistency",
+        "text": "80%, 4 of 5 days within targets (off on 10/25/26)",
+        "state": "filled",
+        "provenance": [
+          {
+            "source": "MacroFactor via Apple Health",
+            "detail": "10/23/26: 2400 kcal, 200P/250C/65F; 10/24/26: 2100 kcal, 200P/175C/65F; 10/25/26: 2600 kcal, 200P/175C/65F; 10/26/26: 2410 kcal, 205P/248C/64F; 10/27/26: 2390 kcal, 198P/252C/66F"
+          }
+        ]
+      },
+      {
+        "fieldId": "training_consistency",
+        "text": "80%, 4 of 5 sessions. PRs: Bench press 190\u00d78",
+        "state": "filled",
+        "provenance": [
+          {
+            "source": "Training log",
+            "detail": "38 sets logged; PRs: Bench press 190\u00d78"
+          }
+        ]
+      },
+      {
+        "fieldId": "current_cardio_protocol_assigned",
+        "text": "25 min LISS \u00d7 2 on rest days. logged: 2 sessions, 51 min. Steps: avg 10.5k",
+        "state": "filled",
+        "provenance": [
+          {
+            "source": "Settings",
+            "detail": "25 min LISS \u00d7 2 on rest days"
+          },
+          {
+            "source": "Garmin via Apple Health",
+            "detail": "2 LISS sessions, 51 min"
+          }
+        ]
+      },
+      {
+        "fieldId": "notes_on_sleep",
+        "text": "Avg 7.3 h/night",
+        "state": "drafted",
+        "provenance": [
+          {
+            "source": "Garmin via Apple Health",
+            "detail": "10/23/26\u201310/29/26: 7.4, 7.0, 7.8, 7.4, 7.1 h"
+          }
+        ]
+      },
+      {
+        "fieldId": "energy_levels",
+        "text": "",
+        "state": "missing",
+        "provenance": []
+      },
+      {
+        "fieldId": "notes_on_performance",
+        "text": "Good performance this week! I hit a PR on bench at 190 for 8 and everything else felt solid in my 4 sessions!",
+        "state": "drafted",
+        "provenance": [
+          {
+            "source": "Training log",
+            "detail": "38 sets; PRs: Bench press"
+          },
+          {
+            "source": "Drafted by Muse Spark",
+            "detail": "From the training log"
+          }
+        ]
+      },
+      {
+        "fieldId": "notes_on_recovery",
+        "text": "",
+        "state": "missing",
+        "provenance": []
+      },
+      {
+        "fieldId": "notes_on_digestion",
+        "text": "My digestion has been a bit off since Wednesday with some bloating! I'll keep an eye on it heading into next week!",
+        "state": "drafted",
+        "provenance": [
+          {
+            "source": "Drafted by Muse Spark",
+            "detail": "From your notes and the week's data"
+          },
+          {
+            "source": "You said \u00b7 10/25/26",
+            "detail": "digestion's been off since Wednesday"
+          }
+        ]
+      },
+      {
+        "fieldId": "notes_on_appetite",
+        "text": "",
+        "state": "missing",
+        "provenance": []
+      },
+      {
+        "fieldId": "date_of_last_refeed_or_cheat_meal",
+        "text": "10/25/26",
+        "state": "drafted",
+        "provenance": [
+          {
+            "source": "MacroFactor via Apple Health",
+            "detail": "Days more than 20% over target: 10/25/26"
+          }
+        ]
+      },
+      {
+        "fieldId": "notes_on_stress_levels",
+        "text": "",
+        "state": "missing",
+        "provenance": []
+      },
+      {
+        "fieldId": "average_daily_steps",
+        "text": "10.5k",
+        "state": "filled",
+        "provenance": [
+          {
+            "source": "Garmin via Apple Health",
+            "detail": "10/23/26\u201310/29/26: 10412, 9950, 10800, 10100, 11020"
+          }
+        ]
+      },
+      {
+        "fieldId": "last_check_in_body_weight",
+        "text": "181.5",
+        "state": "filled",
+        "provenance": [
+          {
+            "source": "Last check-in",
+            "detail": "Sent weight 181.5"
+          }
+        ]
+      },
+      {
+        "fieldId": "current_body_weight",
+        "text": "180.6",
+        "state": "filled",
+        "provenance": [
+          {
+            "source": "Withings via Apple Health",
+            "detail": "Weigh-in 10/27/26; week: 181.6, 181.4, 181, 180.8, 180.6"
+          }
+        ]
+      },
+      {
+        "fieldId": "measurement_of_waist",
+        "text": "",
+        "state": "missing",
+        "provenance": []
+      },
+      {
+        "fieldId": "measure_right_bicep",
+        "text": "",
+        "state": "missing",
+        "provenance": []
+      },
+      {
+        "fieldId": "measure_right_thigh",
+        "text": "",
+        "state": "missing",
+        "provenance": []
+      },
+      {
+        "fieldId": "fasted_blood_glucose",
+        "text": "",
+        "state": "missing",
+        "provenance": []
+      },
+      {
+        "fieldId": "additional_notes_or_concerns",
+        "text": "",
+        "state": "missing",
+        "provenance": []
+      }
+    ],
+    "photoSetId": null,
+    "sentAt": null
+  },
+  "rendered": "Nutrition:\n\nOn Training Days:\n Calories - 2400\n Protein \u2013 200g\n Carbohydrate \u2013 250g\n Fats \u2013 65g\n\nOn Non-Training Days:\nCalories \u2013 2100\nProtein \u2013 200g\nCarbohydrate \u2013 175g\nFats \u2013 65g\n\nCurrent Supplements:\n\n-        Whole food multivitamin & mineral\n-      Whey isolate - have on hand in order to never miss your protein goal\n-      Creatine Monohydrate - 5g daily\n\n-      Vit D3&K2 - 1 serving daily with a meal\n\n-      Omega 3 - 2 softgels daily with meals\n\n-       Magnesium glycinate - 200mg daily taken before bed\n\n-       You can continue to take the zinc, and ashwagandha (in the afternoon or evenings, not AM) as well.\n\n-      Intra workout: Your preferred EAAs (optional) mixed with 500mg sodium + daily serving of creatine + 30oz water mixed together and sipped throughout your workout.\n\nWeeks away from target date (if in prep): N/A\n\nBiggest win this last week: My biggest win this week was hitting 180.6 on the scale! I've been trending down all week from 181.6 so I am pretty excited to see it moving!\n\nAccuracy on plan: 80% (4 of 5 days on macros, 4 of 5 sessions)\n\nNutrition Consistency: 80%, 4 of 5 days within targets (off on 10/25/26)\n\nTraining Consistency: 80%, 4 of 5 sessions. PRs: Bench press 190\u00d78\n\nCurrent Cardio Protocol Assigned (minutes per session & sessions per week): 25 min LISS \u00d7 2 on rest days. logged: 2 sessions, 51 min. Steps: avg 10.5k\n\nNotes on Sleep (Quality and duration): Avg 7.3 h/night\n\nEnergy Levels (scale 1-10):\n\nNotes on performance (did you beat the logbook in increasing weight, reps, or quality of execution?): Good performance this week! I hit a PR on bench at 190 for 8 and everything else felt solid in my 4 sessions!\n\nNotes on Recovery:\n\nNotes on Digestion (any bloating following certain food sources, gas, etc.): My digestion has been a bit off since Wednesday with some bloating! I'll keep an eye on it heading into next week!\n\nNotes on Appetite (1-10):\n\nDate of last refeed or cheat meal: 10/25/26\n\nNotes on stress levels (1-10):\n\nAverage daily steps: 10.5k\n\nLast check-in Body Weight: 181.5\n\nCurrent Body Weight: 180.6\n\nMeasurement of waist:\n\nMeasure right bicep (flexed):\n\nMeasure right thigh (flexed):\n\nFasted Blood Glucose:\n\nAdditional notes or concerns:"
+}
