@@ -1,14 +1,15 @@
 <p><img src="design/cobalt-cards/brand/final/png/setecho-lockup-sloped-e-cobalt-2400w.png" alt="Setecho" width="320"></p>
 
 Setecho takes the manual work out of a coached bodybuilding prep. Import your coach's spreadsheet and check-in form once. After that:
-- your sets log themselves while you train hands-free
+- your sets log themselves while you train hands-free, with every rep counted from the video
 - your check-in photos take themselves
 - your weekly check-in is half written from Apple Health before you answer the rest by voice
+- your coach's reply, a text or a voice note, updates the plan once you approve it
 
 Built on Meta Model API:
-- **Muse Spark 1.3** reads the coach's material and writes the check-in, with every number traced to its source.
-- **Muse Voice Transcribe** runs the hands-free session and the wrap-up.
-- **SAM 3.1** frames and aligns the check-in photos.
+- **Muse Spark 1.3** reads the coach's material and replies, writes the check-in with every number traced to its source, and turns each reply into plan changes.
+- **Muse Voice Transcribe** runs the hands-free session and the wrap-up, and transcribes the coach's voice notes.
+- **SAM 3.1** counts the reps in every set, and frames and aligns the check-in photos.
 
 ![Workout and history](design/cobalt-cards/screens/workout-history.png)
 ![Filming, results and coach](design/cobalt-cards/screens/filming-results-coach.png)
