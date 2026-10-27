@@ -125,7 +125,7 @@ def _mask_record(object_id, frame_index, left, top, right, bottom):
     )
 
 
-def test_centroid_track_keeps_the_object_seen_on_most_frames(monkeypatch):
+def test_centroid_track_keeps_the_object_seen_on_most_frames_when_none_qualifies(monkeypatch):
     monkeypatch.setattr("app.photos.mask_raster", lambda r: np.ones((r.mask.height, r.mask.width), np.uint8))
     times = [0.0, 0.1, 0.2, 0.3]
     records = [
@@ -137,12 +137,32 @@ def test_centroid_track_keeps_the_object_seen_on_most_frames(monkeypatch):
         _mask_record("plate", 9, 0, 0, 1, 1),  # a frame index the file does not have
     ]
     track = reps.centroid_track(SimpleNamespace(records=records), times)
-    assert track.object_size == 20.0
+    assert track.object_size == 20.0 and track.objects == 2
     assert track.centroids[0].tolist() == [20.0, 20.0]
     assert track.centroids[1].tolist() == [20.0, 30.0]
     assert np.isnan(track.centroids[2]).all()
     assert track.centroids[3].tolist() == [20.0, 50.0]
     assert track.share == 0.75
+
+
+def test_centroid_track_picks_the_plate_that_moves_not_the_rack(monkeypatch):
+    """A gym has many plates in frame: the one on the bar travels, the racked ones sit still."""
+    monkeypatch.setattr("app.photos.mask_raster", lambda r: np.ones((r.mask.height, r.mask.width), np.uint8))
+    n = 40
+    times = [i / 10 for i in range(n)]
+    records = []
+    for i in range(n):
+        records.append(_mask_record("rack", i, 1200, 80, 1300, 180))  # still, every frame
+        y = 300 + int(120 * (1 - np.cos(2 * np.pi * i / 20)) / 2)  # two reps of 120 px
+        records.append(_mask_record("bar", i, 100, y, 200, y + 100))
+        if i < 36:  # a track that hops to another plate halfway: a 600 px step
+            x = 600 if i < 18 else 1200
+            records.append(_mask_record("hopper", i, x, 300, x + 100, 400))
+    track = reps.centroid_track(SimpleNamespace(records=records), times)
+    assert track.objects == 3
+    assert abs(track.centroids[0][0] - 150) < 1e-6  # the bar's plate
+    assert track.motion_range > 100
+    assert reps.count(track).reps == 2
 
 
 def test_centroid_uses_the_raster_not_just_the_box(monkeypatch):

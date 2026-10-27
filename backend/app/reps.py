@@ -154,8 +154,35 @@ def _mask_centroid(record: Any) -> tuple[float, float]:
     return float((b.left + b.right) / 2), float((b.top + b.bottom) / 2)
 
 
+# An object whose centroid jumps more than this many times its own size between two frames is a
+# track that hopped to another plate, not a plate that moved.
+MAX_STEP_SIZES = 2.0
+
+
+def _object_track(frames: dict[int, Any], n: int) -> tuple[np.ndarray, float]:
+    """Centroids on every frame (NaN where unseen) and the object's median box size."""
+    centroids = np.full((n, 2), np.nan)
+    sizes = []
+    for index, rec in frames.items():
+        centroids[index] = _mask_centroid(rec)
+        b = rec.bounds
+        sizes.append(max(b.right - b.left, b.bottom - b.top))
+    return centroids, float(np.median(sizes)) if sizes else 0.0
+
+
+def _max_step(centroids: np.ndarray) -> float:
+    ok = ~np.isnan(centroids[:, 0])
+    pts = centroids[ok]
+    if len(pts) < 2:
+        return 0.0
+    return float(np.max(np.linalg.norm(np.diff(pts, axis=0), axis=1)))
+
+
 def centroid_track(result: Any, frame_times: list[float]) -> Track:
-    """Pick the object tracked on the most frames and give its centroid on every frame."""
+    """The plate that moves. A gym has many plates in frame, so among the objects tracked on at
+    least MIN_TRACK_SHARE of the frames, keep the one whose centroid travels furthest along its
+    main axis, after dropping tracks that hop between plates (a step over MAX_STEP_SIZES sizes).
+    Falls back to the object seen on the most frames when nothing qualifies."""
     per_object: dict[str, dict[int, Any]] = {}
     for rec in result.records:
         if getattr(rec, "kind", None) != "mask" or rec.frame is None:
@@ -165,16 +192,23 @@ def centroid_track(result: Any, frame_times: list[float]) -> Track:
             continue
         per_object.setdefault(rec.object_id, {})[index] = rec  # the last revision of a frame wins
     times = np.asarray(frame_times, dtype=float)
-    centroids = np.full((len(frame_times), 2), np.nan)
+    n = len(frame_times)
     if not per_object:
-        return Track(times, centroids)
-    best = max(per_object.values(), key=len)
-    sizes = []
-    for index, rec in best.items():
-        centroids[index] = _mask_centroid(rec)
-        b = rec.bounds
-        sizes.append(max(b.right - b.left, b.bottom - b.top))
-    return Track(times, centroids, float(np.median(sizes)) if sizes else 0.0, len(per_object))
+        return Track(times, np.full((n, 2), np.nan))
+    best: tuple[float, np.ndarray, float] | None = None
+    for frames in per_object.values():
+        if len(frames) < MIN_TRACK_SHARE * n:
+            continue
+        centroids, size = _object_track(frames, n)
+        if size > 0 and _max_step(centroids) > MAX_STEP_SIZES * size:
+            continue
+        motion = Track(times, centroids, size).motion_range
+        if best is None or motion > best[0]:
+            best = (motion, centroids, size)
+    if best is None:
+        centroids, size = _object_track(max(per_object.values(), key=len), n)
+        return Track(times, centroids, size, len(per_object))
+    return Track(times, best[1], best[2], len(per_object))
 
 
 # ---------------------------------------------------------------------------
