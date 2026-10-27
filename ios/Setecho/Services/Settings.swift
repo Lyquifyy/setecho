@@ -21,6 +21,16 @@ final class Settings {
     var voiceIdentifier: String { didSet { defaults.set(voiceIdentifier, forKey: "voiceIdentifier") } }
     /// Next-set suggestions (P4). On by default; only with a confirmed coach's rule.
     var nextSetSuggestions: Bool { didSet { defaults.set(nextSetSuggestions, forKey: "nextSetSuggestions") } }
+    /// What the athlete can load (§13): barbell 5 lb, dumbbells 5 lb, machines from here.
+    var barbellStepLb: Double { didSet { defaults.set(barbellStepLb, forKey: "barbellStepLb") } }
+    var dumbbellStepLb: Double { didSet { defaults.set(dumbbellStepLb, forKey: "dumbbellStepLb") } }
+    var machineStepLb: Double { didSet { defaults.set(machineStepLb, forKey: "machineStepLb") } }
+    /// The spotter uses it sparingly; never sent anywhere but the line request.
+    var athleteFirstName: String { didSet { defaults.set(athleteFirstName, forKey: "athleteFirstName") } }
+
+    var loadSteps: RuleEngine.LoadSteps {
+        RuleEngine.LoadSteps(barbell: barbellStepLb, dumbbell: dumbbellStepLb, machine: machineStepLb, cable: machineStepLb)
+    }
 
     private let defaults: UserDefaults
 
@@ -34,6 +44,10 @@ final class Settings {
         coachVoiceInSessions = defaults.object(forKey: "coachVoiceInSessions") as? Bool ?? true
         voiceIdentifier = defaults.string(forKey: "voiceIdentifier") ?? ""
         nextSetSuggestions = defaults.object(forKey: "nextSetSuggestions") as? Bool ?? true
+        barbellStepLb = defaults.object(forKey: "barbellStepLb") as? Double ?? 5
+        dumbbellStepLb = defaults.object(forKey: "dumbbellStepLb") as? Double ?? 5
+        machineStepLb = defaults.object(forKey: "machineStepLb") as? Double ?? 10
+        athleteFirstName = defaults.string(forKey: "athleteFirstName") ?? ""
     }
 
     var showDateOrNil: String? { showDate.trimmingCharacters(in: .whitespaces).isEmpty ? nil : showDate }

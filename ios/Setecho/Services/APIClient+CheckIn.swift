@@ -9,9 +9,9 @@ extension APIClient {
         try await checkInRenderMessages(template: template, draft: draft).text
     }
 
-    /// Both messages in his order: the plan message, then the questionnaire.
-    func checkInRenderMessages(template: CheckInTemplate, draft: CheckInDraft) async throws -> RenderResponse {
-        try await postJSON("/checkin/render", body: RenderRequest(template: template, draft: draft), timeout: 30)
+    /// Both messages in his order: the plan message, then the questionnaire with the adjustments line.
+    func checkInRenderMessages(template: CheckInTemplate, draft: CheckInDraft, adjustments: [String] = []) async throws -> RenderResponse {
+        try await postJSON("/checkin/render", body: RenderRequest(template: template, draft: draft, adjustments: adjustments), timeout: 30)
     }
 
     /// One utterance of Check-in morning. The phone applies the answers and picks the next question.

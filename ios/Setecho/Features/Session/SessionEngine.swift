@@ -37,18 +37,23 @@ final class SessionEngine {
         }
     }
 
-    /// What the services should do after an event: say something, show an echo, ask back.
+    /// What the services should do after an event: say something, show an echo, ask back. A
+    /// rest-time outcome also carries the facts for /spotter/line and the part of the speech the
+    /// model's line may replace (HANDOFF.md §7, The spotter voice).
     struct Outcome: Equatable {
         var speech: String?
         var echo: String?
         var askBack: String?
+        var spotterFacts: SpotterFacts?
+        var spotterReplaceable: String?
         static let none = Outcome()
 
         /// Two outcomes in one breath: the speeches in order, the later echo and ask-back.
         func merged(with other: Outcome) -> Outcome {
             let speeches = [speech, other.speech].compactMap { $0 }
             return Outcome(speech: speeches.isEmpty ? nil : speeches.joined(separator: " "),
-                           echo: other.echo ?? echo, askBack: other.askBack ?? askBack)
+                           echo: other.echo ?? echo, askBack: other.askBack ?? askBack,
+                           spotterFacts: other.spotterFacts ?? spotterFacts, spotterReplaceable: other.spotterReplaceable ?? spotterReplaceable)
         }
     }
 
@@ -88,6 +93,18 @@ final class SessionEngine {
     let warmups: WarmupRule?
     /// Add-ons the athlete can add by voice ("add abs").
     let availableAddOns: [AddOn]
+    /// His rules (only the confirmed ones apply), his effort targets per set role, his rest rules.
+    let rules: [ProgressionRule]
+    let roleTargets: [RoleTarget]
+    let restRules: [RestRule]
+    let loadSteps: RuleEngine.LoadSteps
+    /// Last time's set per "exerciseId|role", and the next-session steps the athlete accepted.
+    let lastSets: [String: LastSet]
+    let nextSessionLoads: [String: Double]
+    /// Settings → "Next-set suggestions". Off: effort is still measured and still reaches the coach.
+    let suggestionsEnabled: Bool
+    let calibration: Effort.Calibration
+    let athleteName: String?
 
     private(set) var exercises: [Entry]
     private(set) var session: Session
@@ -112,6 +129,14 @@ final class SessionEngine {
     private(set) var warmupCount = 0
     /// "I'm doing Day 5 today" before any set: the day number asked for, for the coordinator.
     private(set) var requestedDayNumber: Int?
+    /// His rule's suggestion for the next set, waiting for "go with it" or "keep it".
+    private(set) var pendingSuggestion: LoadSuggestion?
+    /// (exercise, velocity loss, RPE) pairs from this session, for the athlete's own effort map.
+    private(set) var calibrationSamples: [(exerciseId: String, velocityLossPct: Double, rpe: Double)] = []
+    /// The last five lines spoken at rest, so the spotter never repeats an opening.
+    private(set) var recentLines: [String] = []
+    /// Where the quiet "ready when you are" falls in the current rest, as seconds remaining.
+    private var restCueAtRemaining: Int?
     private var recordingStartedAt: Date?
     private var stateBeforePause: State = .ready
     private var repsOverrideForCurrentSet: Int?
@@ -124,12 +149,23 @@ final class SessionEngine {
     private(set) var lastCuePlayed: VoiceCue?
 
     init(day: ProgramDay?, addOns: [AddOn] = [], availableAddOns: [AddOn] = [], weekNumber: Int, defaultRestSeconds: Int = 150,
-         warmups: WarmupRule? = nil, now: Date = .now) {
+         warmups: WarmupRule? = nil, rules: [ProgressionRule] = [], roleTargets: [RoleTarget] = [], restRules: [RestRule] = [],
+         loadSteps: RuleEngine.LoadSteps = RuleEngine.LoadSteps(), lastSets: [String: LastSet] = [:], nextSessionLoads: [String: Double] = [:],
+         suggestionsEnabled: Bool = true, calibration: Effort.Calibration = Effort.Calibration(), athleteName: String? = nil, now: Date = .now) {
         self.day = day
         self.weekNumber = weekNumber
         self.defaultRestSeconds = defaultRestSeconds
         self.warmups = warmups?.confirmed == true ? warmups : nil
         self.availableAddOns = availableAddOns
+        self.rules = rules
+        self.roleTargets = roleTargets.filter(\.confirmed)
+        self.restRules = restRules.filter(\.confirmed)
+        self.loadSteps = loadSteps
+        self.lastSets = lastSets
+        self.nextSessionLoads = nextSessionLoads
+        self.suggestionsEnabled = suggestionsEnabled
+        self.calibration = calibration
+        self.athleteName = athleteName
         var entries = (day?.exercises ?? []).map { Entry(exercise: $0, addOnId: nil, section: nil) }
         for addOn in addOns { entries += addOn.exercises.map { Entry(exercise: $0, addOnId: addOn.id, section: addOn.name) } }
         self.exercises = entries
@@ -147,9 +183,28 @@ final class SessionEngine {
         guard let ex = currentExercise, ex.sets.indices.contains(setIndex) else { return nil }
         return ex.sets[setIndex]
     }
+    /// The plan's load, else the athlete's override, else last time's for the same exercise and
+    /// role plus any accepted next-session step (HANDOFF.md §7, No planned loads). Nil means ask.
     var targetLoadLb: Double? {
         guard let ex = currentExercise else { return nil }
-        return loadOverrides[ex.id] ?? currentPlannedSet?.loadLb
+        if let override = loadOverrides[ex.id] { return override }
+        if let planned = currentPlannedSet?.loadLb { return planned }
+        let key = Self.loadKey(ex.id, currentPlannedSet?.role)
+        return nextSessionLoads[key] ?? lastSets[key]?.loadLb
+    }
+
+    static func loadKey(_ exerciseId: String, _ role: SetRole?) -> String { "\(exerciseId)|\(role?.rawValue ?? "")" }
+
+    /// A lift with no load from anywhere: the athlete is asked "Weight for the top set?" (never for bodyweight).
+    var needsLoad: Bool { currentExercise != nil && currentExercise?.equipment != .bodyweight && !currentSetIsTimed && targetLoadLb == nil }
+
+    /// "Last time 80 for 9. Beat the logbook." at an exercise's top set (HANDOFF.md §7, The logbook line).
+    func logbookLine(for exercise: PlannedExercise) -> String? {
+        guard let first = exercise.sets.first, first.role == .top || (first.role == nil && !first.isTimed),
+              let last = lastSets[Self.loadKey(exercise.id, first.role)] else { return nil }
+        var line = "Last time \(Format.number(last.loadLb)) for \(last.reps)."
+        if rules.contains(where: { $0.confirmed && ($0.quote ?? "").lowercased().contains("logbook") }) { line += " Beat the logbook." }
+        return line
     }
     var targetRepsText: String { currentPlannedSet?.repsText ?? "?" }
     var setNumber: Int { setIndex + 1 }
@@ -272,12 +327,13 @@ final class SessionEngine {
             edits: []
         )
         session.sets.append(logged)
-        let rest = exercise.restSeconds ?? defaultRestSeconds
+        var rest = exercise.restSeconds ?? defaultRestSeconds
         repsOverrideForCurrentSet = nil
         forceWorkingForCurrentSet = false
         recordingStartedAt = nil
 
         if isWarmup {
+            restCueAtRemaining = nil
             warmupCount += 1
             undoStack.append(UndoEntry(action: .loggedSet(logged.id), description: "warm-up \(warmupCount)"))
             let callout = Callout.warmupDone(number: warmupCount, restSeconds: rest)
@@ -289,7 +345,17 @@ final class SessionEngine {
         undoStack.append(UndoEntry(action: .loggedSet(logged.id), description: "set \(setNumber)"))
         warmupMode = false
         let doneNumber = setNumber
-        // The rest belongs to the set just finished, even when the next set is another exercise.
+        // The rest belongs to the set just finished, even when the next set is another exercise. His
+        // rest after a top set (3–4 min) overrides the sheet's day range: the countdown runs to the top,
+        // with a quiet "ready when you are" at the bottom.
+        restCueAtRemaining = nil
+        if let his = restRules.first(where: { $0.after == .top }), planned.role == .top {
+            rest = his.maxSeconds
+            restCueAtRemaining = his.minSeconds < his.maxSeconds ? his.maxSeconds - his.minSeconds : nil
+        } else if let minimum = exercise.restMinSeconds, let top = exercise.restSeconds, minimum < top {
+            restCueAtRemaining = top - minimum
+        }
+        if pendingSuggestion != nil { decideSuggestion(.kept, spoken: false) } // no answer keeps the plan's load
         let shortBy = source == .plan || planned.isRestPause ? 0 : max(0, planReps - reps)
         advance()
         let callout: String
@@ -307,6 +373,10 @@ final class SessionEngine {
         let saved = willMeasure && source != .spoken ? "Set \(doneNumber) saved: \(Format.number(logged.loadLb)) lb, counting"
                                                     : "Set \(doneNumber) saved: \(Format.number(logged.loadLb)) × \(reps)"
         var outcome = Outcome(speech: callout, echo: saved)
+        if !(willMeasure && source != .spoken), let i = session.sets.firstIndex(where: { $0.id == logged.id }) {
+            // Nothing to wait for: the effort and his rule's suggestion come now, after the set-end line.
+            outcome = outcome.merged(with: settle(at: i, mode: .askOnly))
+        }
         // Measured counts that arrived mid-set land now, during rest, and are mentioned only if they matter.
         for held in heldMeasurements {
             outcome = outcome.merged(with: applyMeasured(setId: held.setId, held.response, now: now, late: true))
@@ -463,22 +533,139 @@ final class SessionEngine {
         return outcome
     }
 
-    /// The count in the log, said once it is settled: with the next target when the set is the last
-    /// one logged, else as a late mention. A rest-pause set's number is its total.
+    /// The count in the log, said once it is settled: with the effort, his rule's suggestion and
+    /// the next target when the set is the last one logged, else as a late mention. A rest-pause
+    /// set's number is its total.
     private func speakCount(at i: Int, late: Bool) -> Outcome {
         let set = session.sets[i]
         let number = set.setIndex + 1
         let measured = set.repCount.source == .measured
         let chip = set.repCount.source.chipText
         if late {
+            _ = settle(at: i, mode: .quiet)
             lastEcho = "Set \(number): \(set.reps) reps (\(chip))"
             return Outcome(speech: Callout.lateCount(setNumber: number, reps: set.reps, measured: measured), echo: lastEcho)
         }
-        let planned = plannedSet(for: set)
-        let total = planned?.isRestPause == true
-        let shortBy = total ? 0 : max(0, (planned?.minimumReps ?? 0) - set.reps)
+        _ = measured
         lastEcho = "Set \(number): \(set.reps) reps (\(chip))"
-        return Outcome(speech: Callout.counted(reps: set.reps, measured: measured, total: total, shortBy: shortBy, next: nextTarget), echo: lastEcho)
+        return Outcome(echo: lastEcho).merged(with: settle(at: i, mode: .restLine))
+    }
+
+    /// What `settle` says: the whole rest line, only the effort and the ask (the set-end line already
+    /// carried the count and the next target), or nothing (a late count).
+    enum SettleMode { case restLine, askOnly, quiet }
+
+    // MARK: Measured effort and his rules (HANDOFF.md §7)
+
+    /// His target for a set, in reps in reserve: the sheet's RPE or RIR, else his role target.
+    func targetRIR(for planned: PlannedSet?) -> Double? {
+        if let rir = planned?.rir { return Double(rir) }
+        if let rpe = planned?.rpe { return 10 - rpe }
+        let role: RoleName = switch planned?.role {
+        case .top: .top
+        case .backOff: .backOff
+        case .restPause: .restPause
+        default: .straight
+        }
+        return roleTargets.first { $0.role == role }?.rir
+    }
+
+    /// The set's effort: the spoken RPE wins, else the measured slowdown through the effort map.
+    private func effort(for set: LoggedSet) -> (rir: Double, measured: Bool)? {
+        if let rpe = set.rpe { return (max(0, 10 - rpe), false) }
+        if set.role == .restPause { return nil }
+        guard let loss = set.repCount.velocityLossPct else { return nil }
+        return (Effort.estimatedRIR(velocityLossPct: loss, exerciseId: set.exerciseId, calibration: calibration), true)
+    }
+
+    /// Once a set's count is settled: record its estimated effort, ask his rule for the next load,
+    /// and build the rest-time line (the facts for the spotter, and the template that stands in).
+    private func settle(at i: Int, mode: SettleMode) -> Outcome {
+        var set = session.sets[i]
+        let planned = plannedSet(for: set)
+        let effort = effort(for: set)
+        if let effort, effort.measured { set.repCount.estimatedRIR = effort.rir }
+        session.sets[i] = set
+        guard mode != .quiet, session.sets.last?.id == set.id else { return .none }
+        guard let entry = exercises.first(where: { $0.exercise.id == set.exerciseId }) else { return .none }
+        let exercise = entry.exercise
+        let target = targetRIR(for: planned)
+        var suggestion: LoadSuggestion?
+        if suggestionsEnabled, set.role != .restPause || true {
+            let allAtTop = planned?.repsMax.map { top in session.workingSets.filter { $0.exerciseId == set.exerciseId }.allSatisfy { $0.reps >= top } } ?? false
+            let facts = RuleEngine.SetFacts(
+                exerciseId: set.exerciseId, exerciseName: exercise.name, equipment: exercise.equipment, setIndex: set.setIndex,
+                role: set.role, loadLb: set.loadLb, reps: set.reps, repsMin: planned?.repsMin, repsMax: planned?.repsMax,
+                totalReps: planned?.totalReps, effortRIR: effort?.rir, effortIsMeasured: effort?.measured ?? false,
+                targetRIR: target, plannedLoadLb: planned?.loadLb, allSetsAtTopOfRange: allAtTop
+            )
+            suggestion = RuleEngine.suggestion(for: facts, rules: rules, steps: loadSteps, setId: set.id)
+        }
+        if let suggestion {
+            session.suggestions.append(suggestion)
+            pendingSuggestion = suggestion
+        }
+        let rule = suggestion.flatMap { s in rules.first { $0.id == s.ruleId } }
+        let shortBy = planned?.isRestPause == true ? 0 : max(0, (planned?.minimumReps ?? 0) - set.reps)
+        let line = Callout.restLine(set: set, role: planned?.role, shortBy: shortBy, effort: effort, targetRIR: target, suggestion: suggestion, rule: rule)
+        let facts = SpotterFacts(
+            exercise: exercise.name, setNumber: set.setIndex + 1, setCount: exercise.sets.count, reps: set.reps,
+            repSource: set.repCount.source.rawValue, loadLb: set.loadLb > 0 ? set.loadLb : nil,
+            velocityLossPct: set.repCount.velocityLossPct, estimatedRIR: effort?.measured == true ? effort?.rir : nil,
+            target: target.map { $0 <= 0 ? "failure" : "RPE \(Format.number(10 - $0))" } ?? planned.map { $0.repsText + " reps" },
+            suggestionLb: suggestion?.toLb, suggestionRule: rule.map(RuleEngine.ruleWords),
+            isPR: isPR(set), streak: streak(for: set, planned: planned), lastTimeLoadLb: lastSets[Self.loadKey(set.exerciseId, set.role)]?.loadLb,
+            lastTimeReps: lastSets[Self.loadKey(set.exerciseId, set.role)]?.reps, sessionSets: session.workingSets.count,
+            role: set.role?.rawValue
+        )
+        let ask = suggestion.map { Callout.suggestionAsk($0) }
+        // The ask names the next set's load itself; otherwise the next target follows.
+        let next = suggestion?.scope == .nextSet ? nil : nextTarget.map { Callout.nextLine($0) }
+        let parts = mode == .restLine ? [line.facts, line.effort, ask, next] : [line.effort, ask]
+        let speech = parts.compactMap { $0 }.joined(separator: " ")
+        recentLines.append(line.facts)
+        if recentLines.count > 5 { recentLines.removeFirst() }
+        lastEcho = suggestion.map { "Next: \(Format.number($0.toLb)) × \(targetRepsText) · his rule" } ?? lastEcho
+        guard !speech.isEmpty else { return .none }
+        let replaceable = mode == .restLine ? [line.facts, line.effort].compactMap { $0 }.joined(separator: " ") : line.effort
+        return Outcome(speech: speech, echo: lastEcho, spotterFacts: mode == .restLine ? facts : nil, spotterReplaceable: replaceable)
+    }
+
+    /// Heavier, or the same load for more reps, than last time's set for this exercise and role.
+    private func isPR(_ set: LoggedSet) -> Bool {
+        guard set.loadLb > 0, let last = lastSets[Self.loadKey(set.exerciseId, set.role)] else { return false }
+        return set.loadLb > last.loadLb || (set.loadLb == last.loadLb && set.reps > last.reps)
+    }
+
+    /// Sets in a row of this exercise at the top of the range, this session.
+    private func streak(for set: LoggedSet, planned: PlannedSet?) -> Int? {
+        guard let top = planned?.repsMax else { return nil }
+        var count = 0
+        for s in session.workingSets.reversed() where s.exerciseId == set.exerciseId {
+            if s.reps >= top { count += 1 } else { break }
+        }
+        return count >= 2 ? count : nil
+    }
+
+    /// "Go with it" / "keep it", or no answer at the next set: every decision is logged.
+    @discardableResult
+    func decideSuggestion(_ decision: SuggestionDecision, spoken: Bool, load: Double? = nil) -> Outcome {
+        guard let suggestion = pendingSuggestion else { return spoken ? say("Nothing to decide.") : .none }
+        pendingSuggestion = nil
+        if let i = session.suggestions.firstIndex(where: { $0.id == suggestion.id }) { session.suggestions[i].decision = decision }
+        if decision == .accepted, suggestion.scope == .nextSet {
+            let old = loadOverrides[suggestion.exerciseId]
+            loadOverrides[suggestion.exerciseId] = suggestion.toLb
+            undoStack.append(UndoEntry(action: .load(exerciseId: suggestion.exerciseId, old: old), description: "going with \(Format.number(suggestion.toLb))"))
+            return echo("Next: \(Format.number(suggestion.toLb)) lb, his rule", speech: "\(Format.number(suggestion.toLb)) it is.")
+        }
+        if decision == .accepted {
+            return echo("Next session: \(Format.number(suggestion.toLb)) lb, his rule", speech: "Noted for next session.")
+        }
+        guard spoken else { return .none }
+        if let load { return echo("Keeping your \(Format.number(load)) lb", speech: "Keeping \(Format.number(load)).") }
+        if targetLoadLb == nil, suggestion.scope == .nextSet { loadOverrides[suggestion.exerciseId] = suggestion.fromLb } // no plan load: the set's own
+        return echo("Keeping \(Format.number(suggestion.fromLb)) lb", speech: "Keeping \(Format.number(suggestion.fromLb)).")
     }
 
     /// SAM is late or failed: the phone's count, if there is one, else just the next target.
@@ -509,7 +696,8 @@ final class SessionEngine {
         let ex = entry.exercise
         if setIndex == 0, session.sets.last?.exerciseId != ex.id {
             return .nextExercise(name: ex.name, loadLb: targetLoadLb, reps: targetRepsText, section: entry.section,
-                                 warmups: warmupMode, timed: ex.sets.first?.isTimed == true)
+                                 warmups: warmupMode, timed: ex.sets.first?.isTimed == true, logbook: logbookLine(for: ex),
+                                 askLoad: needsLoad)
         }
         return .sameExercise(loadLb: targetLoadLb, reps: targetRepsText)
     }
@@ -535,7 +723,7 @@ final class SessionEngine {
             return Outcome(speech: "Go.", echo: "Ready")
         }
         state = .rest(remaining: remaining - 1)
-        if let minimum = currentExercise?.restMinSeconds, let top = currentExercise?.restSeconds, minimum < top, remaining - 1 == top - minimum {
+        if let cue = restCueAtRemaining, remaining - 1 == cue {
             return Outcome(speech: "Ready when you are.")
         }
         return .none
@@ -637,6 +825,9 @@ final class SessionEngine {
             guard let n = intent.number, let last = session.sets.indices.last else { return say("No set to rate yet.") }
             let old = session.sets[last].rpe
             session.sets[last].rpe = n
+            if let loss = session.sets[last].repCount.velocityLossPct, !session.sets[last].isWarmup {
+                calibrationSamples.append((session.sets[last].exerciseId, loss, n))
+            }
             session.sets[last].edits.append(SetEdit(at: now, field: "rpe", from: old.map(Format.number) ?? "", to: Format.number(n), transcript: response.transcript))
             undoStack.append(UndoEntry(action: .rpe(setId: session.sets[last].id, old: old), description: "RPE \(Format.number(n))"))
             return echo("Set \(session.sets[last].setIndex + 1) → RPE \(Format.number(n))", speech: Callout.rpeLogged(n, setNumber: session.sets[last].setIndex + 1))
@@ -650,10 +841,15 @@ final class SessionEngine {
             return spokenReps(at: last, Int(n), transcript: response.transcript, now: now)
         case .setLoad:
             guard let n = intent.number, let ex = currentExercise else { return say("Which load?") }
+            if pendingSuggestion != nil { _ = decideSuggestion(.kept, spoken: false, load: n) } // his own weight beats the rule's
             let old = loadOverrides[ex.id]
             loadOverrides[ex.id] = n
             undoStack.append(UndoEntry(action: .load(exerciseId: ex.id, old: old), description: "load \(Format.number(n))"))
             return echo("\(ex.name) → \(Format.number(n)) lb", speech: Callout.loadChanged(to: n))
+        case .acceptSuggestion:
+            return decideSuggestion(.accepted, spoken: true)
+        case .keepLoad:
+            return decideSuggestion(.kept, spoken: true)
         case .loadDelta:
             guard let n = intent.number, let ex = currentExercise, let base = targetLoadLb else { return say("Which load?") }
             let old = loadOverrides[ex.id]
@@ -720,7 +916,19 @@ final class SessionEngine {
             session.sets[last].flaggedForCoach = true
             undoStack.append(UndoEntry(action: .flag(setId: session.sets[last].id), description: "the flag"))
             return echo("Set \(session.sets[last].setIndex + 1) flagged for your coach", speech: "Flagged for Thursday.")
-        case .yes, .no, .answer, .unknown:
+        case .yes:
+            return pendingSuggestion != nil ? decideSuggestion(.accepted, spoken: true) : .none
+        case .no:
+            return pendingSuggestion != nil ? decideSuggestion(.kept, spoken: true) : .none
+        case .answer:
+            // "Weight for the top set?" answered with a number: the athlete's load for this lift.
+            if needsLoad, let n = intent.number, let ex = currentExercise {
+                loadOverrides[ex.id] = n
+                undoStack.append(UndoEntry(action: .load(exerciseId: ex.id, old: nil), description: "load \(Format.number(n))"))
+                return echo("\(ex.name) → \(Format.number(n)) lb", speech: Callout.loadChanged(to: n))
+            }
+            return .none
+        case .unknown:
             return .none
         }
     }

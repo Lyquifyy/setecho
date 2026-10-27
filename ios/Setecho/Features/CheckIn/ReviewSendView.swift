@@ -15,14 +15,46 @@ struct ReviewSendView: View {
     @State private var showShare = false
     @State private var includeText = true
     @State private var banner: String?
-    /// Which of the steps goes out next: 0 the plan message, 1 the check-in with the collage.
+    /// Which of the steps goes out next: the plan message, the check-in with the collage, the videos.
     @State private var sendStep = 0
+    @State private var picks: [VideoPick] = []
+    @State private var videoFiles: [UUID: String] = [:]
+    @State private var showPicker = false
+    @State private var exporting = false
 
     private var text: String? { messages.isEmpty ? nil : messages.joined(separator: "\n\n") }
     private var planMessage: String? { messages.count > 1 ? messages[0] : nil }
     private var checkInMessage: String? { messages.last }
-    private var stepCount: Int { planMessage == nil ? 1 : 2 }
-    private var stepName: String { sendStep == 0 && planMessage != nil ? "the plan message" : "the check-in with the photos" }
+    private var steps: [String] {
+        var names: [String] = []
+        if planMessage != nil { names.append("the plan message") }
+        names.append("the check-in with the photos")
+        if !picks.isEmpty { names.append("the two videos") }
+        return names
+    }
+    private var stepCount: Int { steps.count }
+    private var stepName: String { steps.indices.contains(sendStep) ? steps[sendStep] : "" }
+    private var isVideoStep: Bool { !picks.isEmpty && sendStep == stepCount - 1 }
+    private var isPlanStep: Bool { sendStep == 0 && planMessage != nil }
+
+    /// The period's sessions, for the videos and the adjustments line.
+    private var periodSessions: [Session] {
+        let (start, end) = coordinator.week
+        return store.sessions.filter { $0.startedAt >= start && $0.startedAt < end }
+    }
+
+    private func exerciseName(_ id: String) -> String {
+        store.currentProgram?.allExercises.first { $0.id == id }?.name ?? id
+    }
+
+    /// "Incline press set 3, 225 → 215 (RPE 9.5 vs 8)": only accepted suggestions (HANDOFF.md §7).
+    private var adjustmentLines: [String] {
+        periodSessions.flatMap(\.suggestions).filter { $0.decision == .accepted }.map { s in
+            let set = periodSessions.flatMap(\.sets).first { $0.id == s.setId }
+            let when = s.scope == .nextSession ? " next session" : ""
+            return "\(exerciseName(s.exerciseId)) set \((set?.setIndex ?? 0) + 1), \(Format.number(s.fromLb)) → \(Format.number(s.toLb))\(when) (\(s.reason))"
+        }
+    }
 
     private var collage: UIImage? {
         guard let id = coordinator.draft?.photoSetId ?? store.lastPhotoSet?.id,
@@ -77,6 +109,28 @@ struct ReviewSendView: View {
                     Text("No photo set this week yet. Take photos from Today.").font(.subheadline).secondaryText()
                 }
             }
+            SectionCard("Videos for your coach", accessory: {
+                if picks.count < 2 { LinkButton(title: picks.isEmpty ? "Pick two" : "Add one", chevron: .none) { showPicker = true } }
+            }) {
+                Text("The sets you flagged, two at most from two different movements, each cropped to just the reps. No verdicts.")
+                    .font(.footnote).secondaryText()
+                if picks.isEmpty {
+                    Text("Nothing flagged this period. Say \"flag that\" after a set, or pick two.").font(.subheadline).secondaryText()
+                }
+                ForEach(picks) { pick in
+                    CardDivider()
+                    VideoPickRow(pick: pick) { showPicker = true }
+                }
+            }
+            if !adjustmentLines.isEmpty {
+                SectionCard("Adjustments") {
+                    Text("The suggestions you accepted this period, his rule applied, as they'll appear in the message.").font(.footnote).secondaryText()
+                    ForEach(Array(adjustmentLines.enumerated()), id: \.offset) { index, line in
+                        if index > 0 { CardDivider() }
+                        Text(line).font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
+                    }
+                }
+            }
             let missing = coordinator.questions.count
             if missing > 0 {
                 SectionCard("Still to answer") {
@@ -85,14 +139,18 @@ struct ReviewSendView: View {
                 }
             }
         } footer: {
-            Button(sendStep == 0 ? "Send to WhatsApp" : "Next: \(stepName)") {
+            Button(exporting ? "Cropping the videos…" : sendStep == 0 ? "Send to WhatsApp" : "Next: \(stepName)") {
                 includeText = true
                 banner = nil
-                showShare = true
+                if isVideoStep {
+                    Task { await exportVideos(); showShare = true }
+                } else {
+                    showShare = true
+                }
             }
             .buttonStyle(.setechoPrimary)
-            .disabled(text == nil || sendStep >= stepCount)
-            if sendStep == stepCount - 1 || planMessage == nil {
+            .disabled(text == nil || sendStep >= stepCount || exporting)
+            if !isVideoStep, sendStep == (planMessage == nil ? 0 : 1) {
                 Button("Photo first, then paste the text") {
                     UIPasteboard.general.string = checkInMessage
                     includeText = false
@@ -107,11 +165,20 @@ struct ReviewSendView: View {
                     .font(.footnote).secondaryText()
             }
         }
-        .task { await render() }
+        .task {
+            picks = coordinator.draft?.videoPicks ?? []
+            if picks.isEmpty { picks = VideoCropper.picks(from: periodSessions, names: exerciseName) }
+            await render()
+        }
         .sheet(isPresented: $showShare) {
-            let isPlanStep = sendStep == 0 && planMessage != nil
-            let body = isPlanStep ? planMessage : checkInMessage
-            if let body {
+            if isVideoStep {
+                ShareSheet(image: nil, text: nil, files: picks.compactMap { videoFiles[$0.setId].map { store.mediaDirectory.appendingPathComponent($0) } }) { completed in
+                    guard completed else { return }
+                    sendStep += 1
+                    coordinator.markSent()
+                    banner = "Sent. The check-in is saved under History."
+                }
+            } else if let body = isPlanStep ? planMessage : checkInMessage {
                 ShareSheet(image: isPlanStep ? nil : collage, text: includeText ? body : nil) { completed in
                     guard completed else { return }
                     sendStep += 1
@@ -124,29 +191,116 @@ struct ReviewSendView: View {
                 }
             }
         }
+        .sheet(isPresented: $showPicker) {
+            VideoPickerSheet(sessions: periodSessions, picks: $picks, names: exerciseName)
+        }
+        .onChange(of: picks) { _, new in coordinator.setVideoPicks(new) }
     }
 
     private func render() async {
         guard let template = coordinator.template, let draft = coordinator.draft else { return }
         error = nil
         do {
-            messages = try await APIClient().checkInRenderMessages(template: template, draft: draft).messages
+            let response = try await APIClient().checkInRenderMessages(template: template, draft: draft, adjustments: adjustmentLines)
+            messages = response.messages
+            coordinator.setAdjustments(periodSessions.flatMap(\.suggestions).filter { $0.decision == .accepted }.map(\.id))
         } catch {
             self.error = error.localizedDescription
         }
     }
+
+    /// Crop each picked set's MOV to the reps, once, before the third share.
+    private func exportVideos() async {
+        exporting = true
+        defer { exporting = false }
+        for pick in picks where videoFiles[pick.setId] == nil {
+            guard let set = periodSessions.flatMap(\.sets).first(where: { $0.id == pick.setId }), let clip = set.clipFile else { continue }
+            let url = store.mediaDirectory.appendingPathComponent(clip)
+            if let name = try? await VideoCropper.export(clip: url, pick: pick, into: store.mediaDirectory) { videoFiles[pick.setId] = name }
+        }
+    }
 }
 
-/// UIActivityViewController with an optional image and an optional text.
+/// One of the two videos (DESIGN.md Components, `VideoPickRow`): thumbnail, the caption, the cropped length, "Swap".
+struct VideoPickRow: View {
+    let pick: VideoPick
+    let onSwap: () -> Void
+
+    var body: some View {
+        HStack(spacing: Theme.Space.s) {
+            SetThumbnail(width: 96, height: 58)
+            VStack(alignment: .leading, spacing: Theme.Space.xxs) {
+                Text(pick.caption).font(.body.weight(.semibold)).foregroundStyle(Theme.navy)
+                Text("\(Format.duration(pick.cropEnd - pick.cropStart)) · just the reps").font(.footnote).monospacedDigit().secondaryText()
+            }
+            Spacer()
+            LinkButton(title: "Swap", chevron: .none, action: onSwap)
+        }
+        .padding(.vertical, Theme.Space.xxs)
+    }
+}
+
+/// "Pick two": the period's sets by exercise. Tapping one swaps it in; two at most, two movements.
+private struct VideoPickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let sessions: [Session]
+    @Binding var picks: [VideoPick]
+    let names: (String) -> String
+
+    var body: some View {
+        ScreenScaffold {
+            LinkButton(title: "Done", chevron: .leading) { dismiss() }
+            TitleBlock(title: "Pick two", subtitle: "Two movements you'd like his eyes on. Each is cropped to the reps.")
+            ForEach(sessions.sorted { $0.startedAt > $1.startedAt }) { session in
+                let sets = session.sets.filter { $0.clipFile != nil && !$0.isWarmup }
+                if !sets.isEmpty {
+                    SectionCard(Format.shortDate(session.startedAt)) {
+                        ForEach(Array(sets.enumerated()), id: \.element.id) { index, set in
+                            if index > 0 { CardDivider() }
+                            let chosen = picks.contains { $0.setId == set.id }
+                            Button {
+                                toggle(set)
+                            } label: {
+                                HStack {
+                                    Text(VideoCropper.caption(exerciseName: names(set.exerciseId), set: set)).font(.body).foregroundStyle(Theme.navy)
+                                    Spacer()
+                                    Text("\(Format.number(set.loadLb)) × \(set.reps)").font(.subheadline).monospacedDigit().secondaryText()
+                                    Checkbox(isOn: chosen) { toggle(set) }
+                                }
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func toggle(_ set: LoggedSet) {
+        if let i = picks.firstIndex(where: { $0.setId == set.id }) {
+            picks.remove(at: i)
+            return
+        }
+        picks.removeAll { pick in sessions.flatMap(\.sets).first { $0.id == pick.setId }?.exerciseId == set.exerciseId } // one per movement
+        if picks.count >= 2 { picks.removeFirst() }
+        picks.append(VideoCropper.pick(for: set, exerciseName: names(set.exerciseId)))
+    }
+}
+
+/// UIActivityViewController with an optional image, an optional text, and optional files (the videos).
 struct ShareSheet: UIViewControllerRepresentable {
     let image: UIImage?
     let text: String?
+    var files: [URL] = []
     let onComplete: @MainActor (Bool) -> Void
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
         var items: [Any] = []
         if let image { items.append(image) }
         if let text { items.append(text) }
+        items.append(contentsOf: files)
         let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
         let onComplete = self.onComplete
         controller.completionWithItemsHandler = { _, completed, _, _ in

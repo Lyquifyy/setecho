@@ -17,6 +17,8 @@ final class Store {
     private(set) var cues: [VoiceCue] = []
     /// "Update MacroFactor: …" lines waiting for the athlete to mark done.
     private(set) var macroFactorReminders: [String] = []
+    /// The athlete's own effort map, per exercise, from his spoken RPEs (HANDOFF.md §7, Calibration).
+    private(set) var calibration = Effort.Calibration()
     private(set) var loadError: String?
 
     let root: URL
@@ -58,11 +60,50 @@ final class Store {
             next.version += 1
             next.program = program
             next.replyId = nil
+            next.rules = plan.rules.filter { $0.source != "Sheet note" } + program.rules
             appendPlan(next)
         } else {
-            appendPlan(PlanState.seed(program: program, template: template, targets: nil, cardioProtocol: cardioProtocol))
+            var seeded = PlanState.seed(program: program, template: template, targets: nil, cardioProtocol: cardioProtocol)
+            seeded.rules = program.rules
+            appendPlan(seeded)
         }
         refreshCycle()
+    }
+
+    /// A spoken RPE on a measured set: one more pair for that exercise's map.
+    func addCalibration(exerciseId: String, velocityLossPct: Double, rpe: Double) {
+        calibration.add(exerciseId: exerciseId, velocityLossPct: velocityLossPct, rpe: rpe)
+        write(calibration, "calibration.json")
+    }
+
+    /// Last time's set for each exercise and role ("exerciseId|role"), from the log: the starting
+    /// load on a sheet that gives none, and the logbook line (HANDOFF.md §7).
+    var lastSets: [String: LastSet] {
+        var sets: [String: LastSet] = [:]
+        for session in sessions.sorted(by: { $0.startedAt < $1.startedAt }) {
+            for set in session.workingSets where set.loadLb > 0 {
+                sets["\(set.exerciseId)|\(set.role?.rawValue ?? "")"] = LastSet(loadLb: set.loadLb, reps: set.reps)
+            }
+        }
+        return sets
+    }
+
+    /// Accepted next-session suggestions not yet used: the load step waiting for each exercise.
+    var nextSessionLoads: [String: Double] {
+        var loads: [String: Double] = [:]
+        for session in sessions.sorted(by: { $0.startedAt < $1.startedAt }) {
+            for s in session.suggestions where s.scope == .nextSession && s.decision == .accepted {
+                loads["\(s.exerciseId)|\(s.role?.rawValue ?? "")"] = s.toLb
+            }
+            // A later session that used the exercise clears the step: the log now carries it.
+            for set in session.workingSets {
+                let key = "\(set.exerciseId)|\(set.role?.rawValue ?? "")"
+                if let pending = loads[key], set.loadLb >= pending, !session.suggestions.contains(where: { $0.exerciseId == set.exerciseId }) {
+                    loads[key] = nil
+                }
+            }
+        }
+        return loads
     }
 
     /// A new form import: plan version +1 with its blocks, targets and cardio protocol.
@@ -274,6 +315,7 @@ final class Store {
         coachReplies = read("coachReplies.json") ?? []
         cues = read("cues.json") ?? []
         macroFactorReminders = read("reminders.json") ?? []
+        calibration = read("calibration.json") ?? Effort.Calibration()
         try? FileManager.default.createDirectory(at: cuesDirectory, withIntermediateDirectories: true)
         // Migration: the first launch after plans arrived seeds version 1 from what the phone already has.
         if plans.isEmpty, let program {

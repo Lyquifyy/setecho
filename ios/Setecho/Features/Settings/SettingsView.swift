@@ -49,7 +49,18 @@ struct SettingsView: View {
                 Text("Only with a rule your coach wrote and you confirmed. You decide each one, and he sees it in the check-in.")
                     .font(.footnote).secondaryText()
             }
+            SectionCard("What you can load") {
+                Text("The steps his rules round to: barbell and dumbbell plates, and your gym's machine stacks.").font(.subheadline).secondaryText()
+                StepField(label: "Barbell", value: $settings.barbellStepLb)
+                CardDivider()
+                StepField(label: "Dumbbells", value: $settings.dumbbellStepLb)
+                CardDivider()
+                StepField(label: "Machines", value: $settings.machineStepLb)
+            }
             SectionCard("Voice") {
+                Text("Your first name, for the spotter to use sparingly. It goes only in the line request.").font(.subheadline).secondaryText()
+                SettingsField(placeholder: "First name", text: $settings.athleteFirstName)
+                CardDivider()
                 Text("One voice everywhere: sessions, check-in morning and the wrap-up. Never your coach's.").font(.subheadline).secondaryText()
                 Picker("Voice", selection: $settings.voiceIdentifier) {
                     Text("Best installed (premium first)").tag("")
@@ -99,5 +110,25 @@ private func qualityName(_ quality: AVSpeechSynthesisVoiceQuality) -> String {
     case .premium: "premium"
     case .enhanced: "enhanced"
     default: "standard"
+    }
+}
+
+
+/// "Barbell   5 lb" with a stepper.
+private struct StepField: View {
+    let label: String
+    @Binding var value: Double
+
+    var body: some View {
+        HStack {
+            Text(label).font(.subheadline).foregroundStyle(Theme.navy)
+            Spacer()
+            Stepper(value: $value, in: 1...50, step: 1) {
+                Text(Format.load(value)).font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
+            }
+            .tint(Theme.cobalt)
+            .fixedSize()
+        }
+        .frame(minHeight: 44)
     }
 }

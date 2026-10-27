@@ -12,8 +12,11 @@ struct Session: Codable, Equatable, Identifiable {
     var notes: [VoiceNote]
     /// The add-ons this session carried, by id.
     var addOnIds: [String]
+    /// Every suggestion his rules made this session, and what the athlete decided (HANDOFF.md §4).
+    var suggestions: [LoadSuggestion]
 
-    init(id: UUID, programDayId: String?, startedAt: Date, endedAt: Date?, sets: [LoggedSet], notes: [VoiceNote], addOnIds: [String] = []) {
+    init(id: UUID, programDayId: String?, startedAt: Date, endedAt: Date?, sets: [LoggedSet], notes: [VoiceNote], addOnIds: [String] = [],
+         suggestions: [LoadSuggestion] = []) {
         self.id = id
         self.programDayId = programDayId
         self.startedAt = startedAt
@@ -21,9 +24,10 @@ struct Session: Codable, Equatable, Identifiable {
         self.sets = sets
         self.notes = notes
         self.addOnIds = addOnIds
+        self.suggestions = suggestions
     }
 
-    private enum CodingKeys: String, CodingKey { case id, programDayId, startedAt, endedAt, sets, notes, addOnIds }
+    private enum CodingKeys: String, CodingKey { case id, programDayId, startedAt, endedAt, sets, notes, addOnIds, suggestions }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -34,7 +38,29 @@ struct Session: Codable, Equatable, Identifiable {
         sets = try c.decode([LoggedSet].self, forKey: .sets)
         notes = try c.decodeIfPresent([VoiceNote].self, forKey: .notes) ?? []
         addOnIds = try c.decodeIfPresent([String].self, forKey: .addOnIds) ?? []
+        suggestions = try c.decodeIfPresent([LoadSuggestion].self, forKey: .suggestions) ?? []
     }
+}
+
+/// A next-set (or next-session) load his rule suggested, and the athlete's decision (HANDOFF.md §4).
+struct LoadSuggestion: Codable, Equatable, Identifiable {
+    var id: UUID
+    var setId: UUID
+    var ruleId: String
+    var exerciseId: String
+    /// The set the new load is for: a back-off rule suggests the back-off set's load.
+    var role: SetRole?
+    var fromLb: Double
+    /// Rounded to what the athlete can load.
+    var toLb: Double
+    /// "RPE 9.5 vs target 8 (measured: about 1 rep left)"
+    var reason: String
+    var scope: RuleScope
+    var decision: SuggestionDecision
+}
+
+enum SuggestionDecision: String, Codable {
+    case pending, accepted, kept
 }
 
 struct LoggedSet: Codable, Equatable, Identifiable {

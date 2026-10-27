@@ -155,3 +155,45 @@ struct VoiceEcho: View {
     .padding(Theme.gutter)
     .background(Theme.page)
 }
+
+
+/// Under a set's result: "~1 left · slowed 38% · estimated" (DESIGN.md Components, `EffortLine`).
+struct EffortLine: View {
+    let set: LoggedSet
+
+    var body: some View {
+        if let text {
+            Text(text).font(.hudLabel).secondaryText().accessibilityLabel(text.replacingOccurrences(of: "~", with: "about "))
+        }
+    }
+
+    private var text: String? {
+        var parts: [String] = []
+        if let rpe = set.rpe {
+            parts.append("RPE \(Format.number(rpe)) · you said")
+        } else if let rir = set.repCount.estimatedRIR {
+            parts.append(Effort.leftText(rir: rir))
+        }
+        if let loss = set.repCount.velocityLossPct { parts.append("slowed \(Int(loss.rounded()))%") }
+        if set.rpe == nil, set.repCount.estimatedRIR != nil { parts.append("estimated") }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}
+
+/// In the HUD during rest: "Next: 215 × 8" on a yellow fill, his rule beneath, and what to say
+/// (DESIGN.md Components, `SuggestionTag`).
+struct SuggestionTag: View {
+    let suggestion: LoadSuggestion
+    let reps: String
+
+    var body: some View {
+        VStack(spacing: Theme.Space.xxs) {
+            TargetTag(text: suggestion.scope == .nextSession ? "Next session: \(Format.number(suggestion.toLb)) × \(reps)" : "Next: \(Format.number(suggestion.toLb)) × \(reps)")
+                .scaleEffect(1.3)
+                .padding(.vertical, Theme.Space.xs)
+            Text("his rule · \(suggestion.reason)").font(.hudLabel).secondaryText().multilineTextAlignment(.center)
+            Text(suggestion.role == .backOff ? "Say 'go with it' or a weight" : "Say 'go with it' or 'keep it'").font(.hudLabel).secondaryText()
+        }
+        .accessibilityElement(children: .combine)
+    }
+}

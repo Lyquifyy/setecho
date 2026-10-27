@@ -160,6 +160,20 @@ final class CheckInCoordinator {
         store.upsert(checkIn: draft)
     }
 
+    func setVideoPicks(_ picks: [VideoPick]) {
+        guard var draft, draft.videoPicks != picks else { return }
+        draft.videoPicks = picks
+        self.draft = draft
+        store.upsert(checkIn: draft)
+    }
+
+    func setAdjustments(_ ids: [UUID]) {
+        guard var draft, draft.adjustments != ids else { return }
+        draft.adjustments = ids
+        self.draft = draft
+        store.upsert(checkIn: draft)
+    }
+
     /// The collage taken on check-in morning joins the draft.
     func attachPhotoSet(_ id: UUID) {
         guard var draft else { return }

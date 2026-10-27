@@ -7,6 +7,8 @@ struct VoiceIntent: Codable, Equatable {
         case endSession, starting, endSet, replayCue, yes, no, answer, unknown
         // The real sheet (HANDOFF.md §7): warm-ups, add-ons, the day, and a set flagged for the coach.
         case topSet, warmup, addAddOn, skipAddOn, changeDay, flagSet
+        // His rule's suggestion (HANDOFF.md §7, Measured effort): "go with it" / "keep it".
+        case acceptSuggestion, keepLoad
     }
 
     var intent: Kind

@@ -8,18 +8,21 @@ struct Program: Codable, Equatable {
     var weeks: [ProgramWeek]
     /// Blocks the coach adds on top of days ("abs 2x per week"); never a day.
     var addOns: [AddOn]
+    /// Load-adjustment rules drafted from the sheet's notes, unconfirmed (HANDOFF.md §8).
+    var rules: [ProgressionRule]
     var importedAt: Date
     var flags: [ImportFlag]
 
-    init(name: String, weeks: [ProgramWeek], addOns: [AddOn] = [], importedAt: Date, flags: [ImportFlag]) {
+    init(name: String, weeks: [ProgramWeek], addOns: [AddOn] = [], rules: [ProgressionRule] = [], importedAt: Date, flags: [ImportFlag]) {
         self.name = name
         self.weeks = weeks
         self.addOns = addOns
+        self.rules = rules
         self.importedAt = importedAt
         self.flags = flags
     }
 
-    private enum CodingKeys: String, CodingKey { case name, weeks, addOns, importedAt, flags }
+    private enum CodingKeys: String, CodingKey { case name, weeks, addOns, rules, importedAt, flags }
 
     /// Programs imported before add-ons existed decode with none (HANDOFF.md §4, Migrations).
     init(from decoder: Decoder) throws {
@@ -27,6 +30,7 @@ struct Program: Codable, Equatable {
         name = try c.decode(String.self, forKey: .name)
         weeks = try c.decode([ProgramWeek].self, forKey: .weeks)
         addOns = try c.decodeIfPresent([AddOn].self, forKey: .addOns) ?? []
+        rules = try c.decodeIfPresent([ProgressionRule].self, forKey: .rules) ?? []
         importedAt = try c.decode(Date.self, forKey: .importedAt)
         flags = try c.decodeIfPresent([ImportFlag].self, forKey: .flags) ?? []
     }

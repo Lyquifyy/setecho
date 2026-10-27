@@ -179,7 +179,7 @@ private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), phone: phone(8), willMeasure: true)
     let id = engine.session.sets[0].id
     let out = engine.measured(setId: id, measured(8, confidence: 0.9), now: t0.addingTimeInterval(45))
-    #expect(out.speech == "8 reps, measured. Next, 225 for 8.")
+    #expect(out.speech == "8 reps, measured. Slowed 38 percent, about 1 left by the measure. Next, 225 for 8.")
     #expect(out.echo == "Set 1: 8 reps (Measured)")
     let set = engine.session.sets[0]
     #expect(set.reps == 8 && set.repCount.source == .measured && set.repCount.measured == 8 && set.repCount.status == .done)
@@ -195,7 +195,7 @@ private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), phone: phone(8), willMeasure: true)
     let id = engine.session.sets[0].id
     let out = engine.measured(setId: id, measured(6, confidence: 0.8), now: t0.addingTimeInterval(40))
-    #expect(out.speech == "6 reps, measured, 2 short of plan. Next, 225 for 8.")
+    #expect(out.speech == "6 reps, measured, 2 short of plan. Slowed 38 percent, about 1 left by the measure. Next, 225 for 8.")
     #expect(engine.session.sets[0].reps == 6 && engine.session.sets[0].repCount.source == .measured)
     #expect(engine.session.sets[0].edits.last?.transcript == "measured")
     let undo = engine.undo()
@@ -356,7 +356,7 @@ private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(engine.session.sets[1].repCount.source == .measured)
     // Set 3's count comes with the next exercise's target.
     let sam3 = engine.measured(setId: engine.session.sets[2].id, measured(8, confidence: 0.9), now: t0.addingTimeInterval(140))
-    #expect(sam3.speech == "8 reps, measured. Next exercise, Barbell row, 165 for 8–10.")
+    #expect(sam3.speech == "8 reps, measured. Slowed 38 percent, about 1 left by the measure. Next exercise, Barbell row, 165 for 8–10.")
 }
 
 @Test @MainActor func fallbackSpokenCountThenSamDuringTheNextSetIsMentionedOnlyIfChanged() {
@@ -390,7 +390,7 @@ private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     let out = engine.setEnded(at: t0.addingTimeInterval(20), phone: phone(5), willMeasure: true)
     #expect(out.speech == "Set 1 done. That's the session." && engine.state == .ended)
     let sam = engine.measured(setId: engine.session.sets[0].id, measured(5, confidence: 0.9), now: t0.addingTimeInterval(40))
-    #expect(sam.speech == "5 reps, measured." && engine.session.sets[0].repCount.source == .measured)
+    #expect(sam.speech == "5 reps, measured. Slowed 38 percent, about 1 left by the measure." && engine.session.sets[0].repCount.source == .measured)
 }
 
 @Test @MainActor func undoingALoggedSetDropsItsPendingCount() {
@@ -486,7 +486,7 @@ private func easy(_ reps: Int, slowdown: Double = 5) -> RepCounter.Result {
     #expect(engine.tickHold().speech == "10 seconds." && engine.state == .hold(remaining: 10))
     for _ in 0..<9 { engine.tickHold() }
     let time = engine.tickHold(at: t0.addingTimeInterval(300))
-    #expect(time.speech == "Time. Next exercise, Incline DB Press, 6–8 reps. Warm-ups first. Rest thirty seconds.")
+    #expect(time.speech == "Time. Next exercise, Incline DB Press, 6–8 reps. Warm-ups first. Weight for the top set? Rest thirty seconds.")
     let set = engine.session.sets[0]
     #expect(set.seconds == 300 && set.reps == 0 && set.exerciseId == "bike" && set.repCount.status == .done)
     #expect(engine.state == .rest(remaining: 30) && engine.currentExercise?.id == "incline" && engine.warmupMode)
@@ -579,7 +579,7 @@ private func easy(_ reps: Int, slowdown: Double = 5) -> RepCounter.Result {
     engine.setEnded(at: t0.addingTimeInterval(90), phone: phone(22), willMeasure: true)
     #expect(engine.session.sets[0].role == .restPause)
     let sam = engine.measured(setId: engine.session.sets[0].id, measured(22, confidence: 0.9, velocityLoss: nil), now: t0.addingTimeInterval(120))
-    #expect(sam.speech == "22 total, measured.")
+    #expect(sam.speech == "Rest-pause: 22 total, measured.")
     #expect(engine.session.sets[0].repCount.velocityLossPct == nil && engine.state == .ended)
 }
 
@@ -642,4 +642,113 @@ private func easy(_ reps: Int, slowdown: Double = 5) -> RepCounter.Result {
     #expect(day1.exercises[2].summary == "1 × 20 total · rest-pause")
     #expect(vacuums.exercises[0].summary == "4 × 20 s")
     #expect(day1.exercises[0].hasWarmups == false && day1.exercises[1].hasWarmups)
+}
+
+// MARK: - Measured effort and his rules (HANDOFF.md §7)
+
+private let failureTargets = [RoleTarget(role: .top, rir: 0, source: "Coach's instructions", quote: "to failure", confirmed: true),
+                              RoleTarget(role: .backOff, rir: 0, source: "Coach's instructions", quote: "to failure", confirmed: true)]
+private let backOffRule = ProgressionRule(id: "rule_1", appliesTo: nil, when: .afterTopSet, byRPE: nil, adjust: .backOff, amount: nil, minPct: 20, maxPct: 25,
+                                          scope: .nextSet, source: "Coach's instructions", quote: "Back down sets are 20-25% lighter than your top set. Beat the logbook every week.", confirmed: true)
+private let topRest = RestRule(after: .top, minSeconds: 180, maxSeconds: 240, quote: "Rest 3-4 minutes after a top set", confirmed: true)
+
+@Test @MainActor func aTopSetGetsItsMeasuredLineAgainstHisFailureTargetAndABackOffFromHisRule() {
+    let engine = SessionEngine(day: day1, weekNumber: 1, rules: [backOffRule], roleTargets: failureTargets, restRules: [topRest],
+                               lastSets: ["incline|top": LastSet(loadLb: 80, reps: 9)])
+    engine.apply(intent(.skipSet))
+    #expect(engine.targetLoadLb == 80)   // no planned load: last time's for the same exercise and role
+    #expect(engine.logbookLine(for: engine.currentExercise!) == "Last time 80 for 9. Beat the logbook.")
+    engine.setStarted(at: t0)
+    engine.setEnded(at: t0.addingTimeInterval(30), phone: phone(11), willMeasure: true)
+    #expect(engine.state == .rest(remaining: 240))   // his 3–4 minutes after a top set
+    let out = engine.measured(setId: engine.session.sets[0].id, measured(11, confidence: 0.9, velocityLoss: 46), now: t0.addingTimeInterval(60))
+    #expect(out.speech == "Top set: 11 reps, measured. Slowed 46 percent, that's failure. Back-off at 60, his rule: 20–25% lighter than the top set. Say 'go with it' or a weight.")
+    #expect(engine.session.sets[0].repCount.estimatedRIR == 0)
+    #expect(engine.pendingSuggestion?.toLb == 60 && engine.pendingSuggestion?.role == .backOff && engine.session.suggestions.count == 1)
+    #expect(out.spotterFacts?.target == "failure" && out.spotterFacts?.suggestionLb == 60 && out.spotterFacts?.isPR == true)
+    #expect(out.spotterReplaceable == "Top set: 11 reps, measured. Slowed 46 percent, that's failure.")
+    // "Go with it": the back-off set's target is his rule's load, logged as accepted.
+    let go = engine.apply(intent(.acceptSuggestion, transcript: "go with it"))
+    #expect(go.speech == "60 it is." && engine.targetLoadLb == 60 && engine.session.suggestions[0].decision == .accepted && engine.pendingSuggestion == nil)
+    // The quiet cue three minutes into the 4:00 rest, with a minute left.
+    var cue: SessionEngine.Outcome = .none
+    for _ in 0..<180 { cue = engine.tickRest() }
+    #expect(cue.speech == "Ready when you are." && engine.state == .rest(remaining: 60))
+}
+
+@Test @MainActor func keepItAndAWeightOfHisOwnAndNoAnswerAreAllLogged() {
+    let engine = SessionEngine(day: day1, weekNumber: 1, rules: [backOffRule], roleTargets: failureTargets, lastSets: ["incline|top": LastSet(loadLb: 80, reps: 9)])
+    engine.apply(intent(.skipSet))
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(30), phone: phone(10), willMeasure: true)
+    engine.measured(setId: engine.session.sets[0].id, measured(10, confidence: 0.9, velocityLoss: 40), now: t0.addingTimeInterval(60))
+    let keep = engine.apply(intent(.keepLoad, transcript: "keep it"))
+    #expect(keep.speech == "Keeping 80." && engine.session.suggestions[0].decision == .kept && engine.targetLoadLb == 80)
+    // A weight of his own while a suggestion is pending: his number, and the suggestion is kept, not taken.
+    let e2 = SessionEngine(day: day1, weekNumber: 1, rules: [backOffRule], roleTargets: failureTargets, lastSets: ["incline|top": LastSet(loadLb: 80, reps: 9)])
+    e2.apply(intent(.skipSet))
+    e2.setStarted(at: t0); e2.setEnded(at: t0.addingTimeInterval(30), phone: phone(10), willMeasure: true)
+    e2.measured(setId: e2.session.sets[0].id, measured(10, confidence: 0.9, velocityLoss: 40), now: t0.addingTimeInterval(60))
+    e2.apply(intent(.setLoad, 65, transcript: "sixty five"))
+    #expect(e2.targetLoadLb == 65 && e2.session.suggestions[0].decision == .kept)
+    // No answer: the next set starts, the suggestion is kept.
+    let e3 = SessionEngine(day: day1, weekNumber: 1, rules: [backOffRule], roleTargets: failureTargets, lastSets: ["incline|top": LastSet(loadLb: 80, reps: 9)])
+    e3.apply(intent(.skipSet))
+    e3.setStarted(at: t0); e3.setEnded(at: t0.addingTimeInterval(30), phone: phone(10), willMeasure: true)
+    e3.measured(setId: e3.session.sets[0].id, measured(10, confidence: 0.9, velocityLoss: 40), now: t0.addingTimeInterval(60))
+    e3.skipRest(); e3.setStarted(at: t0.addingTimeInterval(300)); e3.setEnded(at: t0.addingTimeInterval(330), phone: phone(8))
+    #expect(e3.session.suggestions[0].decision == .kept && e3.pendingSuggestion == nil)
+}
+
+@Test @MainActor func nothingIsSuggestedWithoutAConfirmedRuleButTheEffortIsStillSaid() {
+    var unconfirmed = backOffRule
+    unconfirmed.confirmed = false
+    let engine = SessionEngine(day: day1, weekNumber: 1, rules: [unconfirmed], roleTargets: failureTargets, lastSets: ["incline|top": LastSet(loadLb: 80, reps: 9)])
+    engine.apply(intent(.skipSet))
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(30), phone: phone(8), willMeasure: true)
+    let out = engine.measured(setId: engine.session.sets[0].id, measured(8, confidence: 0.9, velocityLoss: 25), now: t0.addingTimeInterval(60))
+    #expect(out.speech == "Top set: 8 reps, measured. Slowed 25 percent, about 2 left by the measure. His target is failure. Next, 6–8 reps.")
+    #expect(engine.pendingSuggestion == nil && engine.session.suggestions.isEmpty && engine.session.sets[0].repCount.estimatedRIR == 2)
+    // The switch off: effort still measured, nothing suggested.
+    let off = SessionEngine(day: day1, weekNumber: 1, rules: [backOffRule], roleTargets: failureTargets, lastSets: ["incline|top": LastSet(loadLb: 80, reps: 9)], suggestionsEnabled: false)
+    off.apply(intent(.skipSet))
+    off.setStarted(at: t0); off.setEnded(at: t0.addingTimeInterval(30), phone: phone(8), willMeasure: true)
+    off.measured(setId: off.session.sets[0].id, measured(8, confidence: 0.9, velocityLoss: 46), now: t0.addingTimeInterval(60))
+    #expect(off.pendingSuggestion == nil && off.session.sets[0].repCount.estimatedRIR == 0)
+}
+
+@Test @MainActor func aSpokenRPEWinsAndFeedsTheCalibration() {
+    let engine = SessionEngine(day: day1, weekNumber: 1, rules: [backOffRule], roleTargets: failureTargets, lastSets: ["incline|top": LastSet(loadLb: 80, reps: 9)])
+    engine.apply(intent(.skipSet))
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(30), phone: phone(8), willMeasure: true)
+    engine.measured(setId: engine.session.sets[0].id, measured(8, confidence: 0.9, velocityLoss: 25), now: t0.addingTimeInterval(60))
+    engine.apply(intent(.rpe, 9, transcript: "felt like a 9"))
+    #expect(engine.calibrationSamples.count == 1 && engine.calibrationSamples[0].velocityLossPct == 25 && engine.calibrationSamples[0].rpe == 9)
+    #expect(engine.session.sets[0].rpe == 9 && engine.session.sets[0].repCount.estimatedRIR == 2)   // the measure stays on record
+}
+
+@Test @MainActor func aSheetWithNoLoadAndNoHistoryAsksForTheWeight() {
+    let engine = SessionEngine(day: day1, weekNumber: 1)
+    engine.apply(intent(.skipSet))
+    #expect(engine.needsLoad && engine.targetLoadLb == nil)
+    let out = engine.apply(intent(.answer, 70, transcript: "seventy"))
+    #expect(out.speech == "Load 70." && engine.targetLoadLb == 70 && !engine.needsLoad)
+    // A next-session step accepted last time is the starting load now.
+    let stepped = SessionEngine(day: day1, weekNumber: 1, lastSets: ["incline|top": LastSet(loadLb: 80, reps: 9)], nextSessionLoads: ["incline|top": 85])
+    stepped.apply(intent(.skipSet))
+    #expect(stepped.targetLoadLb == 85)
+}
+
+@Test @MainActor func aVoiceOnlySetGetsItsEffortAndSuggestionAtOnce() {
+    let rpeRule = ProgressionRule(id: "r", appliesTo: nil, when: .aboveTarget, byRPE: 1, adjust: .percent, amount: -5, minPct: nil, maxPct: nil,
+                                  scope: .nextSet, source: "Sheet note", quote: "if RPE is over 9, drop 5%", confirmed: true)
+    let engine = SessionEngine(day: upperA, weekNumber: 1, rules: [rpeRule])
+    engine.setStarted(at: t0)
+    engine.apply(intent(.reps, 8, transcript: "that was 8"))
+    engine.setEnded(at: t0.addingTimeInterval(30), phone: nil)
+    engine.apply(intent(.rpe, 9.5, transcript: "felt like a 9 and a half"))
+    #expect(engine.pendingSuggestion == nil)   // the RPE came after the set: the next voice-only set carries it
+    engine.skipRest(); engine.setStarted(at: t0.addingTimeInterval(200))
+    engine.apply(intent(.reps, 8, transcript: "that was 8"))
+    let out = engine.setEnded(at: t0.addingTimeInterval(230), phone: nil)
+    #expect(out.speech?.contains("8 reps.") == true)
 }

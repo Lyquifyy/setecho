@@ -39,7 +39,11 @@ final class SessionCoordinator {
         let plan = store.plan
         self.engine = SessionEngine(day: day, addOns: addOns,
                                     availableAddOns: plan?.program.addOns.filter { $0.timing == .withSession } ?? [],
-                                    weekNumber: weekNumber, warmups: plan?.warmups)
+                                    weekNumber: weekNumber, warmups: plan?.warmups,
+                                    rules: plan?.rules ?? [], roleTargets: plan?.roleTargets ?? [], restRules: plan?.restRules ?? [],
+                                    loadSteps: settings.loadSteps, lastSets: store.lastSets, nextSessionLoads: store.nextSessionLoads,
+                                    suggestionsEnabled: settings.nextSetSuggestions, calibration: store.calibration,
+                                    athleteName: settings.athleteFirstName.isEmpty ? nil : settings.athleteFirstName)
         self.store = store
         self.api = api
         self.detector = SetDetector(mediaDirectory: store.mediaDirectory, sessionId: engine.session.id)
@@ -117,7 +121,9 @@ final class SessionCoordinator {
         guard let ex = engine.currentExercise else { return "Nothing planned for today." }
         if engine.currentSetIsTimed { return "\(engine.title). \(ex.name), \(engine.targetRepsText). Say go." }
         var line = "\(engine.title). \(ex.name), \(Callout.target(load: engine.targetLoadLb, reps: engine.targetRepsText))."
+        if let logbook = engine.logbookLine(for: ex) { line += " \(logbook)" }
         line += engine.warmupMode ? " Warm-ups first." : " Lift when ready, or say starting."
+        if engine.needsLoad { line += " Weight for the top set?" }
         return line
     }
 
@@ -140,7 +146,13 @@ final class SessionCoordinator {
 
     private func save() {
         store.upsert(session: engine.session)
+        for sample in engine.calibrationSamples.dropFirst(savedCalibrationSamples) {
+            store.addCalibration(exerciseId: sample.exerciseId, velocityLossPct: sample.velocityLossPct, rpe: sample.rpe)
+        }
+        savedCalibrationSamples = engine.calibrationSamples.count
     }
+
+    private var savedCalibrationSamples = 0
 
     // MARK: Set detection
 
@@ -312,9 +324,31 @@ final class SessionCoordinator {
         }
         if outcome.askBack != nil || outcome.echo != nil { askBack = outcome.askBack }
         if let speech = outcome.speech {
-            Task { await speak(speech) }
+            Task { await speak(speech, facts: outcome.spotterFacts, replaceable: outcome.spotterReplaceable) }
         }
     }
+
+    /// A rest-time line goes through /spotter/line first (HANDOFF.md §7, The spotter voice): the
+    /// model's line replaces the templated facts when the validator passed it, within a few seconds;
+    /// otherwise the template is spoken. The next target and the suggestion's ask are always spoken.
+    private func speak(_ text: String, facts: SpotterFacts?, replaceable: String?) async {
+        guard let facts, let replaceable, !replaceable.isEmpty, text.contains(replaceable) else {
+            await speak(text)
+            return
+        }
+        let request = SpotterLineRequest(moment: "restAfterSet", facts: facts, recent: engine.recentLines,
+                                         styleHints: [engine.athleteName.map { "first name: \($0)" } ?? "no name", "casual"])
+        if let line = try? await api.spotterLine(request), line.ok, !line.text.isEmpty {
+            spokenLine = line.text
+            await speak(text.replacingOccurrences(of: replaceable, with: line.text))
+        } else {
+            spokenLine = replaceable
+            await speak(text)
+        }
+    }
+
+    /// The rest-time line being spoken, as text on the HUD (DESIGN.md Session, Rest).
+    private(set) var spokenLine: String?
 
     private func speak(_ text: String) async {
         await audio.speak(text)

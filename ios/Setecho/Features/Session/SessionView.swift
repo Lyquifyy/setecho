@@ -60,6 +60,13 @@ struct SessionView: View {
                         .scaleEffect(1.3)
                         .padding(.horizontal, Theme.Space.xs)
                 }
+                if !last.isWarmup { EffortLine(set: last) }
+            }
+            if let suggestion = engine.pendingSuggestion {
+                SuggestionTag(suggestion: suggestion, reps: engine.targetRepsText)
+            }
+            if case .rest = engine.state, let line = coordinator.spokenLine {
+                Text(line).font(.hudLabel).secondaryText().multilineTextAlignment(.center)
             }
 
             if let echo = coordinator.echo {

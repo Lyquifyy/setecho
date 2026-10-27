@@ -29,6 +29,8 @@ struct DraftRequest: Codable {
 struct RenderRequest: Codable {
     var template: CheckInTemplate
     var draft: CheckInDraft
+    /// The accepted suggestions as lines computed on the phone (HANDOFF.md §7, In the check-in).
+    var adjustments: [String] = []
 }
 
 struct RenderResponse: Codable {
