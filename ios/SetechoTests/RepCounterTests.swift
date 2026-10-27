@@ -1,0 +1,111 @@
+import Foundation
+import Testing
+@testable import Setecho
+
+/// RepCounter must count the series in backend/tests/fixtures/reps/ exactly as reps.py does.
+private final class RepFixtureAnchor {}
+
+private struct RepFixture: Decodable {
+    var name: String
+    var notes: String
+    var t: [Double]
+    var y: [Double?]
+    var expectedReps: Int?
+}
+
+private func fixtures() throws -> [RepFixture] {
+    let bundle = Bundle(for: RepFixtureAnchor.self)
+    let urls = try #require(bundle.urls(forResourcesWithExtension: "json", subdirectory: "reps"))
+    let decoder = JSONDecoder()
+    return try urls.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        .map { try decoder.decode(RepFixture.self, from: Data(contentsOf: $0)) }
+}
+
+@Test func sharedFixturesCountLikeTheBackend() throws {
+    let all = try fixtures()
+    #expect(all.count >= 10)
+    for f in all {
+        let result = RepCounter.count(t: f.t, y: f.y)
+        #expect(result.reps == f.expectedReps, Comment(rawValue: "\(f.name): \(f.notes)"))
+        if let expected = f.expectedReps {
+            #expect(result.trackFound && result.repTimes.count == expected, Comment(rawValue: f.name))
+        } else {
+            #expect(!result.trackFound, Comment(rawValue: f.name))
+        }
+    }
+}
+
+@Test func confidenceMatchesTheBackendRule() {
+    #expect(RepCounter.confidence(trackShare: 1, repTimes: []) == 0)
+    #expect(abs(RepCounter.confidence(trackShare: 0.9, repTimes: [1]) - 0.45) < 1e-9)
+    #expect(abs(RepCounter.confidence(trackShare: 1, repTimes: [1, 2, 3]) - 1) < 1e-9)
+    #expect(abs(RepCounter.confidence(trackShare: 0.85, repTimes: [1, 2, 3]) - 0.85) < 1e-9)
+}
+
+@Test func smoothingKeepsTheEdgesAndUsesTheFixedKernel() {
+    let line: [Double] = [0, 1, 2, 3, 4, 5, 6]
+    #expect(zip(RepCounter.smooth(line), line).allSatisfy { abs($0 - $1) < 1e-12 })
+    let spike: [Double] = [0, 0, 0, 1, 0, 0, 0]
+    let s = RepCounter.smooth(spike)
+    #expect(abs(s[3] - 17.0 / 35) < 1e-12 && abs(s[2] - 12.0 / 35) < 1e-12 && s[1] == 0 && s[0] == 0)
+}
+
+@Test func gapFillBridgesShortGapsAndHoldsLongOnes() {
+    let t = (0..<10).map { Double($0) / 10 }
+    let y: [Double?] = [0, 1, nil, nil, 4, nil, nil, nil, nil, nil]
+    let filled = RepCounter.fillGaps(t: t, y: y, maxGap: 0.35)
+    #expect(abs(filled[2] - 2) < 1e-9 && abs(filled[3] - 3) < 1e-9)
+    #expect(filled[5...].allSatisfy { $0 == 4 })
+    let y2: [Double?] = [nil, nil, 2, nil, nil, nil, nil, nil, nil, 9]
+    let filled2 = RepCounter.fillGaps(t: t, y: y2, maxGap: 0.35)
+    #expect(filled2[0] == 2 && filled2[3...8].allSatisfy { $0 == 2 })
+}
+
+@Test func findPeaksMatchesScipyOnPlateausDistanceAndProminence() {
+    // A plateau counts once, at its middle.
+    #expect(RepCounter.findPeaks([0, 1, 1, 1, 0], distance: 1, prominence: 0.5) == [2])
+    // Two peaks closer than `distance`: the higher one survives.
+    #expect(RepCounter.findPeaks([0, 2, 1, 3, 0], distance: 3, prominence: 0.5) == [3])
+    // A shallow bump between two big peaks has no prominence.
+    #expect(RepCounter.findPeaks([0, 5, 4, 4.2, 4, 5, 0], distance: 1, prominence: 1) == [1, 5])
+    #expect(RepCounter.prominence(of: 3, in: [0, 5, 4, 4.2, 4, 5, 0]) == 4.2 - 4)
+}
+
+@Test func jointSeriesPicksTheJointThatMovesMost() {
+    var series = JointSeries()
+    let fps = 15.0
+    var t = 0.0
+    while t < 24 {
+        let rep = t > 1 && t < 21 ? 0.15 * (1 - cos(2 * .pi * (t - 1) / 2.5)) / 2 : 0
+        series.add(JointSeries.Sample(t: t, joints: [
+            "left_wrist": 0.55 - rep, "right_wrist": 0.55 - rep,
+            "left_hip": 0.4 + 0.002 * sin(t * 5), "right_hip": 0.4,
+            "left_knee": 0.25, "right_knee": 0.25, "left_elbow": 0.5 - rep * 0.3, "right_elbow": 0.5 - rep * 0.3,
+        ]))
+        t += 1 / fps
+    }
+    let result = series.phoneCount(from: 0, to: 24)
+    #expect(result?.reps == 8)
+    #expect(series.isOnDuty(now: 24))
+    // Nothing moved: no phone count, and the set logs the plan.
+    var still = JointSeries()
+    for i in 0..<150 { still.add(JointSeries.Sample(t: Double(i) / fps, joints: ["left_wrist": 0.5, "right_wrist": 0.5])) }
+    #expect(still.phoneCount(from: 0, to: 10) == nil)
+    #expect(!still.isOnDuty(now: 10))   // two joints is not a body in frame
+}
+
+@Test func jointSeriesNeedsTrackingOnMostFrames() {
+    var series = JointSeries()
+    let fps = 15.0
+    var t = 0.0
+    var i = 0
+    while t < 20 {
+        let rep = 0.15 * (1 - cos(2 * .pi * t / 2.5)) / 2
+        var joints: [String: Double] = [:]
+        if i % 3 != 0 { joints["left_wrist"] = 0.55 - rep }   // a third of frames lost
+        series.add(JointSeries.Sample(t: t, joints: joints))
+        t += 1 / fps
+        i += 1
+    }
+    #expect(series.phoneCount(from: 0, to: 20) == nil)
+}

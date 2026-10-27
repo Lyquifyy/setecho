@@ -46,7 +46,12 @@ targets:
   SetechoTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [SetechoTests]
+    sources:
+      - SetechoTests
+      # The rep-count series shared with the backend: RepCounter must count them like reps.py does.
+      - path: ../backend/tests/fixtures/reps
+        type: folder
+        buildPhase: resources
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

@@ -100,11 +100,19 @@ private struct FieldEditSheet: View {
     let coordinator: CheckInCoordinator
     @State private var text = ""
 
+    private var waitingOnAthlete: Bool {
+        switch coordinator.answer(for: field)?.state {
+        case .filled, .confirmed: false
+        case .drafted, .missing, nil: true
+        }
+    }
+
     var body: some View {
         ScreenScaffold {
             LinkButton(title: "Back", chevron: .leading) { dismiss() }
             TitleBlock(eyebrow: field.prompt, title: field.label)
-            SectionCard("Answer") {
+            // An unanswered or drafted field is the next thing waiting on the athlete: the one yellow tag.
+            SectionCard("Answer", accessory: { if waitingOnAthlete { TargetTag(text: "Your answer") } }) {
                 TextEditor(text: $text)
                     .font(.body)
                     .foregroundStyle(Theme.navy)

@@ -4,9 +4,10 @@ import Observation
 /// The hands-free session state machine (DESIGN.md Session, HANDOFF.md §7). Pure logic: the camera,
 /// microphone and speech live in services that feed it events, so every rule is unit-tested.
 ///
-/// Logging rule: load comes from the plan, or the last spoken override for that exercise. Reps come
-/// from the plan unless the athlete says "that was N". RPE is spoken. Every voice action is echoed
-/// and can be undone.
+/// Logging rule: load comes from the plan, or the last spoken override for that exercise. Reps
+/// follow the rep-counting rules: what the athlete said, else the phone's instant count, else the
+/// plan; SAM's measured count arrives during rest and corrects the log when it is confident. RPE
+/// is spoken. Every voice action is echoed and can be undone.
 @MainActor
 @Observable
 final class SessionEngine {
@@ -35,6 +36,13 @@ final class SessionEngine {
         static let none = Outcome()
     }
 
+    /// "Set 3, was that 7 or 8?" waiting for a spoken number.
+    struct PendingQuestion: Equatable {
+        var setId: UUID
+        var measured: Int
+        var current: Int
+    }
+
     let day: ProgramDay
     let weekNumber: Int
     let defaultRestSeconds: Int
@@ -47,11 +55,13 @@ final class SessionEngine {
     private(set) var lastEcho: String?
     private(set) var lastCallout: String?
     private(set) var pendingAskBack: String?
+    private(set) var pendingQuestion: PendingQuestion?
     private(set) var undoStack: [UndoEntry] = []
+    /// Measured counts that arrived during a set, applied at the next rest. Never spoken mid-set.
+    private(set) var heldMeasurements: [(setId: UUID, response: CountResponse)] = []
     private var recordingStartedAt: Date?
     private var stateBeforePause: State = .ready
     private var repsOverrideForCurrentSet: Int?
-    private var clipForCurrentSet: String?
 
     init(day: ProgramDay, weekNumber: Int, defaultRestSeconds: Int = 150, now: Date = .now) {
         self.day = day
@@ -76,6 +86,7 @@ final class SessionEngine {
     var setCount: Int { currentExercise?.sets.count ?? 0 }
     var isComplete: Bool { currentExercise == nil }
     var restSeconds: Int { currentExercise?.restSeconds ?? defaultRestSeconds }
+    var lastLoggedSetId: UUID? { session.sets.last?.id }
 
     var context: SessionContext {
         SessionContext(
@@ -111,15 +122,25 @@ final class SessionEngine {
         return Outcome(echo: "Set \(setNumber) recording")
     }
 
-    func attachClip(_ file: String) {
-        clipForCurrentSet = file
-    }
-
-    /// The bar stopped (or the athlete said "done"). Logs the set from the plan plus anything said.
+    /// The bar stopped (or the athlete said "done"). Logs the set: what was said, else the phone's
+    /// count, else the plan. `willMeasure` marks the count as pending SAM's answer.
     @discardableResult
-    func setEnded(at now: Date = .now) -> Outcome {
+    func setEnded(at now: Date = .now, phone: RepCounter.Result? = nil, willMeasure: Bool = false) -> Outcome {
         guard state == .recording, let exercise = currentExercise, let planned = currentPlannedSet else { return .none }
-        let reps = repsOverrideForCurrentSet ?? planned.reps ?? planned.repsMin ?? 0
+        let planReps = planned.reps ?? planned.repsMin ?? 0
+        let phoneReps = phone?.reps
+        let reps: Int
+        let source: RepSource
+        if let spoken = repsOverrideForCurrentSet {
+            reps = spoken
+            source = .spoken
+        } else if let phoneReps {
+            reps = phoneReps
+            source = .phone
+        } else {
+            reps = planReps
+            source = .plan
+        }
         let logged = LoggedSet(
             id: UUID(),
             exerciseId: exercise.id,
@@ -127,9 +148,10 @@ final class SessionEngine {
             loadLb: targetLoadLb ?? 0,
             reps: reps,
             rpe: nil,
+            repCount: RepCount(source: source, phone: phoneReps, status: willMeasure ? .counting : .done),
             startedAt: recordingStartedAt ?? now,
             endedAt: now,
-            clipFile: clipForCurrentSet,
+            clipFile: nil,
             edits: []
         )
         session.sets.append(logged)
@@ -137,16 +159,90 @@ final class SessionEngine {
         let doneNumber = setNumber
         // The rest belongs to the set just finished, even when the next set is another exercise.
         let rest = exercise.restSeconds ?? defaultRestSeconds
+        let shortBy = source == .plan ? 0 : max(0, (planned.repsMin ?? planned.reps ?? 0) - reps)
         repsOverrideForCurrentSet = nil
-        clipForCurrentSet = nil
         recordingStartedAt = nil
 
         advance()
-        let callout = Callout.setDone(setNumber: doneNumber, next: nextTarget, restSeconds: rest)
+        let callout = Callout.setDone(setNumber: doneNumber, reps: source == .plan ? nil : reps, shortBy: shortBy,
+                                      next: nextTarget, restSeconds: rest)
         lastCallout = callout
         state = isComplete ? .ended : .rest(remaining: rest)
         if isComplete { session.endedAt = now }
-        return Outcome(speech: callout, echo: "Set \(doneNumber) saved: \(Format.number(logged.loadLb)) × \(reps)")
+        var outcome = Outcome(speech: callout, echo: "Set \(doneNumber) saved: \(Format.number(logged.loadLb)) × \(reps)")
+        // Measured counts that arrived mid-set are spoken now, during rest.
+        for held in heldMeasurements {
+            let late = applyMeasured(setId: held.setId, held.response, now: now)
+            if let speech = late.speech { outcome.speech = [outcome.speech, speech].compactMap { $0 }.joined(separator: " ") }
+            if let echo = late.echo { outcome.echo = echo }
+            if let ask = late.askBack { outcome.askBack = ask }
+        }
+        heldMeasurements.removeAll()
+        return outcome
+    }
+
+    /// The set's trimmed clip finished exporting after the set was logged.
+    func attachClip(setId: UUID, file: String) {
+        if let i = session.sets.firstIndex(where: { $0.id == setId }) { session.sets[i].clipFile = file }
+    }
+
+    // MARK: Measured counts (HANDOFF.md §7, Rep counting)
+
+    /// SAM's count came back. During a set it is held; otherwise: same number, the chip changes
+    /// and nothing is said; different and confident, the log changes (undoable) and it is said;
+    /// different and unsure, the athlete is asked. "That was N" always wins.
+    @discardableResult
+    func measured(setId: UUID, _ response: CountResponse, now: Date = .now) -> Outcome {
+        if state == .recording {
+            heldMeasurements.append((setId, response))
+            return .none
+        }
+        return applyMeasured(setId: setId, response, now: now)
+    }
+
+    private func applyMeasured(setId: UUID, _ response: CountResponse, now: Date) -> Outcome {
+        guard let i = session.sets.firstIndex(where: { $0.id == setId }) else { return .none }
+        var set = session.sets[i]
+        set.repCount.measured = response.reps
+        set.repCount.confidence = response.confidence
+        set.repCount.repTimes = response.repTimes
+        guard response.trackFound, let measured = response.reps else {
+            set.repCount.status = .failed
+            session.sets[i] = set
+            return .none
+        }
+        set.repCount.status = .done
+        let number = set.setIndex + 1
+        if set.repCount.source == .spoken {
+            session.sets[i] = set
+            return .none
+        }
+        if measured == set.reps {
+            set.repCount.source = .measured
+            session.sets[i] = set
+            return .none
+        }
+        if response.confidence >= RepCount.confidentThreshold {
+            let old = set.reps
+            let oldSource = set.repCount.source
+            set.reps = measured
+            set.repCount.source = .measured
+            set.edits.append(SetEdit(at: now, field: "reps", from: "\(old)", to: "\(measured)", transcript: "measured"))
+            session.sets[i] = set
+            undoStack.append(UndoEntry(action: .measured(setId: setId, oldReps: old, oldSource: oldSource), description: "measured count"))
+            lastEcho = "Set \(number) → \(measured) reps (measured)"
+            return Outcome(speech: Callout.measuredCorrection(setNumber: number, measured: measured, was: old),
+                           echo: "Set \(number) → \(measured) reps (measured). Say undo to revert.")
+        }
+        session.sets[i] = set
+        pendingQuestion = PendingQuestion(setId: setId, measured: measured, current: set.reps)
+        let ask = Callout.whichCount(setNumber: number, measured: measured, current: set.reps)
+        return Outcome(speech: ask, askBack: ask)
+    }
+
+    /// The clip never reached the backend: the phone count stands.
+    func countFailed(setId: UUID) {
+        if let i = session.sets.firstIndex(where: { $0.id == setId }) { session.sets[i].repCount.status = .failed }
     }
 
     private var nextTarget: Callout.NextSet? {
@@ -198,8 +294,13 @@ final class SessionEngine {
     @discardableResult
     func apply(_ response: VoiceCommandResponse, now: Date = .now) -> Outcome {
         let intent = response.intent
-        if let pending = pendingAskBack, intent.intent == .answer || intent.intent == .unknown {
-            _ = pending
+        // A number answers "was that 7 or 8?"; any other command lets the question lapse.
+        if let question = pendingQuestion {
+            if let n = intent.number, intent.intent == .answer || intent.intent == .reps, intent.confidence >= VoiceIntent.actThreshold {
+                pendingQuestion = nil
+                return answerQuestion(question, with: Int(n), transcript: response.transcript, now: now)
+            }
+            if intent.isActionable { pendingQuestion = nil }
         }
         guard intent.isActionable else {
             let ask = Callout.askBack(response.transcript.isEmpty ? "that" : response.transcript)
@@ -222,11 +323,7 @@ final class SessionEngine {
                 return echo("This set → \(Int(n)) reps")
             }
             guard let last = session.sets.indices.last else { return say("No set to correct yet.") }
-            let old = session.sets[last].reps
-            session.sets[last].reps = Int(n)
-            session.sets[last].edits.append(SetEdit(at: now, field: "reps", from: "\(old)", to: "\(Int(n))", transcript: response.transcript))
-            undoStack.append(UndoEntry(action: .reps(setId: session.sets[last].id, old: old), description: "\(Int(n)) reps"))
-            return echo("Set \(session.sets[last].setIndex + 1) → \(Int(n)) reps", speech: Callout.repsLogged(Int(n), setNumber: session.sets[last].setIndex + 1))
+            return spokenReps(at: last, Int(n), transcript: response.transcript, now: now)
         case .setLoad:
             guard let n = intent.number, let ex = currentExercise else { return say("Which load?") }
             let old = loadOverrides[ex.id]
@@ -284,6 +381,22 @@ final class SessionEngine {
         }
     }
 
+    /// "That was N" on a logged set: the athlete's number wins over every count.
+    private func spokenReps(at index: Int, _ n: Int, transcript: String, now: Date) -> Outcome {
+        let old = session.sets[index].reps
+        let oldSource = session.sets[index].repCount.source
+        session.sets[index].reps = n
+        session.sets[index].repCount.source = .spoken
+        session.sets[index].edits.append(SetEdit(at: now, field: "reps", from: "\(old)", to: "\(n)", transcript: transcript))
+        undoStack.append(UndoEntry(action: .reps(setId: session.sets[index].id, old: old, oldSource: oldSource), description: "\(n) reps"))
+        return echo("Set \(session.sets[index].setIndex + 1) → \(n) reps", speech: Callout.repsLogged(n, setNumber: session.sets[index].setIndex + 1))
+    }
+
+    private func answerQuestion(_ question: PendingQuestion, with n: Int, transcript: String, now: Date) -> Outcome {
+        guard let i = session.sets.firstIndex(where: { $0.id == question.setId }) else { return .none }
+        return spokenReps(at: i, n, transcript: transcript, now: now)
+    }
+
     /// Revert the last action and say what was reverted.
     @discardableResult
     func undo() -> Outcome {
@@ -301,8 +414,11 @@ final class SessionEngine {
             }
         case .rpe(let id, let old):
             if let i = session.sets.firstIndex(where: { $0.id == id }) { session.sets[i].rpe = old }
-        case .reps(let id, let old):
-            if let i = session.sets.firstIndex(where: { $0.id == id }) { session.sets[i].reps = old }
+        case .reps(let id, let old, let oldSource), .measured(let id, let old, let oldSource):
+            if let i = session.sets.firstIndex(where: { $0.id == id }) {
+                session.sets[i].reps = old
+                session.sets[i].repCount.source = oldSource
+            }
         case .load(let exerciseId, let old):
             loadOverrides[exerciseId] = old
         case .skip(let exercise, let set):
@@ -337,7 +453,8 @@ final class SessionEngine {
         enum Action: Equatable {
             case loggedSet(UUID)
             case rpe(setId: UUID, old: Double?)
-            case reps(setId: UUID, old: Int)
+            case reps(setId: UUID, old: Int, oldSource: RepSource)
+            case measured(setId: UUID, oldReps: Int, oldSource: RepSource)
             case load(exerciseId: String, old: Double?)
             case skip(exercise: Int, set: Int)
             case note(id: UUID)

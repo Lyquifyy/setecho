@@ -1,10 +1,16 @@
 import Foundation
 
 /// The spoken callouts, deterministic and template-only (HANDOFF.md §7). No model writes these.
-/// "Set 3 done. Next, 225 for 8. Rest two thirty."
+/// "8 reps. Next, 225 for 8. Rest two thirty." With no count: "Set 3 done. Next, …".
 enum Callout {
-    static func setDone(setNumber: Int, next: NextSet?, restSeconds: Int) -> String {
-        var parts = ["Set \(setNumber) done."]
+    static func setDone(setNumber: Int, reps: Int? = nil, shortBy: Int = 0, next: NextSet?, restSeconds: Int) -> String {
+        var parts: [String]
+        if let reps {
+            // A count is stated as a fact, and so is falling short of the plan. Never a judgement.
+            parts = [shortBy > 0 ? "\(reps) reps, \(shortBy) short of plan." : "\(reps) reps."]
+        } else {
+            parts = ["Set \(setNumber) done."]
+        }
         switch next {
         case .sameExercise(let load, let reps):
             parts.append("Next, \(target(load: load, reps: reps)).")
@@ -61,5 +67,15 @@ enum Callout {
 
     static func askBack(_ transcript: String) -> String {
         "Did you say \(transcript)?"
+    }
+
+    /// SAM disagreed and is confident: "Set 3: 7, not 8."
+    static func measuredCorrection(setNumber: Int, measured: Int, was: Int) -> String {
+        "Set \(setNumber): \(measured), not \(was)."
+    }
+
+    /// SAM disagreed and is unsure: "Set 3, was that 7 or 8?"
+    static func whichCount(setNumber: Int, measured: Int, current: Int) -> String {
+        "Set \(setNumber), was that \(measured) or \(current)?"
     }
 }

@@ -65,6 +65,33 @@ struct HUDState: View {
     }
 }
 
+/// Which session inputs are live (DESIGN.md Components): camera and watch, cobalt when on,
+/// secondary with a slash when not. The watch icon is hidden until a watch has ever connected.
+struct InputStatus: View {
+    let camera: Bool
+    var watch: Bool?
+
+    var body: some View {
+        HStack(spacing: Theme.Space.xs) {
+            Image(systemName: camera ? "video.fill" : "video.slash")
+                .foregroundStyle(camera ? Theme.cobalt : Theme.textSecondary)
+            if let watch {
+                Image(systemName: watch ? "applewatch" : "applewatch.slash")
+                    .foregroundStyle(watch ? Theme.cobalt : Theme.textSecondary)
+            }
+        }
+        .font(.hudLabel.weight(.semibold))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+    }
+
+    private var label: String {
+        var parts = [camera ? "Camera on" : "Camera off"]
+        if let watch { parts.append(watch ? "watch on" : "watch off") }
+        return parts.joined(separator: ", ")
+    }
+}
+
 /// A cobalt-tint pulse shown whenever the mic is taking commands, so the athlete knows when they're heard.
 struct ListeningIndicator: View {
     @State private var pulsing = false
@@ -112,6 +139,7 @@ struct VoiceEcho: View {
         HUDState(state: .recording)
         HUDState(state: .rest(remaining: 134))
         HUDState(state: .listening)
+        InputStatus(camera: true, watch: false)
         VoiceEcho(text: "Set 3 → 7 reps. Say undo to revert.")
     }
     .padding(Theme.gutter)

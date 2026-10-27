@@ -24,8 +24,65 @@ struct PlannedExercise: Codable, Equatable, Identifiable {
     var id: String
     var name: String
     var sets: [PlannedSet]
+    /// What the athlete moves; decides what the camera tracks for the measured rep count.
+    var equipment: Equipment
     var restSeconds: Int?
     var notes: String?
+
+    init(id: String, name: String, sets: [PlannedSet], equipment: Equipment? = nil, restSeconds: Int?, notes: String?) {
+        self.id = id
+        self.name = name
+        self.sets = sets
+        self.equipment = equipment ?? Equipment.infer(from: name)
+        self.restSeconds = restSeconds
+        self.notes = notes
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, sets, equipment, restSeconds, notes }
+
+    /// Programs imported before `equipment` existed decode with it inferred from the name.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        sets = try c.decode([PlannedSet].self, forKey: .sets)
+        equipment = try c.decodeIfPresent(Equipment.self, forKey: .equipment) ?? Equipment.infer(from: name)
+        restSeconds = try c.decodeIfPresent(Int.self, forKey: .restSeconds)
+        notes = try c.decodeIfPresent(String.self, forKey: .notes)
+    }
+}
+
+/// Mirrors `Equipment` in backend/app/reps.py, including the name-based fallback.
+enum Equipment: String, Codable, CaseIterable {
+    case barbell, dumbbell, machine, cable, bodyweight
+
+    var label: String {
+        switch self {
+        case .barbell: "Barbell"
+        case .dumbbell: "Dumbbell"
+        case .machine: "Machine"
+        case .cable: "Cable"
+        case .bodyweight: "Bodyweight"
+        }
+    }
+
+    private static let hints: [(Equipment, [String])] = [
+        (.dumbbell, ["dumbbell", "db ", "db-", "dbs", "kettlebell", "kb "]),
+        (.cable, ["cable", "pushdown", "pulldown", "lat pull", "face pull", "rope", "pressdown"]),
+        (.machine, ["machine", "smith", "leg press", "hack squat", "pec deck", "leg curl", "leg extension",
+                    "hip thrust machine", "chest press machine", "row machine", "seated row", "calf raise"]),
+        (.bodyweight, ["pull-up", "pull up", "pullup", "chin-up", "chin up", "chinup", "push-up", "push up",
+                       "pushup", "dip", "plank", "bodyweight", "hanging", "nordic", "back extension", "crunch"]),
+    ]
+
+    /// Barbell when nothing in the name says otherwise. Same rules as the backend's `infer_equipment`.
+    static func infer(from name: String) -> Equipment {
+        let lowered = " \(name.lowercased()) "
+        for (equipment, words) in hints where words.contains(where: { lowered.contains($0) }) {
+            return equipment
+        }
+        return .barbell
+    }
 }
 
 /// "6-8 reps" is repsMin 6, repsMax 8 with reps nil.

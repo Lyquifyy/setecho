@@ -26,6 +26,8 @@ struct SectionCard<Content: View, Accessory: View>: View {
                     Spacer(minLength: Theme.Space.xs)
                     accessory
                 }
+                // A hairline under the title marks where the section's content begins.
+                CardDivider()
             }
             content
         }

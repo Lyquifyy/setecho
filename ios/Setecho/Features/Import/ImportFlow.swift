@@ -235,9 +235,8 @@ struct ExerciseRow: View {
             VStack(alignment: .leading, spacing: Theme.Space.xxs) {
                 Text(exercise.name).font(.body.weight(.semibold)).foregroundStyle(Theme.navy)
                 Text(exercise.summary).font(.subheadline).monospacedDigit().secondaryText()
-                if let rest = exercise.restText {
-                    Text(rest).font(.footnote).monospacedDigit().secondaryText()
-                }
+                Text([exercise.equipment.label, exercise.restText].compactMap { $0 }.joined(separator: " · "))
+                    .font(.footnote).monospacedDigit().secondaryText()
                 if let notes = exercise.notes, !notes.isEmpty {
                     Text(notes).font(.footnote).secondaryText()
                 }

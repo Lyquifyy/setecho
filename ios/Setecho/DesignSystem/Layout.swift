@@ -32,6 +32,8 @@ struct BrandHeader: View {
             }
             .accessibilityLabel("More")
         }
+        // Room under the header before the screen's title, so the lockup never sits on the content.
+        .padding(.bottom, Theme.Space.xs)
     }
 }
 
@@ -52,6 +54,8 @@ struct TitleBlock: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // The title block stands apart from the first card.
+        .padding(.bottom, Theme.Space.xs)
     }
 }
 
@@ -91,6 +95,8 @@ struct ScreenScaffold<Content: View, Footer: View>: View {
                 content
             }
             .padding(.horizontal, Theme.gutter)
+            // Sheets have no top safe area: the lockup needs its own breathing room.
+            .padding(.top, Theme.Space.m)
             .padding(.bottom, Theme.gutter)
         }
         .scrollDismissesKeyboard(.interactively)

@@ -92,3 +92,33 @@ private func fixture(_ name: String) throws -> Data {
     #expect(facts.daily[1].kcal == nil && !facts.daily[1].isTrainingDay)
     #expect(facts.sources["weight"] == "Withings")
 }
+
+@Test func loggedSetWithoutRepCountDecodesAsPlan() throws {
+    let json = """
+    {"id":"8E2B2C0E-5C4C-4C3B-9B1D-0D7B5B3D1A11","exerciseId":"bench","setIndex":0,"loadLb":225,"reps":8,"rpe":null,
+     "startedAt":"2026-10-26T18:00:00.000Z","endedAt":"2026-10-26T18:00:30.000Z","clipFile":null,"edits":[]}
+    """
+    let set = try JSONCoding.decoder.decode(LoggedSet.self, from: Data(json.utf8))
+    #expect(set.repCount == RepCount(source: .plan))
+    #expect(set.repCount.status == .done && set.reps == 8)
+    let data = try JSONCoding.encoder.encode(set)
+    let back = try JSONCoding.decoder.decode(LoggedSet.self, from: data)
+    #expect(back == set)
+    #expect(String(decoding: data, as: UTF8.self).contains("\"source\" : \"plan\""))
+}
+
+@Test func plannedExerciseWithoutEquipmentInfersItFromTheName() throws {
+    let program = try JSONCoding.decoder.decode(Program.self, from: fixture("program"))
+    let upper = program.weeks[0].days[0]
+    #expect(upper.exercises[0].equipment == .barbell)   // Bench press
+    #expect(Equipment.infer(from: "Incline DB press") == .dumbbell)
+    #expect(Equipment.infer(from: "Cable fly") == .cable)
+    #expect(Equipment.infer(from: "Leg press") == .machine)
+    #expect(Equipment.infer(from: "Weighted pull-up") == .bodyweight)
+    #expect(Equipment.infer(from: "Lat pulldown") == .cable)
+    let json = """
+    {"id":"x","name":"Hack squat","sets":[],"equipment":"machine","restSeconds":null,"notes":null}
+    """
+    let ex = try JSONCoding.decoder.decode(PlannedExercise.self, from: Data(json.utf8))
+    #expect(ex.equipment == .machine)
+}

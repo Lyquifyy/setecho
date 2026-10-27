@@ -146,3 +146,120 @@ private func intent(_ kind: VoiceIntent.Kind, _ number: Double? = nil, text: Str
     let ctx = engine.context
     #expect(ctx == SessionContext(state: "ready", exerciseName: "Bench press", setIndex: 1, setCount: 3, plannedLoadLb: 215, plannedReps: 8))
 }
+
+// MARK: - Rep counting (HANDOFF.md §7)
+
+private func phone(_ reps: Int, confidence: Double = 0.9) -> RepCounter.Result {
+    RepCounter.Result(reps: reps, repTimes: (0..<reps).map { Double($0) * 2.5 + 1 }, confidence: confidence, trackFound: true, frames: 300, trackedFrames: 300)
+}
+
+private func measured(_ reps: Int?, confidence: Double) -> CountResponse {
+    CountResponse(reps: reps, repTimes: reps.map { r in (0..<r).map { Double($0) * 2.5 + 4 } } ?? [], confidence: confidence,
+                  trackFound: reps != nil, frames: 300, trackedFrames: 300, prompt: "weight plate")
+}
+
+@Test @MainActor func phoneCountIsLoggedAndSpoken() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted()
+    let out = engine.setEnded(phone: phone(8), willMeasure: true)
+    let set = engine.session.sets[0]
+    #expect(set.reps == 8 && set.repCount.source == .phone && set.repCount.phone == 8 && set.repCount.status == .counting)
+    #expect(out.speech == "8 reps. Next, 225 for 8. Rest two thirty.")
+}
+
+@Test @MainActor func shortOfPlanIsStatedAsAFact() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted()
+    let out = engine.setEnded(phone: phone(6))
+    #expect(out.speech == "6 reps, 2 short of plan. Next, 225 for 8. Rest two thirty.")
+    #expect(engine.session.sets[0].repCount.status == .done)
+}
+
+@Test @MainActor func noPhoneCountLogsThePlanWithTheOldCallout() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted()
+    let out = engine.setEnded(phone: nil)
+    #expect(engine.session.sets[0].reps == 8 && engine.session.sets[0].repCount.source == .plan)
+    #expect(out.speech == "Set 1 done. Next, 225 for 8. Rest two thirty.")
+}
+
+@Test @MainActor func sameMeasuredCountOnlyChangesTheChip() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted(); engine.setEnded(phone: phone(8), willMeasure: true)
+    let id = engine.session.sets[0].id
+    let out = engine.measured(setId: id, measured(8, confidence: 0.9))
+    #expect(out == .none)
+    let set = engine.session.sets[0]
+    #expect(set.reps == 8 && set.repCount.source == .measured && set.repCount.measured == 8 && set.repCount.status == .done)
+    #expect(set.repCount.repTimes.count == 8 && set.repCount.confidence == 0.9)
+}
+
+@Test @MainActor func confidentDifferentCountCorrectsTheLogAndUndoReverts() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted(); engine.setEnded(phone: phone(8), willMeasure: true)
+    let id = engine.session.sets[0].id
+    let out = engine.measured(setId: id, measured(7, confidence: 0.8))
+    #expect(out.speech == "Set 1: 7, not 8.")
+    #expect(out.echo == "Set 1 → 7 reps (measured). Say undo to revert.")
+    #expect(engine.session.sets[0].reps == 7 && engine.session.sets[0].repCount.source == .measured)
+    #expect(engine.session.sets[0].edits.last?.transcript == "measured")
+    let undo = engine.undo()
+    #expect(undo.speech == "Undid measured count.")
+    #expect(engine.session.sets[0].reps == 8 && engine.session.sets[0].repCount.source == .phone)
+    #expect(engine.session.sets[0].repCount.measured == 7)   // SAM's number stays on record
+}
+
+@Test @MainActor func unsureDifferentCountAsksAndANumberAnswers() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted(); engine.setEnded(phone: phone(8), willMeasure: true)
+    let id = engine.session.sets[0].id
+    let out = engine.measured(setId: id, measured(7, confidence: 0.4))
+    #expect(out.speech == "Set 1, was that 7 or 8?" && out.askBack == out.speech)
+    #expect(engine.session.sets[0].reps == 8 && engine.pendingQuestion?.measured == 7)
+    let answer = engine.apply(intent(.answer, 7, transcript: "seven"))
+    #expect(engine.session.sets[0].reps == 7 && engine.session.sets[0].repCount.source == .spoken)
+    #expect(answer.speech == "Set 1, 7 reps." && engine.pendingQuestion == nil)
+}
+
+@Test @MainActor func noAnswerKeepsThePhoneCount() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted(); engine.setEnded(phone: phone(8), willMeasure: true)
+    engine.measured(setId: engine.session.sets[0].id, measured(7, confidence: 0.4))
+    engine.apply(intent(.rpe, 9, transcript: "felt like a 9"))   // another command: the question lapses
+    #expect(engine.pendingQuestion == nil && engine.session.sets[0].reps == 8 && engine.session.sets[0].rpe == 9)
+}
+
+@Test @MainActor func whatTheAthleteSaidBeatsTheMeasuredCount() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted()
+    engine.apply(intent(.reps, 7, transcript: "that was 7"))
+    engine.setEnded(phone: phone(8), willMeasure: true)
+    #expect(engine.session.sets[0].reps == 7 && engine.session.sets[0].repCount.source == .spoken)
+    let out = engine.measured(setId: engine.session.sets[0].id, measured(9, confidence: 0.95))
+    #expect(out == .none && engine.session.sets[0].reps == 7 && engine.session.sets[0].repCount.source == .spoken)
+    #expect(engine.session.sets[0].repCount.measured == 9)
+}
+
+@Test @MainActor func measuredCountDuringASetIsHeldUntilRest() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted(); engine.setEnded(phone: phone(8), willMeasure: true)
+    let first = engine.session.sets[0].id
+    engine.skipRest()
+    engine.setStarted()
+    let held = engine.measured(setId: first, measured(7, confidence: 0.9))
+    #expect(held == .none && engine.session.sets[0].reps == 8 && engine.heldMeasurements.count == 1)
+    let out = engine.setEnded(phone: phone(8))
+    #expect(engine.session.sets[0].reps == 7 && engine.heldMeasurements.isEmpty)
+    #expect(out.speech == "8 reps. Next, 225 for 8. Rest two thirty. Set 1: 7, not 8.")
+}
+
+@Test @MainActor func noTrackMarksTheCountFailedAndKeepsThePhoneCount() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted(); engine.setEnded(phone: phone(8), willMeasure: true)
+    let id = engine.session.sets[0].id
+    engine.measured(setId: id, measured(nil, confidence: 0))
+    #expect(engine.session.sets[0].reps == 8 && engine.session.sets[0].repCount.status == .failed)
+    engine.countFailed(setId: id)
+    engine.attachClip(setId: id, file: "set-1.mov")
+    #expect(engine.session.sets[0].clipFile == "set-1.mov")
+}

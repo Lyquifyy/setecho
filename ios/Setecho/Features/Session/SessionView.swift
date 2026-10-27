@@ -44,10 +44,18 @@ struct SessionView: View {
                 Text("\(engine.session.sets.count) sets logged").font(.hudLabel).secondaryText()
             }
 
-            HUDState(state: coordinator.hudState)
+            HStack(spacing: Theme.Space.m) {
+                HUDState(state: coordinator.hudState)
+                InputStatus(camera: coordinator.detector.isOnDuty)
+            }
 
             if let last = engine.session.sets.last {
-                Text(lastSetText(last)).font(.hudLabel).foregroundStyle(Theme.navy)
+                HStack(spacing: Theme.Space.s) {
+                    Text(lastSetText(last)).font(.hudLabel).foregroundStyle(Theme.navy)
+                    SourceChip(source: last.repCount.source.chipText)
+                        .scaleEffect(1.3)
+                        .padding(.horizontal, Theme.Space.xs)
+                }
             }
 
             if let echo = coordinator.echo {

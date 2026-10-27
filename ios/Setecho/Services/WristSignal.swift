@@ -14,10 +14,14 @@ struct WristSignal {
         var reversalHysteresis = 0.01
         var endRange = 0.03
         var endSeconds = 4.0
+        /// How long the signal must have been still to mark the set's real start.
+        var stillBeforeStartSeconds = 1.0
     }
 
     enum Event: Equatable {
-        case start(at: Double)
+        /// `realStart` is the last moment before detection when the signal was still for 1 s:
+        /// the set's real start, so the clip and the count include the first rep.
+        case start(at: Double, realStart: Double)
         /// `stillSince` is when the bar stopped moving: the set's real end, 4 s before detection.
         case end(at: Double, stillSince: Double)
     }
@@ -61,7 +65,30 @@ struct WristSignal {
         if range(of: window) > config.startRange, reversals(in: window) >= config.minReversals {
             isActive = true
             activeSince = t
-            return .start(at: t)
+            return .start(at: t, realStart: lastStillMoment(before: t) ?? window[0].t)
+        }
+        return nil
+    }
+
+    /// Drop the active state without an event (the set was ended by voice or the session stopped).
+    mutating func reset() {
+        isActive = false
+        activeSince = nil
+    }
+
+    /// The latest time before `t` at which the preceding `stillBeforeStartSeconds` had a range
+    /// under `endRange`: where the bar was last at rest.
+    private func lastStillMoment(before t: Double) -> Double? {
+        let still = config.stillBeforeStartSeconds
+        for (i, sample) in series.enumerated().reversed() where sample.t <= t {
+            var window: [Sample] = []
+            var j = i
+            while j >= 0, series[j].t >= sample.t - still {
+                window.append(series[j])
+                j -= 1
+            }
+            guard let oldest = window.last, sample.t - oldest.t >= still - 0.1, window.count >= 3 else { continue }
+            if range(of: window) < config.endRange { return sample.t }
         }
         return nil
     }

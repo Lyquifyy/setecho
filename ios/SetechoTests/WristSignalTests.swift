@@ -22,8 +22,9 @@ private func run(_ y: (Double) -> Double, seconds: Double, fps: Double = 15, int
     // Reps: a 3 s cycle of 0.15 amplitude.
     events = run({ 0.55 + 0.15 * sin($0 * 2 * .pi / 3) }, seconds: 6, into: &signal)
     #expect(signal.isActive)
-    guard case .start(let startAt)? = events.first else { Issue.record("no start event"); return }
+    guard case .start(let startAt, let realStart)? = events.first else { Issue.record("no start event"); return }
     #expect(startAt > 3 && startAt < 6)   // within the first rep or two
+    #expect(realStart <= startAt && realStart > 2.5 && realStart < 4)   // the bar was last at rest around 3 s
     // Rack it: still for 5 s.
     let endEvents = run({ 0.55 + 0.004 * sin($0 * 7) }, seconds: 5, into: &signal)
     guard case .end(let endAt, let stillSince)? = endEvents.first else { Issue.record("no end event"); return }
@@ -53,6 +54,14 @@ private func run(_ y: (Double) -> Double, seconds: Double, fps: Double = 15, int
     let events = run({ _ in 0.5 }, seconds: 2, into: &signal)
     #expect(events.isEmpty && !signal.isActive)
     #expect(signal.series.last!.smoothed == 0.5)
+}
+
+@Test func resetDropsTheActiveState() {
+    var signal = WristSignal()
+    _ = run({ 0.55 + 0.15 * sin($0 * 2 * .pi / 3) }, seconds: 6, into: &signal)
+    #expect(signal.isActive)
+    signal.reset()
+    #expect(!signal.isActive)
 }
 
 @Test func debugRowsAndTrim() {

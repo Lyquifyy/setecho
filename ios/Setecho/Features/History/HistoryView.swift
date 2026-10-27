@@ -111,6 +111,7 @@ struct SessionRow: View {
                     Spacer()
                     Text("\(Format.number(set.loadLb)) × \(set.reps)\(set.rpe.map { " · RPE \(Format.number($0))" } ?? "")")
                         .font(.footnote).monospacedDigit().secondaryText()
+                    SourceChip(source: set.repCount.source.chipText)
                 }
             }
         }
