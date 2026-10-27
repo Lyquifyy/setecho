@@ -13,12 +13,14 @@ primary_region = 'dfw'
   force_https = true
   auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 0
+  # One machine stays warm: a cold start takes longer than the proxy waits, and a set's clip
+  # arrives during a 2-minute rest.
+  min_machines_running = 1
 
   [[http_service.checks]]
     interval = '30s'
     timeout = '5s'
-    grace_period = '10s'
+    grace_period = '20s'
     method = 'GET'
     path = '/health'
 

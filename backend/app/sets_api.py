@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pydantic import Field
 
 from app import meta, reps, video
@@ -52,19 +53,20 @@ async def count_clip(data: bytes, context: CountContext) -> CountResponse:
         path = Path(tmp) / "set.mp4"
         path.write_bytes(data)
         try:
-            times = video.frame_times(path)
+            times = await run_in_threadpool(video.frame_times, path)
         except Exception as e:  # ffprobe could not read it: not a video we can count
             raise ClipError(f"could not read the clip: {e}") from e
         if len(times) < 10:
             raise ClipError(f"clip has only {len(times)} frames")
         if len(times) > video.MAX_COUNT_FRAMES:
             raise ClipError(f"clip has {len(times)} frames; the limit is {video.MAX_COUNT_FRAMES}")
-        file_id = meta.upload_video(path)
+        # The upload and the mask decoding take seconds: off the event loop, so /health keeps answering.
+        file_id = await run_in_threadpool(meta.upload_video, path)
     try:
         result = await meta.segment_video(file_id, prompt)
     finally:
-        meta.delete_file(file_id)
-    track = reps.centroid_track(result, times)
+        await run_in_threadpool(meta.delete_file, file_id)
+    track = await run_in_threadpool(reps.centroid_track, result, times)
     counted = reps.count(track)
     return CountResponse(
         reps=counted.reps,

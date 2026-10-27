@@ -16,4 +16,6 @@ RUN uv sync --frozen --no-install-project --no-dev
 COPY app ./app
 
 EXPOSE 8000
-CMD ["uv", "run", "--no-dev", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Start the venv's uvicorn directly: `uv run` re-syncs and byte-compiles at every boot, which
+# is slower than the proxy's wait for a cold machine.
+CMD ["/srv/.venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
