@@ -36,6 +36,8 @@ targets:
         # Required by App Store validation whenever the HealthKit entitlement is present. Setecho never writes.
         INFOPLIST_KEY_NSHealthUpdateUsageDescription: "Setecho never writes to Health. This permission is not used."
         INFOPLIST_KEY_UIRequiresFullScreen: YES
+        # Only HTTPS through Apple's networking: exempt from export compliance, so TestFlight skips the question.
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_UIUserInterfaceStyle: Light
         INFOPLIST_FILE: Config/Info.plist
         CODE_SIGN_ENTITLEMENTS: Config/Setecho.entitlements

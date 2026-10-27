@@ -12,8 +12,8 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from app import importing, meta
-from app.schemas import CheckInTemplate, Program
+from app import audio, importing, meta, voice
+from app.schemas import CheckInTemplate, Program, StrictModel
 
 app = FastAPI(title="Setecho API", version="0.2.0")
 
@@ -48,6 +48,43 @@ async def import_program(
     """The coach's spreadsheet: a .csv/.xlsx/image file, pasted text, or a Google Sheets link."""
     program, _, _ = importing.import_program(upload=await _upload(file), text=text, url=url)
     return program
+
+
+class VoiceCommandResponse(StrictModel):
+    transcript: str
+    intent: voice.VoiceIntent
+    sessionId: str | None
+
+
+@app.exception_handler(meta.TranscribeError)
+async def _transcribe_failed(_: Request, exc: meta.TranscribeError) -> JSONResponse:
+    status = exc.status if exc.status in (400, 429, 500) else 502
+    return JSONResponse(status_code=status, content={"error": str(exc)})
+
+
+@app.post("/voice/command", response_model=VoiceCommandResponse)
+async def voice_command(
+    audio_file: Annotated[UploadFile, File(alias="audio")],
+    context: Annotated[str, Form()],
+) -> VoiceCommandResponse:
+    """One spoken utterance (WAV) + session context -> transcript and VoiceIntent.
+
+    Transcription is Muse Voice Transcribe in PUSH_TO_TALK. Classification is the rule layer for
+    plain commands, else Muse Spark. An empty transcript is `unknown`, never acted on.
+    """
+    ctx = voice.SessionContext.model_validate_json(context)
+    data = await audio_file.read()
+    try:
+        audio.check_transcribe_wav(data)
+    except ValueError as e:
+        raise importing.ImportError_(str(e)) from e
+    result = meta.transcribe_wav(data)
+    transcript = (result.get("transcript") or "").strip()
+    if not transcript:
+        intent = voice.VoiceIntent(intent="unknown", number=None, text=None, fieldId=None, confidence=0.0)
+    else:
+        intent = voice.classify(transcript, ctx)
+    return VoiceCommandResponse(transcript=transcript, intent=intent, sessionId=result.get("sessionId"))
 
 
 @app.post("/import/form", response_model=CheckInTemplate)
