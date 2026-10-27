@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.reps import infer_equipment
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2: the training cycle, rest days, add-ons, timed and role sets, alternates, rules
 
 
 class StrictModel(BaseModel):
@@ -41,9 +41,30 @@ class PlannedSet(StrictModel):
     loadLb: float | None = Field(default=None, description="Prescribed load in pounds, else null")
     rpe: float | None = Field(default=None, description="Prescribed RPE, else null")
     rir: int | None = Field(default=None, description="Prescribed reps in reserve, else null")
+    seconds: int | None = Field(
+        default=None,
+        description='A timed set: "20 seconds" is 20, "60 sec each" is 60, "5 minutes" is 300. Reps stay null',
+    )
+    totalReps: int | None = Field(
+        default=None,
+        description='A rest-pause set\'s total-rep goal: "rest pause (20)" or "20 total reps" is 20',
+    )
+    role: SetRole | None = Field(
+        default=None,
+        description='top for "1 top set", backOff for "back down set" or "work down set", restPause for a '
+        "rest-pause set; null for a straight set",
+    )
 
 
 Equipment = Literal["barbell", "dumbbell", "machine", "cable", "bodyweight"]
+SetRole = Literal["top", "backOff", "restPause"]
+DayKind = Literal["training", "rest"]
+AddOnTiming = Literal["withSession", "onWaking"]
+
+
+class AlternateOut(StrictModel):
+    name: str = Field(description='The alternate exercise exactly as the coach wrote it ("Leg Press")')
+    quote: str = Field(description='His words that offer it, verbatim ("Hack Squat or Leg Press")')
 
 
 class PlannedExerciseOut(StrictModel):
@@ -58,11 +79,41 @@ class PlannedExerciseOut(StrictModel):
         default=None, description="Rest between sets in seconds if the sheet states it"
     )
     notes: str | None = Field(default=None, description="Any coach note attached to this exercise, verbatim")
+    alternates: list[AlternateOut] = Field(
+        default_factory=list,
+        description='The coach\'s own "or" options for this exercise, with his words. Empty when he gave none. '
+        "Never add one he did not write",
+    )
 
 
 class ProgramDayOut(StrictModel):
-    name: str = Field(description='The day name as written, e.g. "Upper A"')
+    name: str = Field(description='The day name as written, e.g. "Day 1" or "Rest"')
+    kind: DayKind = Field(
+        default="training", description="rest for a rest day (no lifts; only its cardio line), else training"
+    )
+    cardio: str | None = Field(
+        default=None,
+        description='A rest day\'s cardio line, verbatim ("25 minutes of fasted LISS"), else null',
+    )
+    restSeconds: int | None = Field(
+        default=None,
+        description='A day-level rest period\'s top, in seconds: "Rest Period: 90-180 seconds" is 180. Null when '
+        "the day states none",
+    )
+    restMinSeconds: int | None = Field(
+        default=None, description='The bottom of a day-level rest range: 90 for "90-180 seconds", else null'
+    )
     exercises: list[PlannedExerciseOut]
+
+
+class AddOnOut(StrictModel):
+    name: str = Field(
+        description='The block\'s name, from its heading or its exercises ("Abs", "Stomach vacuums")'
+    )
+    exercises: list[PlannedExerciseOut]
+    perWeek: int = Field(description='"2x per week" is 2')
+    timing: AddOnTiming = Field(description='onWaking for "upon waking"; otherwise withSession')
+    quote: str = Field(description="The coach's sentence that sets the frequency, verbatim")
 
 
 class ProgramWeekOut(StrictModel):
@@ -77,19 +128,34 @@ class ImportFlag(StrictModel):
 
 class ProgramOut(StrictModel):
     name: str = Field(description="Program title from the sheet, or the sheet's file name")
-    weeks: list[ProgramWeekOut]
+    weeks: list[ProgramWeekOut] = Field(
+        description="The training cycle: the training and rest days in the sheet's order. Never an add-on block"
+    )
+    addOns: list[AddOnOut] = Field(
+        default_factory=list,
+        description='Blocks the coach adds on top of days with a frequency ("4x per week"), wherever their '
+        "tab sits. Empty when the sheet has none",
+    )
     flags: list[ImportFlag] = Field(description="Every ambiguous cell. Empty when nothing was unclear")
+
+
+class Alternate(AlternateOut):
+    source: str = Field(description='"Sheet" · "Coach\'s reply, Oct 29"')
 
 
 class PlannedExercise(PlannedExerciseOut):
     id: str
     equipment: Equipment  # type: ignore[assignment]  # always set: from the model, else inferred from the name
+    restMinSeconds: int | None = None  # the bottom of a day-level rest range: a quiet cue there
+    alternates: list[Alternate]  # type: ignore[assignment]
 
 
 class ProgramDay(StrictModel):
     id: str
     name: str
     exercises: list[PlannedExercise]
+    kind: DayKind = "training"
+    cardio: str | None = None
 
 
 class ProgramWeek(StrictModel):
@@ -97,9 +163,19 @@ class ProgramWeek(StrictModel):
     days: list[ProgramDay]
 
 
+class AddOn(StrictModel):
+    id: str
+    name: str
+    exercises: list[PlannedExercise]
+    perWeek: int
+    timing: AddOnTiming
+    quote: str
+
+
 class Program(StrictModel):
     name: str
     weeks: list[ProgramWeek]
+    addOns: list[AddOn] = []
     importedAt: datetime
     flags: list[ImportFlag]
 
@@ -295,6 +371,31 @@ def _unique(base: str, taken: set[str]) -> str:
     return candidate
 
 
+def _alternates(ex: PlannedExerciseOut) -> list[Alternate]:
+    """The coach's "or" options as the model read them, plus a slash name's second option
+    ("Hanging/Lying Leg Raises" keeps its name; "Lying Leg Raises" becomes an alternate)."""
+    out = [Alternate(name=a.name, quote=a.quote, source="Sheet") for a in ex.alternates if a.name.strip()]
+    if "/" in ex.name:
+        second = ex.name.split("/", 1)[1].strip()
+        if second and all(second.lower() != a.name.lower() for a in out):
+            out.append(Alternate(name=second, quote=ex.name, source="Sheet"))
+    return out
+
+
+def _exercise(
+    ex: PlannedExerciseOut, exercise_id: str, day_rest: int | None, day_rest_min: int | None
+) -> PlannedExercise:
+    own_rest = ex.restSeconds is not None
+    data = ex.model_dump(exclude={"alternates"})
+    data.update(
+        equipment=ex.equipment or infer_equipment(ex.name),
+        restSeconds=ex.restSeconds if own_rest else day_rest,
+        restMinSeconds=None if own_rest else day_rest_min,
+        alternates=_alternates(ex),
+    )
+    return PlannedExercise(id=exercise_id, **data)
+
+
 def to_program(out: ProgramOut, imported_at: datetime) -> Program:
     day_ids: set[str] = set()
     weeks: list[ProgramWeek] = []
@@ -304,15 +405,36 @@ def to_program(out: ProgramOut, imported_at: datetime) -> Program:
             day_id = _unique(f"w{week.number}_{slug(day.name)}", day_ids)
             ex_ids: set[str] = set()
             exercises = [
-                PlannedExercise(
-                    id=_unique(f"{day_id}_{slug(ex.name)}", ex_ids),
-                    **{**ex.model_dump(), "equipment": ex.equipment or infer_equipment(ex.name)},
+                _exercise(
+                    ex, _unique(f"{day_id}_{slug(ex.name)}", ex_ids), day.restSeconds, day.restMinSeconds
                 )
                 for ex in day.exercises
             ]
-            days.append(ProgramDay(id=day_id, name=day.name, exercises=exercises))
+            kind = "rest" if day.kind == "rest" and not exercises else day.kind
+            days.append(
+                ProgramDay(id=day_id, name=day.name, exercises=exercises, kind=kind, cardio=day.cardio)
+            )
         weeks.append(ProgramWeek(number=week.number, days=days))
-    return Program(name=out.name, weeks=weeks, importedAt=imported_at, flags=out.flags)
+    addon_ids: set[str] = set()
+    add_ons: list[AddOn] = []
+    for block in out.addOns:
+        addon_id = _unique(f"addon_{slug(block.name)}", addon_ids)
+        ex_ids = set()
+        exercises = [
+            _exercise(ex, _unique(f"{addon_id}_{slug(ex.name)}", ex_ids), None, None)
+            for ex in block.exercises
+        ]
+        add_ons.append(
+            AddOn(
+                id=addon_id,
+                name=block.name,
+                exercises=exercises,
+                perWeek=max(1, block.perWeek),
+                timing=block.timing,
+                quote=block.quote,
+            )
+        )
+    return Program(name=out.name, weeks=weeks, addOns=add_ons, importedAt=imported_at, flags=out.flags)
 
 
 def block_title(block: CarriedBlockOut) -> str:
@@ -368,3 +490,134 @@ def to_template(out: CheckInTemplateOut) -> CheckInTemplate:
     ]
     blocks = [CarriedBlock(title=block_title(b), text=b.text) for b in out.carriedBlocks]
     return CheckInTemplate(fields=fields, carriedBlocks=blocks)
+
+
+# ---------------------------------------------------------------------------
+# The coach's rules, from his written instructions (/import/rules, HANDOFF.md §4-§5)
+# ---------------------------------------------------------------------------
+
+RuleTrigger = Literal[
+    "aboveTarget", "belowTarget", "repsBelowMin", "allSetsAtTopOfRange", "afterTopSet", "restPauseOverGoal",
+    "topSetPastRange",
+]  # fmt: skip
+RuleAdjust = Literal["percent", "pounds", "reps", "backOff", "loadSteps"]
+RuleScope = Literal["nextSet", "nextSession"]
+RoleName = Literal["top", "backOff", "restPause", "straight"]
+
+
+class RuleOut(StrictModel):
+    appliesTo: str | None = Field(
+        default=None,
+        description="The exercise it is about, as he wrote it, or null when it applies to every lift",
+    )
+    when: RuleTrigger = Field(
+        description="aboveTarget / belowTarget: the set's effort was over or under his target by byRPE; "
+        "repsBelowMin: fewer reps than the range's bottom; allSetsAtTopOfRange: every set hit the top of the "
+        "range; afterTopSet: how the back-off set's load follows the top set; restPauseOverGoal: a rest-pause set "
+        "beat its total-rep goal; topSetPastRange: a top set went past the top of its range"
+    )
+    byRPE: float | None = Field(
+        default=None, description="For aboveTarget / belowTarget: the RPE margin, else null"
+    )
+    adjust: RuleAdjust = Field(
+        description="percent or pounds: change the load by `amount` (signed); reps: keep the load and change the reps "
+        "by `amount`; backOff: the back-off set is minPct-maxPct lighter than the top set; loadSteps: `amount` "
+        'load steps up ("add weight" is 1)'
+    )
+    amount: float | None = Field(default=None, description="The signed number he said; null for backOff")
+    minPct: float | None = Field(default=None, description='backOff only: "20-25% lighter" is 20')
+    maxPct: float | None = Field(default=None, description='backOff only: "20-25% lighter" is 25')
+    scope: RuleScope = Field(description="nextSet within the session, or nextSession (next week)")
+    quote: str = Field(description="His exact words, verbatim from the text")
+
+
+class RoleTargetOut(StrictModel):
+    role: RoleName = Field(
+        description="Which kind of set: top, backOff, restPause, or straight for plain sets"
+    )
+    rir: float = Field(description="Reps in reserve he wants left: 0 for failure, 1 for one rep left")
+    quote: str
+
+
+class RestRuleOut(StrictModel):
+    after: RoleName = Field(description="The set kind the rest follows")
+    minSeconds: int = Field(description='"3-4 minutes" is 180')
+    maxSeconds: int = Field(description='"3-4 minutes" is 240')
+    quote: str
+
+
+class WarmupRuleOut(StrictModel):
+    minSets: int = Field(description='"1-3 warm-up sets" is 1')
+    maxSets: int = Field(description='"1-3 warm-up sets" is 3')
+    maxReps: int = Field(description='"no more than 6-8 reps" is 8')
+    quote: str
+
+
+class CheckInScheduleOut(StrictModel):
+    everyWeeks: int = Field(description='1 for weekly, 2 for "every other week"')
+    weekday: int = Field(description="1 = Sunday, 2 = Monday … 5 = Thursday … 7 = Saturday")
+    dueBy: str = Field(description='24-hour "HH:MM", e.g. "09:00" for 9am')
+    timeZone: str = Field(description='An IANA zone from his words: "Central" is America/Chicago')
+    quote: str
+
+
+class QuietDayOut(StrictModel):
+    weekday: int = Field(description="1 = Sunday … 7 = Saturday")
+    quote: str
+
+
+class RulesOut(StrictModel):
+    rules: list[RuleOut] = Field(
+        default_factory=list, description="Load-adjustment rules he states. Empty when he states none"
+    )
+    roleTargets: list[RoleTargetOut] = Field(
+        default_factory=list, description="How hard each kind of set should go. Empty when unstated"
+    )
+    restRules: list[RestRuleOut] = Field(
+        default_factory=list, description="Rest after a kind of set. Empty when unstated"
+    )
+    warmups: WarmupRuleOut | None = Field(default=None, description="Warm-up sets he expects, else null")
+    checkInSchedule: CheckInScheduleOut | None = Field(
+        default=None, description="When check-ins are due, else null"
+    )
+    quietDays: list[QuietDayOut] = Field(
+        default_factory=list, description="Days he asked not to be messaged. Empty when unstated"
+    )
+    flags: list[ImportFlag] = Field(
+        default_factory=list, description="Anything that reads like a rule but is unclear. Empty when none"
+    )
+
+
+class ProgressionRule(RuleOut):
+    id: str
+    source: str
+    confirmed: bool = False
+
+
+class RoleTarget(RoleTargetOut):
+    source: str
+    confirmed: bool = False
+
+
+class RestRule(RestRuleOut):
+    confirmed: bool = False
+
+
+class WarmupRule(WarmupRuleOut):
+    confirmed: bool = False
+
+
+class CheckInSchedule(CheckInScheduleOut):
+    confirmed: bool = False
+
+
+class RulesImport(StrictModel):
+    """What /import/rules returns: his rules with his quotes, nothing confirmed, nothing personal."""
+
+    rules: list[ProgressionRule]
+    roleTargets: list[RoleTarget]
+    restRules: list[RestRule]
+    warmups: WarmupRule | None = None
+    checkInSchedule: CheckInSchedule | None = None
+    quietDays: list[int]
+    flags: list[ImportFlag]

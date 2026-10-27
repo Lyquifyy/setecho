@@ -21,10 +21,18 @@ from pydantic import BaseModel, ValidationError
 
 from app import meta, prompts
 from app.schemas import (
+    CheckInSchedule,
     CheckInTemplateOut,
     FormImport,
+    ImportFlag,
     Program,
     ProgramOut,
+    ProgressionRule,
+    RestRule,
+    RoleTarget,
+    RulesImport,
+    RulesOut,
+    WarmupRule,
     form_targets,
     strict_schema,
     to_program,
@@ -36,6 +44,7 @@ TEXT_SUFFIXES = {".csv", ".txt", ".tsv", ".md"}
 SHEET_SUFFIXES = {".xlsx", ".xlsm"}
 PROGRAM_SCHEMA = strict_schema(ProgramOut)
 TEMPLATE_SCHEMA = strict_schema(CheckInTemplateOut)
+RULES_SCHEMA = strict_schema(RulesOut)
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 _SHEETS_ID = re.compile(r"docs\.google\.com/spreadsheets/d/([A-Za-z0-9_-]+)")
@@ -206,3 +215,160 @@ def import_form(
     out = _validate(CheckInTemplateOut, raw)
     cardio = (out.cardioProtocol or "").strip() or None
     return FormImport(template=to_template(out), targets=form_targets(out), cardioProtocol=cardio), raw, resp
+
+
+# ---------------------------------------------------------------------------
+# /import/rules: the coach's written instructions, validated against his own words
+# ---------------------------------------------------------------------------
+
+RULES_SOURCE = "Coach's instructions"
+
+_NUMBER_WORDS = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+    "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "fifteen": 15, "twenty": 20, "thirty": 30,
+    "forty": 40, "fifty": 50, "sixty": 60, "ninety": 90, "hundred": 100,
+    # cadence words that carry a count
+    "once": 1, "weekly": 1, "single": 1, "twice": 2, "other": 2, "biweekly": 2, "fortnight": 2,
+    "fortnightly": 2, "couple": 2, "pair": 2, "triple": 3, "thrice": 3, "half": 0.5,
+}  # fmt: skip
+_WEEKDAYS = ("sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday")
+_LINK = re.compile(r"https?://|www\.|\b[a-z0-9-]+\.(com|net|org|io|app|co)\b|@[a-z0-9]", re.IGNORECASE)
+_PHONE = re.compile(r"\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}")
+_PROMO = re.compile(r"\b(code|coupon|discount)\b.{0,20}\b[A-Z0-9]{4,}\b")
+
+
+def _squash(text: str) -> str:
+    return re.sub(r"\s+", "", text.lower())
+
+
+def quote_in_text(quote: str, text: str) -> bool:
+    """The quote is a verbatim span of the text, ignoring case and whitespace."""
+    q = _squash(quote)
+    return bool(q) and q in _squash(text)
+
+
+def numbers_in(text: str) -> set[float]:
+    """Every number the text carries: digits (including each side of "3-4" and "20-25%", and the hour of
+    "9:00"), number words, and the cadence words that mean a count ("every other week")."""
+    found: set[float] = set()
+    for m in re.finditer(r"\d+(?:\.\d+)?", text):
+        found.add(float(m.group()))
+    for word in re.findall(r"[a-z]+", text.lower()):
+        if word in _NUMBER_WORDS:
+            found.add(float(_NUMBER_WORDS[word]))
+    return found
+
+
+def _has_number(value: float | None, quote: str, *, minutes_ok: bool = False) -> bool:
+    if value is None:
+        return True
+    numbers = numbers_in(quote)
+    v = abs(float(value))
+    if v in numbers:
+        return True
+    return minutes_ok and v % 60 == 0 and v / 60 in numbers  # "3-4 minutes" is 180-240 s
+
+
+def _weekday_in(weekday: int, quote: str) -> bool:
+    return 1 <= weekday <= 7 and _WEEKDAYS[weekday - 1] in quote.lower()
+
+
+def _hour_in(due_by: str, quote: str) -> bool:
+    m = re.match(r"^(\d{1,2}):(\d{2})$", due_by.strip())
+    if not m:
+        return False
+    hour = int(m.group(1))
+    numbers = numbers_in(quote)
+    return hour in numbers or (hour > 12 and hour - 12 in numbers) or (hour == 12 and "noon" in quote.lower())
+
+
+def _personal(quote: str) -> bool:
+    return bool(_LINK.search(quote) or _PHONE.search(quote) or _PROMO.search(quote))
+
+
+def validate_rules(out: RulesOut, text: str) -> RulesImport:
+    """Every quote must appear in the text and every number in a rule must appear in its quote
+    (HANDOFF.md §5). Anything that fails moves to `flags` with its quote; a quote carrying a link,
+    a phone number or a promo code is dropped without being repeated."""
+    flags: list[ImportFlag] = list(out.flags)
+
+    def check(path: str, quote: str, ok: bool, what: str) -> bool:
+        if _personal(quote):
+            flags.append(
+                ImportFlag(path=path, message="Left out: the sentence carries a link, number or code")
+            )
+            return False
+        if not quote_in_text(quote, text):
+            flags.append(ImportFlag(path=path, message=f'The words were not found in the text: "{quote}"'))
+            return False
+        if not ok:
+            flags.append(ImportFlag(path=path, message=f'A number is not in his words: "{quote}" ({what})'))
+            return False
+        return True
+
+    rules: list[ProgressionRule] = []
+    for i, r in enumerate(out.rules):
+        q = r.quote
+        amount_ok = _has_number(r.amount, q) or (r.adjust == "loadSteps" and r.amount == 1)
+        ok = _has_number(r.byRPE, q) and amount_ok and _has_number(r.minPct, q) and _has_number(r.maxPct, q)
+        if r.adjust == "backOff" and (r.minPct is None or r.maxPct is None):
+            ok = False
+        if check(f"rules[{i}]", q, ok, "the amount"):
+            rules.append(ProgressionRule(id=f"rule_{len(rules) + 1}", source=RULES_SOURCE, **r.model_dump()))
+
+    role_targets: list[RoleTarget] = []
+    for i, t in enumerate(out.roleTargets):
+        q = t.quote
+        ok = _has_number(t.rir, q) or (t.rir == 0 and re.search(r"\bfail", q.lower()) is not None)
+        if check(f"roleTargets[{i}]", q, ok, "reps in reserve"):
+            role_targets.append(RoleTarget(source=RULES_SOURCE, **t.model_dump()))
+
+    rest_rules: list[RestRule] = []
+    for i, rr in enumerate(out.restRules):
+        q = rr.quote
+        ok = _has_number(rr.minSeconds, q, minutes_ok=True) and _has_number(rr.maxSeconds, q, minutes_ok=True)
+        ok = ok and 0 < rr.minSeconds <= rr.maxSeconds
+        if check(f"restRules[{i}]", q, ok, "the rest time"):
+            rest_rules.append(RestRule(**rr.model_dump()))
+
+    warmups: WarmupRule | None = None
+    if (w := out.warmups) is not None:
+        ok = (
+            _has_number(w.minSets, w.quote)
+            and _has_number(w.maxSets, w.quote)
+            and _has_number(w.maxReps, w.quote)
+        )
+        if check("warmups", w.quote, ok and 0 < w.minSets <= w.maxSets, "the sets or reps"):
+            warmups = WarmupRule(**w.model_dump())
+
+    schedule: CheckInSchedule | None = None
+    if (c := out.checkInSchedule) is not None:
+        ok = (
+            _has_number(c.everyWeeks, c.quote)
+            and _weekday_in(c.weekday, c.quote)
+            and _hour_in(c.dueBy, c.quote)
+        )
+        if check("checkInSchedule", c.quote, ok, "the cadence, day or time"):
+            schedule = CheckInSchedule(**c.model_dump())
+
+    quiet_days: list[int] = []
+    for i, d in enumerate(out.quietDays):
+        if (
+            check(f"quietDays[{i}]", d.quote, _weekday_in(d.weekday, d.quote), "the day")
+            and d.weekday not in quiet_days
+        ):
+            quiet_days.append(d.weekday)
+
+    return RulesImport(
+        rules=rules, roleTargets=role_targets, restRules=rest_rules, warmups=warmups,
+        checkInSchedule=schedule, quietDays=quiet_days, flags=flags,
+    )  # fmt: skip
+
+
+def import_rules(text: str) -> tuple[RulesImport, dict, Any]:
+    """His onboarding email, pasted once: every rule it states, each with his quote, nothing confirmed."""
+    if not text or not text.strip():
+        raise ImportError_("nothing to import: paste the coach's instructions")
+    user = f"List the rules in these instructions.\n\n{text.strip()}"
+    raw, resp = meta.spark_json(prompts.IMPORT_RULES, user, "Rules", RULES_SCHEMA)
+    return validate_rules(_validate(RulesOut, raw), text), raw, resp

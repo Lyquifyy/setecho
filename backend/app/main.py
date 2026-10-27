@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from app import audio, checkin_api, coach, importing, meta, photos_api, sets_api, voice
-from app.schemas import FormImport, Program, StrictModel
+from app.schemas import FormImport, Program, RulesImport, StrictModel
 
 app = FastAPI(title="Setecho API", version="0.4.0")
 app.include_router(photos_api.router)
@@ -117,6 +117,18 @@ async def import_form(
         body = await request.json()
         text = body.get("text") if isinstance(body, dict) else None
     result, _, _ = importing.import_form(upload=upload, text=text)
+    return result
+
+
+class RulesRequest(StrictModel):
+    text: str
+
+
+@app.post("/import/rules", response_model=RulesImport)
+async def import_rules(req: RulesRequest) -> RulesImport:
+    """The coach's written instructions (his onboarding email), pasted once. Returns the rules he states
+    with his quotes, each unconfirmed, and nothing personal (HANDOFF.md §5)."""
+    result, _, _ = await run_in_threadpool(importing.import_rules, req.text)
     return result
 
 

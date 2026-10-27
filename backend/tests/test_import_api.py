@@ -53,8 +53,10 @@ def test_import_program_from_csv_file(client, spark):
     assert body["name"].startswith("Prep Block 2")
     assert body["weeks"][0]["days"][0]["id"] == "w1_upper_a"
     assert body["weeks"][0]["days"][0]["exercises"][0]["sets"][0] == {
-        "reps": 8, "repsMin": None, "repsMax": None, "loadLb": 185.0, "rpe": 8.0, "rir": None
+        "reps": 8, "repsMin": None, "repsMax": None, "loadLb": 185.0, "rpe": 8.0, "rir": None,
+        "seconds": None, "totalReps": None, "role": None,
     }  # fmt: skip
+    assert body["addOns"] == [] and body["weeks"][0]["days"][0]["kind"] == "training"
     assert len(body["flags"]) == 4 and "importedAt" in body
     assert spark[0]["schema"] == "Program"
     assert "Bench press,4,8,185,8,2:30" in spark[0]["user"]  # the CSV text reached the prompt

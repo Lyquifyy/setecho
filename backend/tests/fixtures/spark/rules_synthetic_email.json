@@ -1,0 +1,70 @@
+{
+ "source": "hand-written: what Muse Spark should return for import/synthetic_rules_email.txt (replace with a live run)",
+ "schemaVersion": 2,
+ "raw": {
+  "rules": [
+   {
+    "appliesTo": null,
+    "when": "afterTopSet",
+    "byRPE": null,
+    "adjust": "backOff",
+    "amount": null,
+    "minPct": 20,
+    "maxPct": 25,
+    "scope": "nextSet",
+    "quote": "Back down sets are 20-25% lighter than your top set."
+   },
+   {
+    "appliesTo": null,
+    "when": "restPauseOverGoal",
+    "byRPE": null,
+    "adjust": "loadSteps",
+    "amount": 1,
+    "minPct": null,
+    "maxPct": null,
+    "scope": "nextSession",
+    "quote": "If you beat the total rep goal on a rest pause set, add weight the following week."
+   }
+  ],
+  "roleTargets": [
+   {
+    "role": "top",
+    "rir": 0,
+    "quote": "every working set goes to muscle failure within the listed rep range, top sets and back down sets both."
+   },
+   {
+    "role": "backOff",
+    "rir": 0,
+    "quote": "every working set goes to muscle failure within the listed rep range, top sets and back down sets both."
+   }
+  ],
+  "restRules": [
+   {
+    "after": "top",
+    "minSeconds": 180,
+    "maxSeconds": 240,
+    "quote": "Rest 3-4 minutes after a top set before the back down set."
+   }
+  ],
+  "warmups": {
+   "minSets": 1,
+   "maxSets": 3,
+   "maxReps": 8,
+   "quote": "Do 1-3 warm up sets of no more than 6-8 reps before each exercise, never anywhere near failure."
+  },
+  "checkInSchedule": {
+   "everyWeeks": 2,
+   "weekday": 5,
+   "dueBy": "09:00",
+   "timeZone": "America/Chicago",
+   "quote": "every other week for now, on Thursday when you wake up, with everything in by 9am Central."
+  },
+  "quietDays": [
+   {
+    "weekday": 1,
+    "quote": "Sundays are my day off, so please don't message me on Sundays."
+   }
+  ],
+  "flags": []
+ }
+}

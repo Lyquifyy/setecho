@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from app.schemas import DATA_KEY_MEANINGS
 
-PROMPTS_VERSION = 3
+PROMPTS_VERSION = 4
 
 IMPORT_PROGRAM = (
     "You convert a strength coach's training spreadsheet into JSON. Copy exercise names, set counts, "
@@ -15,10 +15,39 @@ IMPORT_PROGRAM = (
     "Weeks and days follow the sheet's own order and names. Set each exercise's `equipment` from its "
     "name (barbell, dumbbell, machine, cable or bodyweight); if the name doesn't make it clear, pick the "
     "likeliest and add a flag.\n\n"
+    "Each sheet (tab) may be a training day, a rest day, or a block the coach adds on top of days. The "
+    "training and rest days form the cycle, in the sheet's order, as the days of week 1 (more weeks only "
+    "when the sheet has them). A rest day has kind rest and no exercises; copy its cardio line into "
+    '`cardio` verbatim. A block with a frequency ("Complete these 4x per week upon waking", "2x per week") '
+    'goes in `addOns` with perWeek, its timing ("upon waking" is onWaking, otherwise withSession) and his '
+    "sentence in `quote`; it is never a day, even when its tab comes first. A day-level rest period "
+    '("Rest Period: 90-180 seconds") goes in the day\'s restSeconds (the top, 180) and restMinSeconds (90), '
+    "not on each exercise.\n\n"
     'Rules for sets: write one entry per set. "3 x 8" is three entries with reps 8. "6-8 reps" is '
     "repsMin 6 and repsMax 8 with reps null. Loads are pounds; if the sheet gives none, loadLb is null. "
-    'A rest time like "2:30" or "150s" becomes restSeconds 150. Anything you cannot map to a field '
-    "goes into `notes` verbatim and, if it changes the reading of a set, into `flags`."
+    'A rest time like "2:30" or "150s" becomes restSeconds 150. A time ("20 seconds", "60 sec each", '
+    '"5 minutes") is `seconds` with reps null; "Stationary Bike, 5 minutes" is one exercise with one timed '
+    'set. "1 top set. 1 back down set" (or "work down set") on 2 sets makes the first set role top and the '
+    'second backOff; "1 top set. 1 rest pause (20)" makes the second restPause with totalReps 20; "20 total '
+    'reps (rest pause set)" is one restPause set with totalReps 20. If the coach wrote an alternate '
+    '("Hack Squat or Leg Press"), keep the first as the name and copy the other into `alternates` with his '
+    'words; a slash name ("Hanging/Lying Leg Raises") stays as written with no alternate. Never add an '
+    "alternate he didn't write. Anything you cannot map to a field goes into `notes` verbatim and, if it "
+    "changes the reading of a set, into `flags`."
+)
+
+IMPORT_RULES = (
+    "You read a strength coach's written instructions to his athlete, such as an onboarding email, and "
+    "list only the rules he states about: how hard each kind of set should be (`roleTargets`, with rir 0 "
+    "for failure), the weight of back-off sets (a rule with adjust backOff and his percent range), rest "
+    "after each kind of set (`restRules`), warm-up sets (`warmups`), when to add weight or change a load "
+    "(`rules`), how often check-ins are due and by when (`checkInSchedule`), and days he doesn't want to "
+    "be messaged (`quietDays`). Copy his exact words into `quote` for each, as a verbatim span of the "
+    "text. Never invent a rule, never fill a gap with common practice, and never include names, phone "
+    "numbers, links, discount codes, macros or supplement doses anywhere in the output. Anything that "
+    "sounds like a rule but is unclear goes in `flags`. Numbers: a number in a field must appear in that "
+    'item\'s quote ("3-4 minutes" gives minSeconds 180 and maxSeconds 240; "9am Central" gives dueBy '
+    '"09:00" and timeZone America/Chicago; "every other week" gives everyWeeks 2).'
 )
 
 _DATA_KEYS = "\n".join(f"- {key}: {meaning}" for key, meaning in DATA_KEY_MEANINGS.items())
