@@ -1,4 +1,4 @@
 // Committed defaults. Local overrides (team id, backend URL) live in Local.xcconfig, which is gitignored.
-CHALKLINE_API_BASE = http:/$()/localhost:8000
+SETECHO_API_BASE = http:/$()/localhost:8000
 CODE_SIGN_STYLE = Automatic
 #include? "Local.xcconfig"

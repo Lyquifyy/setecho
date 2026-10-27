@@ -1,6 +1,6 @@
-name: Chalkline
+name: Setecho
 options:
-  bundleIdPrefix: com.chalkline
+  bundleIdPrefix: com.getsetecho
   deploymentTarget:
     iOS: "26.0"
   createIntermediateGroups: true
@@ -14,36 +14,38 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     TARGETED_DEVICE_FAMILY: "1"
 targets:
-  Chalkline:
+  Setecho:
     type: application
     platform: iOS
-    sources: [Chalkline]
+    sources: [Setecho]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.chalkline.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.getsetecho.app
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Chalkline
+        INFOPLIST_KEY_CFBundleDisplayName: Setecho
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
-        INFOPLIST_KEY_NSCameraUsageDescription: "Chalkline films your sets to measure bar speed and bar path."
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Chalkline records what you say after a set so it can log your RPE and notes."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Setecho films your sets to measure bar speed and bar path."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Setecho records what you say after a set so it can log your RPE and notes."
         INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Import program photos and set videos."
-        INFOPLIST_KEY_UIUserInterfaceStyle: Dark
+        INFOPLIST_KEY_UIUserInterfaceStyle: Light
         INFOPLIST_FILE: Config/Info.plist
-  ChalklineTests:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+  SetechoTests:
     type: bundle.unit-test
     platform: iOS
-    sources: [ChalklineTests]
+    sources: [SetechoTests]
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
-      - target: Chalkline
+      - target: Setecho
 schemes:
-  Chalkline:
+  Setecho:
     build:
       targets:
-        Chalkline: all
-        ChalklineTests: [test]
+        Setecho: all
+        SetechoTests: [test]
     test:
-      targets: [ChalklineTests]
+      targets: [SetechoTests]

@@ -1,7 +1,7 @@
 [project]
-name = "chalkline-backend"
+name = "setecho-backend"
 version = "0.1.0"
-description = "Add your description here"
+description = "Setecho API: plate tracking with SAM 3.1, coaching with Muse Spark"
 authors = [
     { name = "Zander Erwin", email = "zandererwin2023@gmail.com" }
 ]
@@ -17,13 +17,6 @@ dependencies = [
     "uvicorn[standard]>=0.54.0",
 ]
 
-[project.scripts]
-chalkline-backend = "chalkline_backend:main"
-
-[build-system]
-requires = ["uv_build>=0.13.5,<0.14.0"]
-build-backend = "uv_build"
-
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
@@ -36,3 +29,6 @@ line-length = 110
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.uv]
+package = false

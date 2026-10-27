@@ -1,8 +1,17 @@
-# Chalkline
+<p><img src="design/cobalt-cards/brand/final/png/setecho-lockup-sloped-e-cobalt-2400w.png" alt="Setecho" width="320"></p>
 
-A coach that remembers every rep. Photograph your coach's program, film your sets, and Chalkline measures every rep's speed and bar path, finds where your form starts to break, and remembers all of it.
+Setecho takes the manual work out of a coached bodybuilding prep. Import your coach's spreadsheet and check-in form once. After that:
+- your sets log themselves while you train hands-free
+- your check-in photos take themselves
+- your weekly check-in is half written from Apple Health before you answer the rest by voice
 
-Built on Meta Model API: **SAM 3.1** tracks the weight plate through each set; **Muse Spark 1.3** parses programs, reads your spoken notes, and powers the coach.
+Built on Meta Model API:
+- **Muse Spark 1.3** reads the coach's material and writes the check-in, with every number traced to its source.
+- **Muse Voice Transcribe** runs the hands-free session and the wrap-up.
+- **SAM 3.1** frames and aligns the check-in photos.
+
+![Workout and history](design/cobalt-cards/screens/workout-history.png)
+![Filming, results and coach](design/cobalt-cards/screens/filming-results-coach.png)
 
 ## Run it
 
@@ -11,9 +20,12 @@ Requirements: macOS, Xcode 26+, Homebrew.
 ```sh
 brew install uv ffmpeg xcodegen
 export MODEL_API_KEY=...            # from dev.meta.ai
-make test                           # offline
+make test                           # backend, offline
 make smoke                          # one live call
 make dev                            # API on :8000
-cp ios/Config/Local.example.xcconfig ios/Config/Local.xcconfig   # set your team id + backend URL
-make ios
+cp ios/Config/Local.example.xcconfig ios/Config/Local.xcconfig   # set your team id and backend URL
+make ios                            # open in Xcode
+make ios-test                       # iOS unit tests
 ```
+
+`DESIGN.md` covers the design system and the screen specs. `AGENTS.md` has the repo rules.

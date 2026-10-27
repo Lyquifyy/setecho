@@ -2,7 +2,7 @@ from fastapi import FastAPI
 
 from app import meta
 
-app = FastAPI(title="Chalkline API", version="0.1.0")
+app = FastAPI(title="Setecho API", version="0.1.0")
 
 
 @app.get("/health")

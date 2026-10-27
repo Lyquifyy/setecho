@@ -15,7 +15,7 @@ from pathlib import Path
 from openai import AsyncOpenAI, OpenAI
 
 BASE_URL = "https://api.meta.ai/v1"
-SPARK_MODEL = os.environ.get("CHALKLINE_SPARK_MODEL", "muse-spark-1.3")
+SPARK_MODEL = os.environ.get("SETECHO_SPARK_MODEL", "muse-spark-1.3")
 SAM_MODEL = "sam-3.1"
 
 

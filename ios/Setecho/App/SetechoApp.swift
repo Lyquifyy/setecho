@@ -1,11 +1,11 @@
 import SwiftUI
 
 @main
-struct ChalklineApp: App {
+struct SetechoApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(.light)
         }
     }
 }
