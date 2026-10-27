@@ -73,6 +73,16 @@ class Track:
     times: np.ndarray  # (n,) seconds from the file
     centroids: np.ndarray  # (n, 2) x, y
     object_size: float = 0.0  # median of the tracked object's box, max(w, h), in pixels
+    objects: int = 0  # how many objects SAM tracked at all; the one seen on most frames is kept
+
+    @property
+    def motion_range(self) -> float:
+        """Peak-to-peak of the projected motion, in pixels; 0 when nothing was tracked."""
+        if self.tracked.sum() < 2:
+            return 0.0
+        p = project(self)
+        p = p[~np.isnan(p)]
+        return float(p.max() - p.min())
 
     @property
     def tracked(self) -> np.ndarray:
@@ -164,7 +174,7 @@ def centroid_track(result: Any, frame_times: list[float]) -> Track:
         centroids[index] = _mask_centroid(rec)
         b = rec.bounds
         sizes.append(max(b.right - b.left, b.bottom - b.top))
-    return Track(times, centroids, float(np.median(sizes)) if sizes else 0.0)
+    return Track(times, centroids, float(np.median(sizes)) if sizes else 0.0, len(per_object))
 
 
 # ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ on the Standard tier, is deleted from Meta's file store afterwards, and is never
 from __future__ import annotations
 
 import tempfile
+import time
 from pathlib import Path
 from typing import Annotated
 
@@ -37,6 +38,12 @@ class CountResponse(StrictModel):
     frames: int
     trackedFrames: int
     prompt: str = Field(description="What SAM was asked to track")
+    objects: int = Field(default=0, description="Objects SAM tracked; the one on most frames was kept")
+    objectSizePx: float = Field(default=0.0, description="The tracked object's box size, px, at 720p")
+    motionRangePx: float = Field(default=0.0, description="Peak-to-peak of the tracked motion, px")
+    timings: dict[str, float] = Field(
+        default_factory=dict, description="Seconds per phase: probe, upload, segment, track"
+    )
 
 
 class ClipError(ValueError):
@@ -52,22 +59,31 @@ async def count_clip(data: bytes, context: CountContext) -> CountResponse:
     with tempfile.TemporaryDirectory(prefix="setecho-count-") as tmp:
         path = Path(tmp) / "set.mp4"
         path.write_bytes(data)
+        timings: dict[str, float] = {}
+        t0 = time.monotonic()
         try:
             times = await run_in_threadpool(video.frame_times, path)
         except Exception as e:  # ffprobe could not read it: not a video we can count
             raise ClipError(f"could not read the clip: {e}") from e
+        timings["probe"] = round(time.monotonic() - t0, 2)
         if len(times) < 10:
             raise ClipError(f"clip has only {len(times)} frames")
         if len(times) > video.MAX_COUNT_FRAMES:
             raise ClipError(f"clip has {len(times)} frames; the limit is {video.MAX_COUNT_FRAMES}")
         # The upload and the mask decoding take seconds: off the event loop, so /health keeps answering.
+        t1 = time.monotonic()
         file_id = await run_in_threadpool(meta.upload_video, path)
+        timings["upload"] = round(time.monotonic() - t1, 2)
+    t2 = time.monotonic()
     try:
         result = await meta.segment_video(file_id, prompt)
     finally:
         await run_in_threadpool(meta.delete_file, file_id)
+    timings["segment"] = round(time.monotonic() - t2, 2)
+    t3 = time.monotonic()
     track = await run_in_threadpool(reps.centroid_track, result, times)
     counted = reps.count(track)
+    timings["track"] = round(time.monotonic() - t3, 2)
     return CountResponse(
         reps=counted.reps,
         repTimes=counted.rep_times,
@@ -76,6 +92,10 @@ async def count_clip(data: bytes, context: CountContext) -> CountResponse:
         frames=counted.frames,
         trackedFrames=counted.tracked_frames,
         prompt=prompt,
+        objects=track.objects,
+        objectSizePx=round(track.object_size, 1),
+        motionRangePx=round(track.motion_range, 1),
+        timings=timings,
     )
 
 
