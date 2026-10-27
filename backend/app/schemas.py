@@ -31,19 +31,23 @@ class StrictModel(BaseModel):
 
 
 class PlannedSet(StrictModel):
-    reps: int | None = Field(description="Exact rep count, or null when the sheet gives a range")
-    repsMin: int | None = Field(description="Low end of a rep range like 6-8, else null")
-    repsMax: int | None = Field(description="High end of a rep range like 6-8, else null")
-    loadLb: float | None = Field(description="Prescribed load in pounds, else null")
-    rpe: float | None = Field(description="Prescribed RPE, else null")
-    rir: int | None = Field(description="Prescribed reps in reserve, else null")
+    reps: int | None = Field(
+        default=None, description="Exact rep count, or null when the sheet gives a range"
+    )
+    repsMin: int | None = Field(default=None, description="Low end of a rep range like 6-8, else null")
+    repsMax: int | None = Field(default=None, description="High end of a rep range like 6-8, else null")
+    loadLb: float | None = Field(default=None, description="Prescribed load in pounds, else null")
+    rpe: float | None = Field(default=None, description="Prescribed RPE, else null")
+    rir: int | None = Field(default=None, description="Prescribed reps in reserve, else null")
 
 
 class PlannedExerciseOut(StrictModel):
     name: str = Field(description="Exercise name exactly as written on the sheet")
     sets: list[PlannedSet] = Field(description="One entry per set, in order")
-    restSeconds: int | None = Field(description="Rest between sets in seconds if the sheet states it")
-    notes: str | None = Field(description="Any coach note attached to this exercise, verbatim")
+    restSeconds: int | None = Field(
+        default=None, description="Rest between sets in seconds if the sheet states it"
+    )
+    notes: str | None = Field(default=None, description="Any coach note attached to this exercise, verbatim")
 
 
 class ProgramDayOut(StrictModel):
@@ -133,13 +137,14 @@ class FieldSource(StrictModel):
         )
     )
     key: DataKey | None = Field(
-        description="The data key for data, drafted and calculated; null for voice and photo"
+        default=None, description="The data key for data, drafted and calculated; null for voice and photo"
     )
 
 
 class CarriedBlockOut(StrictModel):
     title: str | None = Field(
-        description='The block heading line as written, e.g. "Macro targets"; null when the block has none'
+        default=None,
+        description='The block heading line as written, e.g. "Macro targets"; null when the block has none',
     )
     text: str = Field(description="The block body copied verbatim, line breaks kept")
 
@@ -151,7 +156,9 @@ class CarriedBlock(StrictModel):
 
 class FieldSpecOut(StrictModel):
     label: str = Field(description="The coach's exact wording, without any numbering")
-    prompt: str | None = Field(description='Hint text in parentheses, e.g. "(scale 1-10)", else null')
+    prompt: str | None = Field(
+        default=None, description='Hint text in parentheses, e.g. "(scale 1-10)", else null'
+    )
     kind: FieldKind
     source: FieldSource
 

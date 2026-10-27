@@ -39,19 +39,25 @@ INTENTS: tuple[str, ...] = Intent.__args__  # type: ignore[attr-defined]
 
 class VoiceIntent(StrictModel):
     intent: Intent
-    number: float | None = Field(description="Pounds for loads, a count for reps, the RPE value; else null")
-    text: str | None = Field(description="The note or answer text in the athlete's own words; else null")
-    fieldId: str | None = Field(description="The check-in field a note targets, when the athlete names one")
+    number: float | None = Field(
+        default=None, description="Pounds for loads, a count for reps, the RPE value; else null"
+    )
+    text: str | None = Field(
+        default=None, description="The note or answer text in the athlete's own words; else null"
+    )
+    fieldId: str | None = Field(
+        default=None, description="The check-in field a note targets, when the athlete names one"
+    )
     confidence: float = Field(description="0 to 1. Under 0.7 the app asks back instead of acting")
 
 
 class SessionContext(StrictModel):
     state: str = Field(description="ready, recording, rest, listening, paused")
-    exerciseName: str | None
-    setIndex: int | None = Field(description="1-based set number")
-    setCount: int | None
-    plannedLoadLb: float | None
-    plannedReps: int | None
+    exerciseName: str | None = None
+    setIndex: int | None = Field(default=None, description="1-based set number")
+    setCount: int | None = None
+    plannedLoadLb: float | None = None
+    plannedReps: int | None = None
 
 
 VOICE_INTENT_SCHEMA = strict_schema(VoiceIntent)

@@ -29,13 +29,13 @@ class LissSession(StrictModel):
 class DayFacts(StrictModel):
     date: str
     isTrainingDay: bool
-    kcal: float | None
-    proteinG: float | None
-    carbsG: float | None
-    fatG: float | None
-    steps: float | None
-    sleepHours: float | None
-    weighInLb: float | None
+    kcal: float | None = None
+    proteinG: float | None = None
+    carbsG: float | None = None
+    fatG: float | None = None
+    steps: float | None = None
+    sleepHours: float | None = None
+    weighInLb: float | None = None
     liss: list[LissSession]
 
 
@@ -56,8 +56,8 @@ class WeekFacts(StrictModel):
     weekEnd: str
     daily: list[DayFacts]
     targets: MacroTargets
-    showDate: str | None
-    lastCheckInWeightLb: float | None
+    showDate: str | None = None
+    lastCheckInWeightLb: float | None = None
     sources: dict[str, str]
     cardioProtocol: str | None = None
 
@@ -80,7 +80,7 @@ class VoiceNote(StrictModel):
     id: str
     at: str
     transcript: str
-    targetFieldId: str | None
+    targetFieldId: str | None = None
 
 
 class Provenance(StrictModel):
@@ -100,8 +100,8 @@ class CheckInDraft(StrictModel):
     weekStart: str
     weekEnd: str
     answers: list[FieldAnswer]
-    photoSetId: str | None
-    sentAt: str | None
+    photoSetId: str | None = None
+    sentAt: str | None = None
 
 
 class DraftRequest(StrictModel):
@@ -109,7 +109,7 @@ class DraftRequest(StrictModel):
     facts: WeekFacts
     notes: list[VoiceNote]
     training: TrainingSummary
-    lastCheckIn: CheckInDraft | None
+    lastCheckIn: CheckInDraft | None = None
     styleExamples: list[str]
     draftId: str | None = None
 
@@ -167,7 +167,7 @@ def _range(facts: WeekFacts) -> str:
 
 
 def fill_data_field(
-    field: FieldSpec, facts: WeekFacts, training: TrainingSummary, last: CheckInDraft | None
+    field: FieldSpec, facts: WeekFacts, training: TrainingSummary, last: CheckInDraft | None = None
 ) -> FieldAnswer | None:
     """The answer for a data / drafted / calculated field, or None when it isn't one."""
     key = field.source.key

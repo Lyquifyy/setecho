@@ -232,3 +232,27 @@ def test_tape_format(value, text):
     from app.checkin_api import _fmt_in
 
     assert _fmt_in(value) == text
+
+
+def test_optional_keys_may_be_omitted_as_swift_encodes_them():
+    """Swift's Encodable drops nil keys, so every optional must default to None."""
+    body = json.loads(request().model_dump_json())
+    body.pop("lastCheckIn")
+    body["facts"].pop("showDate")
+    body["facts"].pop("cardioProtocol")
+    for d in body["facts"]["daily"]:
+        for k in ("kcal", "proteinG", "carbsG", "fatG", "steps", "sleepHours", "weighInLb"):
+            d.pop(k, None)
+    for f in body["template"]["fields"]:
+        f.pop("prompt", None)
+        f["source"].pop("key", None)
+    for n in body["notes"]:
+        n.pop("targetFieldId", None)
+    r = TestClient(app).post("/checkin/draft", json=body)
+    assert r.status_code == 200, r.text
+
+
+def test_request_validation_errors_use_the_error_contract():
+    r = TestClient(app).post("/checkin/draft", json={"template": {}})
+    assert r.status_code == 422
+    assert r.json()["error"].startswith("template.fields") or "facts" in r.json()["error"]

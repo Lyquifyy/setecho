@@ -24,7 +24,9 @@ PRIVATE = ROOT / "private" / "probes" / "checkin"
 
 def synthetic_request() -> checkin.DraftRequest:
     template = to_template(
-        CheckInTemplateOut.model_validate(json.loads((FIXTURES / "spark" / "form_coach_form.json").read_text())["raw"])
+        CheckInTemplateOut.model_validate(
+            json.loads((FIXTURES / "spark" / "form_coach_form.json").read_text())["raw"]
+        )
     )
 
     def day(d, training, kcal=None, p=None, c=None, f=None, steps=None, sleep=None, weight=None, liss=()):
@@ -52,7 +54,8 @@ def synthetic_request() -> checkin.DraftRequest:
     notes = [checkin.VoiceNote(id="n1", at="2026-10-25T18:00:00Z", transcript="digestion's been off since Wednesday",
                                targetFieldId="notes_on_digestion")]  # fmt: skip
     examples = [
-        line.strip() for line in (FIXTURES / "checkin" / "style_examples.txt").read_text().splitlines()
+        line.strip()
+        for line in (FIXTURES / "checkin" / "style_examples.txt").read_text().splitlines()
         if line.strip() and not line.startswith("#")
     ]
     return checkin.DraftRequest(template=template, facts=facts, notes=notes, training=training, lastCheckIn=None,

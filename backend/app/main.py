@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -27,6 +28,14 @@ app.include_router(checkin_api.router)
 @app.exception_handler(ValidationError)
 async def _unprocessable(_: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=422, content={"error": str(exc).splitlines()[0]})
+
+
+@app.exception_handler(RequestValidationError)
+async def _bad_request(_: Request, exc: RequestValidationError) -> JSONResponse:
+    """The contract is 422 {"error"}: name the first bad field so the app can show it."""
+    first = exc.errors()[0] if exc.errors() else {}
+    where = ".".join(str(x) for x in first.get("loc", []) if x != "body")
+    return JSONResponse(status_code=422, content={"error": f"{where}: {first.get('msg', 'invalid request')}"})
 
 
 @app.get("/health")

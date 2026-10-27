@@ -36,9 +36,9 @@ def checkin_render(req: checkin.RenderRequest) -> RenderResponse:
 
 
 class Measurements(StrictModel):
-    waistIn: float | None
-    bicepIn: float | None
-    thighIn: float | None
+    waistIn: float | None = None
+    bicepIn: float | None = None
+    thighIn: float | None = None
 
 
 class SpokenAnswer(StrictModel):
@@ -46,10 +46,10 @@ class SpokenAnswer(StrictModel):
         description="The answer as the athlete would type it: their words, filler and false starts removed"
     )
     number: float | None = Field(
-        description="The number for a scale, number or single measurement field; else null"
+        default=None, description="The number for a scale, number or single measurement field; else null"
     )
     measurements: Measurements | None = Field(
-        description="Only when several tape measurements were given at once"
+        default=None, description="Only when several tape measurements were given at once"
     )
     confidence: float
 
