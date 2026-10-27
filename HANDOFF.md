@@ -2,7 +2,7 @@
 
 **Read order:** `AGENTS.md` (rules) → this file (what to build and how) → `DESIGN.md` (screens and components). The plan of record with the schedule is the Claude Doc "Setecho hackathon build plan". If anything here conflicts with `AGENTS.md`, `AGENTS.md` wins.
 
-**Start here (Oct 27):** most of the app was built on Oct 26. §9 lists what exists, what's untested, and the build order for the rest of the week: rep counting, the coach reply loop with voice cues, and the Garmin watch.
+**Start here (Oct 27):** most of the app was built on Oct 26. §9 lists what exists, what's untested, and the build order for the rest of the week: SAM as the count of record, Check-in morning, the coach reply loop, then measured effort with the coach's rules and the spotter voice. Stretch items come after, starting with Machine taken.
 
 **How to work:**
 - Build milestone by milestone, in order.
@@ -14,21 +14,22 @@
 
 ## 1. The product
 
-Setecho takes the manual work out of a coached bodybuilding prep. The athlete has a human coach who sends a training program as a spreadsheet and expects a weekly check-in in WhatsApp.
+Setecho takes the manual work out of a coached bodybuilding prep. The athlete has a human coach who sends a training program as a spreadsheet and expects a check-in in WhatsApp every week or two.
 
 Setecho:
-1. **Imports the coach's material once:** the spreadsheet program and the check-in form.
-2. **Logs training hands-free, with or without the camera.** A Setecho app on the athlete's Garmin watch catches every set at every station from wrist motion, with nothing to set up. For the lifts the athlete wants measured or filmed, the phone goes on a tripod: it detects the set, counts the reps instantly, and SAM 3.1 then measures them from the set's video. A DJI wireless mic takes spoken corrections, and results are read aloud over the athlete's music. There's no mode to pick: Setecho uses whatever is there.
-3. **Takes the four check-in photos hands-free,** aligned to last week.
-4. **Fills half the check-in from data.** Weight (Withings), macros (MacroFactor), and steps and sleep (Garmin) all arrive through Apple Health. The rest is asked in a 2-minute voice wrap-up. On check-in morning it all runs as one hands-free conversation: Setecho asks for the weight, the photos and the rest of the coach's questions, and understands natural answers like "give me a couple of minutes".
-5. **Sends the check-in to WhatsApp** in the coach's exact format.
-6. **Turns the coach's reply into plan changes.** The athlete shares the coach's WhatsApp text or voice note into Setecho. Each change is listed next to the coach's exact words, and nothing changes until the athlete approves it. Optionally, the coach's own voice plays in the athlete's headphones before the exercise he talked about.
+1. **Imports the coach's material once:** the spreadsheet program, the check-in form, and the coach's own rules for adjusting loads. The sheet's days become the training cycle in order, and rest days stay rest days. Blocks the coach adds on top of days ("abs 2x per week", "vacuums 4x per week upon waking") become add-ons that join the days the athlete picks, so one day can hold two workouts.
+2. **Logs training hands-free.** For the lifts the athlete wants measured or filmed, the phone goes on a tripod: it detects each set, and SAM 3.1 counts the reps from the set's video and measures how hard the set was from how much the reps slowed down. Without the tripod, the athlete's voice logs the set. A DJI wireless mic takes spoken commands, and a spotter's voice talks over the athlete's music. A Garmin watch app is a stretch item.
+3. **Suggests the next set's weight with the coach's own rules.** When a set lands above or below the coach's target effort, Setecho applies the adjustment rule the coach wrote, or the athlete confirmed as his, and says it during rest. The athlete decides, and the coach sees every adjustment in the check-in. **Stretch:** when a machine is taken, it offers the same lift on other equipment, or moves up a later lift from today that won't tire a muscle a heavier lift still needs, in the order the coach said he prefers. Every swap and reorder goes into the check-in. For each check-in it also crops the two sets the athlete flagged for the coach's video review to just the reps.
+4. **Takes the four check-in photos hands-free,** aligned to last week.
+5. **Fills half the check-in from data.** Weight (Withings), macros (MacroFactor), and steps and sleep (Garmin) all arrive through Apple Health. On check-in morning the rest is one hands-free conversation: Setecho asks for the weight, the photos and the rest of the coach's questions, and understands natural answers like "give me a couple of minutes".
+6. **Sends the check-in to WhatsApp** in the coach's exact format and order: the plan message (macros, cardio, supplements), then the questionnaire with the photos, then the two videos.
+7. **Turns the coach's reply into plan changes.** The athlete shares the coach's WhatsApp text or voice note into Setecho. Each change is listed next to the coach's exact words, and nothing changes until the athlete approves it. Optionally, the coach's own voice plays in the athlete's headphones before the exercise he talked about.
 
-**Setecho is not a coach.** It never recommends loads, nutrition or form. That keeps it off the hackathon's "avoid" list ("sports analyzers or coaches", "AI nutrition coach"), and it is also the product truth: the human coach coaches. Counting reps is logging: it records what happened and never judges it.
+**Setecho is the spotter, not the coach.** It never writes the program, never judges form and never gives nutrition advice. A load suggestion only ever applies the coach's own rule, a machine-taken swap stays within the same lift or his own alternates, the athlete makes the call, and the coach sees every adjustment. That keeps it as far from the hackathon's "avoid" list ("sports analyzers or coaches", "AI nutrition coach") as this feature allows, and the organizers are asked about the suggestions and the swaps directly (§9, G1). It's also the product truth: the human coach coaches.
 
 **Hackathon facts:**
 - Meta Global AI Developer Hackathon, indie track.
-- Build period: Oct 27 – Nov 4, 2026.
+- Build period: from the end of the kickoff stream (12:24 PM ET, Oct 26) to Nov 4, 2026.
 - Submission due **Wed Nov 4, 9:00 PM ET**, with a 3-minute demo video, a public repo and a write-up.
 - Judged on Impact 30%, Use of Meta AI tooling 25%, Technical depth 20%, Demo 25%.
 - Only work built during the event counts.
@@ -62,22 +63,24 @@ Commands: `make test`, `make lint`, `make dev`, `make smoke`, `make ios`, `make 
 iPhone (Setecho app)                                Backend (FastAPI, stateless)            Meta Model API
 - HealthKit reads (weight, macros, steps, sleep)    - holds MODEL_API_KEY                   - muse-spark-1.3
 - camera + on-device set detection (Vision)   <-->  - /import/*   (Spark, structured)  -->  - muse-voice-transcribe-1.0
-- instant rep count from body pose                  - /sets/*     (SAM video: rep counts)   - sam-3.1
+- fallback rep count from body pose                 - /sets/*     (SAM: reps and effort)    - sam-3.1
 - audio: DJI mic in, AirPods out, iOS speech        - /voice/*    (Transcribe + Spark)
 - photo session: on-device framing + stillness      - /photos/*   (SAM image masks)
 - stores everything locally (JSON files)            - /checkin/*  (agent + validator)
 - share sheet -> WhatsApp                           - /coach/*    (Transcribe + Spark + validator)
-- share extension <- coach's WhatsApp replies
-- WatchService <-> Garmin Connect app <-> Setecho watch app (Venu 4, Connect IQ: wrist sets and reps, haptics)
+- share extension <- coach's WhatsApp replies       - /spotter/*  (Spark: spotter lines)
+- (stretch) WatchService <-> Garmin Connect app <-> Setecho watch app (Venu 4)
 ```
 
 - **The phone owns all data.** Program, template, sessions, sets, notes, photos and check-ins are stored on the device as Codable JSON under Application Support, plus JPEG and MOV files. The backend keeps nothing between requests.
 - **The backend exists to hold the key and talk to Meta.** It also does deterministic work: rendering the check-in text and validating numbers.
 - **The model never produces a number.** Numbers come from HealthKit, the training log, or the athlete's own words (extracted, then echoed back for confirmation).
-- **No text-to-speech exists on Meta Model API,** so spoken callouts and questions use `AVSpeechSynthesizer` on the phone.
-- **Set clips are uploaded for counting, then dropped.** After each set the phone sends a small copy (720p, 10 fps, no audio) to `/sets/count`. The backend forwards it to SAM 3.1 and keeps nothing. The full-quality MOV stays on the phone.
-- **Sets come from up to three inputs: camera, watch and voice.** Any combination works and nothing has to be switched; §7, Session inputs, has the rules. The watch app makes no network or model calls: it talks only to the phone.
-- **Every rep count has two sources when the camera is on duty.** The phone counts instantly from body pose. SAM's count, measured from the plate, arrives during rest and wins when it's confident. What the athlete says ("that was 7") beats both.
+- **No text-to-speech exists on Meta Model API,** so the spotter's voice is the phone's `AVSpeechSynthesizer` with the best installed voice. If the human decides it sounds too robotic, a natural-voice service can do the speaking only (§7, The spotter voice). Every word it says is still written by the app and Muse Spark.
+- **Set clips are uploaded for counting, then dropped.** After each set the phone sends a small copy (720p, 15 fps, no audio) to `/sets/count`. The backend forwards it to SAM 3.1 and keeps nothing. The full-quality MOV stays on the phone.
+- **Sets come from the camera and the athlete's voice,** plus the Garmin watch if that stretch item is built. Any combination works and nothing has to be switched; §7, Session inputs, has the rules.
+- **SAM 3.1 is the count of record on tripod sets.** Its count and the set's measured effort are spoken during rest. The phone's own pose count is a silent fallback, used only when SAM fails or is slower than 60 s. What the athlete says ("that was 7") beats both.
+- **A load suggestion only ever applies the coach's rule.** The rule engine is deterministic Swift; Muse Spark only puts its result into words (§7, Measured effort and the coach's rules).
+- **Machine taken (stretch) is code, not the model.** `TakenEngine.swift` picks the options from the exercise tags confirmed at import and the coach's stated preference. Muse Spark only drafts the tags at import and understands what the athlete says (§7, Machine taken).
 - **The coach's reply never changes anything by itself.** `/coach/reply` returns proposed changes. The phone applies only the ones the athlete approves, and keeps the previous plan so an applied reply can be reverted.
 
 ---
@@ -88,17 +91,44 @@ Swift `Codable` structs in `ios/Setecho/Models/`. The backend mirrors the same J
 
 ```swift
 // Coach's program (from the spreadsheet)
-struct Program: Codable { var name: String; var weeks: [ProgramWeek]; var importedAt: Date; var flags: [ImportFlag] }
+struct Program: Codable { var name: String; var weeks: [ProgramWeek]; var addOns: [AddOn]; var importedAt: Date; var flags: [ImportFlag] }
 struct ProgramWeek: Codable { var number: Int; var days: [ProgramDay] }
-struct ProgramDay: Codable, Identifiable { var id: String; var name: String /* "Upper A" */; var exercises: [PlannedExercise] }
+struct ProgramDay: Codable, Identifiable {
+  var id: String; var name: String /* "Day 1", "Rest" */; var exercises: [PlannedExercise]
+  var kind: DayKind                // .training, .rest: a rest day has no lifts and is never a session
+  var cardio: String?              // his words for the day's cardio, e.g. "25 minutes of fasted LISS"
+}
 struct PlannedExercise: Codable, Identifiable {
   var id: String; var name: String; var sets: [PlannedSet]
   var equipment: Equipment        // .barbell, .dumbbell, .machine, .cable, .bodyweight: decides what SAM tracks
   var restSeconds: Int?            // from the sheet if present
   var notes: String?
+  var tags: ExerciseTags?          // movement family, muscles and tier: drafted at import, confirmed once (Machine taken)
+  var alternates: [Alternate]      // the coach's own "or" options, from the sheet or his replies; empty when he gave none
 }
-struct PlannedSet: Codable { var reps: Int?; var repsMin: Int?; var repsMax: Int?; var loadLb: Double?; var rpe: Double?; var rir: Int? }  // "6-8 reps" = repsMin 6, repsMax 8
+struct ExerciseTags: Codable {
+  var family: String?              // a family id from ExerciseFamilies.json, e.g. "incline-press"; nil when none fits
+  var primary: [Muscle]; var secondary: [Muscle]
+  var tier: LiftTier               // .heavy (compound) or .light (isolation)
+  var confirmed: Bool
+}
+enum Muscle: String, Codable, CaseIterable { case chest, frontDelts, sideDelts, rearDelts, triceps, biceps, forearms, lats, upperBack, traps, lowerBack, abs, quads, hamstrings, glutes, adductors, calves }
+enum LiftTier: String, Codable { case heavy, light }
+struct Alternate: Codable { var name: String; var quote: String; var source: String /* "Sheet, row 12" · "Coach's reply, Oct 29" */ }
+struct PlannedSet: Codable {
+  var reps: Int?; var repsMin: Int?; var repsMax: Int?; var loadLb: Double?; var rpe: Double?; var rir: Int?
+  var seconds: Int?                // a timed set: a hold ("20 seconds", "60 sec each") or a duration ("5 minutes" = 300); reps stay nil
+  var totalReps: Int?              // a rest-pause set's target ("20 total reps")
+  var role: SetRole?               // .top, .backOff ("1 top set. 1 back down set"), .restPause; nil = a straight set
+}  // "6-8 reps" = repsMin 6, repsMax 8
 struct ImportFlag: Codable { var path: String /* "week 4 / Upper A / Bench / set 2" */; var message: String }
+// A block the coach adds on top of days, outside the cycle (§7, Training cycle and add-ons)
+struct AddOn: Codable, Identifiable {
+  var id: String; var name: String /* "Abs", "Stomach vacuums" */; var exercises: [PlannedExercise]
+  var perWeek: Int                 // "2x per week" → 2
+  var timing: AddOnTiming          // .withSession (joins that day's session, after the last lift), .onWaking (its own short morning session)
+  var quote: String                // his words: "Complete these 4x per week upon waking:"
+}
 
 // Coach's check-in form
 struct CheckInTemplate: Codable { var fields: [FieldSpec]; var carriedBlocks: [CarriedBlock] }
@@ -117,10 +147,15 @@ enum DataKey: String, Codable {   // every number the app can fill
 }
 
 // Training
-struct Session: Codable, Identifiable { var id: UUID; var programDayId: String; var startedAt: Date; var endedAt: Date?; var sets: [LoggedSet]; var notes: [VoiceNote] }
+struct Session: Codable, Identifiable { var id: UUID; var programDayId: String?; var startedAt: Date; var endedAt: Date?; var sets: [LoggedSet]; var notes: [VoiceNote]; var deviations: [PlanDeviation]
+  var addOnIds: [String] }          // programDayId is nil for a session that is only an add-on (the morning vacuums)
 struct LoggedSet: Codable, Identifiable {
   var id: UUID; var exerciseId: String; var setIndex: Int
+  var doneAs: String?               // the variant done when the lift was swapped; history and suggestions key on exerciseId + doneAs
   var loadLb: Double; var reps: Int; var rpe: Double?               // reps = the number in the log; repCount says where it came from
+  var seconds: Int?                 // a timed set: how long it ran (holds, the bike)
+  var role: SetRole?                // .warmup, .top, .backOff, .restPause; nil = a straight set
+  var flaggedForCoach: Bool         // "flag that": a candidate for the check-in's two videos
   var repCount: RepCount
   var startedAt: Date; var endedAt: Date; var clipFile: String?     // local MOV, trimmed to the set
   var edits: [SetEdit]                                              // audit trail for "that was 7 reps"
@@ -129,11 +164,49 @@ struct RepCount: Codable {
   var source: RepSource            // .plan, .watch, .phone, .measured, .spoken: which number `reps` holds
   var watch: Int?                  // wrist count from the watch app, with its confidence in watchConfidence
   var watchConfidence: Double?
-  var phone: Int?                  // instant count from body pose, at set end
+  var phone: Int?                  // fallback count from body pose, at set end
   var measured: Int?               // SAM count from /sets/count
   var confidence: Double?          // SAM count confidence, 0-1
   var repTimes: [Double]           // seconds from clip start, one per measured rep
+  var velocityLossPct: Double?     // how much the reps slowed, 0–100 (SAM; the phone's pose signal as the fallback)
+  var estimatedRIR: Double?        // reps in reserve estimated from velocityLossPct; always shown as "estimated"
   var status: CountStatus          // .counting, .done, .failed (offline or no track: the phone count stands)
+}
+
+// The coach's load-adjustment rules, and what they suggested
+struct ProgressionRule: Codable, Identifiable {
+  var id: String
+  var appliesTo: String?           // an exercise id, or nil for every exercise
+  var when: RuleTrigger            // .aboveTarget(byRPE: Double), .belowTarget(byRPE: Double), .repsBelowMin, .allSetsAtTopOfRange, .afterTopSet, .restPauseOverGoal, .topSetPastRange
+  var adjust: RuleAdjustment       // .percent(Double) or .pounds(Double), signed; .reps(Int) for "keep the weight, drop a rep"; .backOff(minPct, maxPct) for "20–25% lighter than the top set"; .loadSteps(Int)
+  var scope: RuleScope             // .nextSet, or .nextSession (double progression)
+  var source: String               // "Sheet note, row 4" · "Coach's voice note, Oct 29" · "Athlete: confirmed with the coach"
+  var quote: String?               // his exact words, when it came from his material
+  var confirmed: Bool              // nothing applies until the athlete confirms it
+}
+struct LoadSuggestion: Codable, Identifiable {
+  var id: UUID; var setId: UUID; var ruleId: String
+  var fromLb: Double; var toLb: Double            // rounded to what the athlete can load (Settings)
+  var reason: String               // "RPE 9.5 vs target 8 (measured: about 1 rep left)"
+  var decision: SuggestionDecision // .pending, .accepted, .kept
+}
+struct VideoPick: Codable { var setId: UUID; var caption: String /* "Incline DB press · top set" */; var cropStart: Double; var cropEnd: Double /* seconds into the clip: just the reps */ }
+
+// Machine taken (stretch): what the coach wants, and what happened
+struct TakenRule: Codable {
+  var order: [TakenOption]         // in his order, e.g. [.alternate, .sameLift, .moveUp, .wait]
+  var source: String; var quote: String?
+  var confirmed: Bool              // until confirmed, only Wait and the athlete's own swaps
+}
+enum TakenOption: String, Codable { case alternate /* his listed alternate */, sameLift /* the same lift on other equipment */, moveUp /* a later lift from today */, wait }
+struct PlanDeviation: Codable, Identifiable {
+  var id: UUID; var sessionId: UUID; var at: Date
+  var kind: DeviationKind          // .swap, .reorder
+  var plannedExerciseId: String    // the lift whose equipment was taken
+  var doneAs: String?              // swap: what was done instead, e.g. "Incline dumbbell press"
+  var movedExerciseId: String?     // reorder: the later lift that moved up
+  var reason: String               // "Bench taken"
+  var option: TakenOption?         // which of his options it was; nil when the athlete named the swap himself
 }
 struct VoiceNote: Codable, Identifiable { var id: UUID; var at: Date; var transcript: String; var targetFieldId: String? }
 
@@ -143,7 +216,7 @@ struct PosePhoto: Codable { var pose: Pose; var file: String; var bodyBox: CGRec
 enum Pose: String, Codable, CaseIterable { case front, rightArmsUp, back, leftArmsUp }
 
 // Check-in
-struct CheckInDraft: Codable, Identifiable { var id: UUID; var weekStart: Date; var weekEnd: Date; var answers: [FieldAnswer]; var photoSetId: UUID?; var sentAt: Date? }
+struct CheckInDraft: Codable, Identifiable { var id: UUID; var weekStart: Date; var weekEnd: Date; var answers: [FieldAnswer]; var photoSetId: UUID?; var videoPicks: [VideoPick]; var adjustments: [UUID] /* accepted LoadSuggestion ids */; var deviations: [UUID] /* the week's PlanDeviation ids, all in by default */; var sentAt: Date? }
 struct FieldAnswer: Codable {
   var fieldId: String; var text: String                  // exactly what goes to the coach
   var state: AnswerState                                 // .filled, .drafted, .missing, .confirmed
@@ -155,8 +228,23 @@ struct Provenance: Codable { var source: String /* "Withings via Apple Health" *
 struct PlanState: Codable {
   var version: Int; var program: Program; var targets: MacroTargets; var cardioProtocol: String
   var carriedBlocks: [CarriedBlock]                      // macro text, supplements: the coach's words
+  var rules: [ProgressionRule]                           // how he wants loads adjusted
+  var takenRule: TakenRule?                              // what he wants when a machine is taken
+  var cycle: CycleCursor?                                // the cycle day Today shows
+  var addOnDays: [AddOnDays]                             // which cycle days each add-on joins: the athlete's choice
+  var roleTargets: [RoleTarget]                          // effort targets per set role, for sheets that give only rep ranges
+  var checkInSchedule: CheckInSchedule?                  // from his written instructions, confirmed
+  var quietDays: [Int]                                   // weekdays he asked not to be messaged (1 = Sunday)
+  var restRules: [RestRule]                              // e.g. 3–4 min after a top set
+  var warmups: WarmupRule?                               // warm-up sets he expects before each lift
   var replyId: UUID?                                     // the reply that produced this version
 }
+struct CycleCursor: Codable { var dayId: String; var since: Date /* the calendar day it first showed */ }
+struct AddOnDays: Codable { var addOnId: String; var dayIds: [String] }
+struct RoleTarget: Codable { var role: SetRole; var rir: Double /* 0 = to failure */; var source: String; var quote: String?; var confirmed: Bool }
+struct CheckInSchedule: Codable { var everyWeeks: Int; var weekday: Int /* 5 = Thursday */; var dueBy: String /* "09:00" */; var timeZone: String /* "America/Chicago" */; var quote: String?; var confirmed: Bool }
+struct RestRule: Codable { var after: SetRole; var minSeconds: Int; var maxSeconds: Int; var quote: String?; var confirmed: Bool }
+struct WarmupRule: Codable { var minSets: Int; var maxSets: Int; var maxReps: Int; var quote: String?; var confirmed: Bool }
 struct MacroTargets: Codable { var training: Macros; var rest: Macros }
 struct Macros: Codable { var kcal: Int; var proteinG: Int; var carbsG: Int; var fatG: Int }
 
@@ -172,7 +260,7 @@ struct CoachReply: Codable, Identifiable {
 }
 struct PlanChange: Codable, Identifiable {
   var id: String
-  var kind: ChangeKind     // .macroTarget, .cardio, .exerciseSwap, .exerciseAdd, .exerciseRemove, .sets, .reps, .load, .rest, .supplement, .other
+  var kind: ChangeKind     // .macroTarget, .cardio, .exerciseSwap, .exerciseAdd, .exerciseRemove, .sets, .reps, .load, .rest, .supplement, .rule (a load-adjustment rule; `after` holds its new wording), .alternate ("if it's taken, do X"; `after` holds X), .other
   var path: String         // one of the addressable paths the backend listed, e.g. "targets.training.carbsG", "program.upper-a.incline-db-press.sets"
   var op: ChangeOp         // .set, .increase, .decrease, .replace, .add, .remove
   var amount: Double?      // the number he said ("drop carbs by 25" → 25); must appear in `quote`
@@ -201,6 +289,7 @@ enum WatchTap: String { case done, undo, skipRest }
 
 **Migrations** (no data loss; the athlete has real data on the phone by Thursday):
 - `LoggedSet.repCount` decodes as `RepCount(source: .plan, …, status: .done)` when missing.
+- `PlanState.rules`, `CheckInDraft.videoPicks`, `CheckInDraft.adjustments`, `CheckInDraft.deviations`, `Session.deviations` and `PlannedExercise.alternates` decode as empty when missing; `tags`, `takenRule` and `doneAs` decode as nil. `Program.addOns`, `PlanState.addOnDays`, `PlanState.roleTargets` and `Session.addOnIds` decode as empty, `ProgramDay.kind` as `.training`, and `PlanState.cycle` is seeded as the cycle day after the last completed session. `checkInSchedule` and `warmups` decode as nil, `quietDays` and `restRules` as empty, `LoggedSet.role` as nil and `flaggedForCoach` as false, and an old `VideoPick.reason` becomes its caption with no crop.
 - `PlanState` is new. Today the program lives in `Store.program`, the carried blocks in `Store.template`, the cardio protocol in `Settings.cardioProtocol`, and the targets are parsed from the Nutrition block in `CheckInCoordinator.targets(from:)`. On first launch after the update, seed `PlanState` version 1 from those four, save it as `plan.json`, and from then on every reader goes through `store.plan`. Keep `targets(from:)` as the seeding function only.
 
 
@@ -215,16 +304,18 @@ Base URL comes from `SETECHO_API_BASE` (`ios/Config/Local.xcconfig`). All bodies
 | Method, path | Request | Response | Meta call |
 |---|---|---|---|
 | `GET /health` | — | `{ok, models}` | none |
-| `POST /import/program` | multipart: `file` (`.csv`, `.xlsx` or an image) **or** `text` | `Program` with `flags` | Spark, structured output |
+| `POST /import/program` | multipart: `file` (`.csv`, `.xlsx` or an image) **or** `text` | `Program` with `flags`, its `addOns` and each day's `kind`, plus drafted `rules`, and each exercise's drafted `tags` and `alternates` | Spark, structured output |
 | `POST /import/form` | `{text}` or multipart `file` (screenshot) | `{template: CheckInTemplate, targets: MacroTargets, cardioProtocol}` | Spark, structured output |
+| `POST /import/rules` | `{text}`: his written instructions, e.g. the onboarding email, pasted once | `{rules: [ProgressionRule], roleTargets, restRules, warmups, checkInSchedule, quietDays, flags}`, each with his quote, nothing confirmed | Spark, structured output, then a validator |
 | `POST /voice/command` | multipart: `audio` (WAV) + `context` JSON | `{transcript, intent: VoiceIntent}` | Transcribe, then Spark structured output |
-| `POST /sets/count` | multipart: `video` (MP4, 720p, 10 fps, no audio) + `context` JSON `{exerciseId, equipment, plannedReps, phoneReps}` | `{reps, repTimes, confidence, trackFound, frames}` | SAM 3.1 video |
+| `POST /sets/count` | multipart: `video` (MP4, 720p, 15 fps, no audio) + `context` JSON `{exerciseId, equipment, plannedReps, phoneReps, setRole}` | `{reps, repTimes, repSpeeds, velocityLossPct, confidence, trackFound, frames}` | SAM 3.1 video |
 | `POST /photos/segment` | multipart: `image` (JPEG) | `{width, height, box: [x,y,w,h], maskPng: base64}` | SAM 3.1 image |
 | `POST /checkin/draft` | `{template, facts: WeekFacts, notes: [VoiceNote], training: TrainingSummary, lastCheckIn?: CheckInDraft, styleExamples: [String]}` | `CheckInDraft` | Spark tool calling, then a validator |
 | `POST /checkin/answer` | multipart: `audio` + `{fieldId, field: FieldSpec, styleExamples}` | `{transcript, answer: FieldAnswer}` | Transcribe, then Spark structured output |
 | `POST /checkin/turn` | multipart: `audio` (WAV) + `context` JSON `{template, step, askedFieldId, pending: [fieldId], answered: [FieldAnswer], styleExamples}` | `{transcript, intent, answers: [FieldAnswer], reply, confidence}` | Transcribe, then Spark structured output, then a validator |
-| `POST /checkin/render` | `{template, draft}` | `{text}`, the WhatsApp message | none (templating) |
+| `POST /checkin/render` | `{template, draft}` | `{messages: [String]}`: the plan message (carried blocks), then the questionnaire | none (templating) |
 | `POST /coach/reply` | `{text, plan: PlanState}`, or multipart `audio` (a WhatsApp voice note: `.opus`/`.ogg`, `.m4a` or `.wav`) + `plan` JSON | `{transcript, changes: [PlanChange], unclear: [String], cues: [VoiceCue]}` | Transcribe (audio only, per segment), then Spark structured output, then a validator |
+| `POST /spotter/line` | `{moment, facts, recent: [String], styleHints}` | `{text}` | Spark structured output, then a validator |
 
 **Conversions on the backend:** `.xlsx` → rows with `openpyxl`, then CSV text into the Spark prompt. Never send raw binary to Spark. For any audio that isn't WAV 16 kHz or 24 kHz mono 16-bit, convert with ffmpeg: `ffmpeg -i in.opus -ac 1 -ar 16000 -c:a pcm_s16le out.wav`. WhatsApp voice notes are Opus in an Ogg container. ffmpeg is on the Mac, and the backend's Dockerfile must install it too. Split audio longer than 9 minutes into chunks and join the transcripts.
 
@@ -243,11 +334,13 @@ The numbers above are illustrative. Never commit the athlete's real values; see 
 **`VoiceIntent`** is the structured output for every spoken command:
 
 ```json
-{ "intent": "rpe | reps | setLoad | loadDelta | skipSet | nextExercise | note | undo | pause | resume | endSession | starting | endSet | replayCue | yes | no | answer | unknown",
-  "number": 9, "text": "digestion's been off since Wednesday", "fieldId": null, "confidence": 0.0 }
+{ "intent": "rpe | reps | setLoad | loadDelta | skipSet | nextExercise | note | undo | pause | resume | endSession | starting | endSet | replayCue | yes | no | acceptSuggestion | keepLoad | equipmentTaken | equipmentFree | otherOption | wait | swapTo | topSet | warmup | flagSet | answer | unknown",
+  "number": 9, "text": "digestion's been off since Wednesday", "fieldId": null, "exerciseId": null, "urgent": false, "confidence": 0.0 }
 ```
 
 If `confidence` is under 0.7, or the intent is `unknown`, the app asks back ("Did you say 215?") and does nothing yet.
+
+`exerciseId` is a per-request enum of today's exercise ids, or null: "incline's taken" names incline press, and "the bench is taken" with nothing named means the next exercise up. `urgent` is true only for a `note` about pain or an injury (§7, Machine taken).
 
 **`/sets/count`** lives in `backend/app/reps.py`: pure NumPy and SciPy, tested on fixtures.
 1. Call SAM 3.1 on the video with the equipment's prompt: barbell "weight plate", dumbbell "dumbbell", machine and cable "weight stack", bodyweight "person". Keep the object tracked on the most frames. If no object is tracked on at least 80% of frames, return `trackFound: false` and no count.
@@ -257,6 +350,14 @@ If `confidence` is under 0.7, or the intent is `unknown`, the app asks back ("Di
 5. Reps are the peaks of d(t) (`scipy.signal.find_peaks`) with prominence of at least 35% of d's 95th percentile, at least 0.8 s apart. A half rep that doesn't reach the prominence isn't counted.
 6. `confidence` = tracked-frame share × (1 − min(1, coefficient of variation of the rep intervals)), clipped to 0–1. Under 0.6 is low.
 7. Return `repTimes` at the peaks. Tune the 35% and 0.8 s on the G7 clips and keep the tuned values as constants in `reps.py`.
+8. **Rep speed:** each rep's lifting phase runs from its deepest point (the peak of d(t)) back toward the rest position, until d(t) falls to 20% of that peak. `repSpeeds` = the mean |d′(t)| over that phase, in px/s, using real timestamps. Pixels are fine: the next step is a ratio, so no scale is needed.
+9. **Velocity loss:** `velocityLossPct` = 100 × (1 − the mean of the last two rep speeds ÷ the fastest of the first two), floored at 0. Sets under 3 reps, and rest-pause sets (`setRole` `restPause`), return none: the pauses inside a rest-pause set make the slowdown meaningless. The phone maps it to estimated reps in reserve (§7, Measured effort).
+
+**`/import/rules`** lives in `backend/app/importing.py`. It reads the coach's written instructions once, so every rule Setecho applies traces to his words.
+1. Spark structured output (§8, Rules from his instructions) returns only what he states: set effort targets per role, back-off loads, rest after each kind of set, warm-ups, when to add weight, the check-in cadence and deadline, and days he doesn't want messages.
+2. **The validator:** every `quote` appears in the text (ignoring case and whitespace), and every number in a rule appears in its quote. Anything that fails moves to `flags` with its quote.
+3. Nothing personal is kept: no names, phone numbers, links, discount codes, macros or supplement doses. Macros and supplements come in through `/import/form`'s carried blocks, as before.
+4. The phone shows each rule on Import beside his words; nothing applies until the athlete confirms it.
 
 **`/coach/reply`** lives in `backend/app/coach.py`.
 1. Build the addressable items from `PlanState`: each has a path, a plain label ("Training-day carbs") and its current value. Program items are per day and exercise (`program.<dayId>.<exerciseId>`, plus `.sets`, `.reps`, `.load`, `.rest`); a program change applies to every remaining week from `appliesFrom`.
@@ -286,6 +387,15 @@ If `confidence` is under 0.7, or the intent is `unknown`, the app asks back ("Di
    - `reply` is 20 words or fewer and gives no advice (the prompt, plus a short blocklist check).
    - A turn that fails any check becomes `unclear`, with the reply "Sorry, say that again?"
 6. The backend never chooses the next question; the phone does.
+
+**`/spotter/line`** lives in `backend/app/spotter.py`. It writes one spoken line for a moment when speed doesn't matter, mainly the rest after a set.
+1. **Input:**
+   - `moment`: `restAfterSet`, `exerciseStart` or `sessionEnd`.
+   - `facts`, computed on the phone: reps and their source, load, velocity loss, estimated reps in reserve, the target, the suggestion and its rule, PRs, the set number.
+   - The last 5 lines spoken this session, and style hints: the athlete's first name, casual.
+2. Spark returns `{text}`: one or two short sentences, at most 30 words, that sound like a training partner, not a report.
+3. **The validator:** every number in `text` is one of the `facts`; nothing beyond the suggestion it was given; no opening shared with any of the last 5 lines. A line that fails falls back to the template (§7).
+4. The set-end callout never waits for this; only rest-time lines do.
 
 ---
 
@@ -353,11 +463,11 @@ with client().responses.stream(model="sam-3.1", input=[{"type": "message", "role
 - Parse with `meta_sam_parser`; see `https://dev.meta.ai/docs/sam/reading-segmentation.md`. Take the largest mask.
 - Downscale images to about 1280 px on the long side before sending.
 
-**SAM 3.1 on video** (rep counting; bar speed if it comes back from the stretch list):
+**SAM 3.1 on video** (rep counts and effort):
 - The existing `meta.segment_video()` and `scripts/sam_probe.py`.
 - Prompt by equipment: "weight plate", "dumbbell", "weight stack", "person" (§5, `/sets/count`).
-- Send 720p at 10 fps with no audio track. Cost: $0.20 per 1,000 frames with a 50-frame minimum per request, so a 40-second set is about 400 frames, about $0.08, and a 20-set session about $1.60. Repeat tests run on saved fixtures.
-- Timestamps come from the file (`ffprobe -show_frames`), never frame index ÷ 10.
+- Send 720p at 15 fps with no audio track; rep speed needs the extra frames. Cost: $0.20 per 1,000 frames with a 50-frame minimum per request, so a 40-second set is about 600 frames, about $0.12, and a 20-set session about $2.40. Repeat tests run on saved fixtures.
+- Timestamps come from the file (`ffprobe -show_frames`), never frame index ÷ 15.
 
 Prompt caching is automatic for repeated prefixes. Keep system prompts and schemas byte-identical across calls.
 
@@ -397,9 +507,10 @@ Prompt caching is automatic for repeated prefixes. Keep system prompts and schem
 | Average daily steps | The 7-day mean, rounded to 100 |
 | Current body weight | The check-in morning's weigh-in (setting: or the 7-day average) |
 | Last check-in body weight | The weight in the last sent check-in |
-| Date of last refeed or cheat meal | Drafted: the latest day with kcal above that day's target +20%. Always "Confirm" |
+| Date of last refeed or cheat meal | His free meal is untracked, so a high-calorie day won't show it. Drafted from a spoken note ("free meal today") if there is one, else the latest training day logged more than 25% under target (the untracked meal), else asked. Always "Confirm" |
 | Notes on sleep | Prefilled with "Avg 7.4 h/night (Garmin)", then the athlete adds the quality note by voice |
 | Weeks away from target date | From the show date in settings, else "N/A" |
+| Current goal(s) | If his form has it: drafted from the last check-in's answer and read back for a yes |
 
 ### Audio (gate G2 decides this)
 - Use `AVAudioSession` category `.playAndRecord`, mode `.default`, options `[.mixWithOthers, .allowBluetoothA2DP]`.
@@ -411,32 +522,66 @@ Prompt caching is automatic for repeated prefixes. Keep system prompts and schem
 - **Utterance format:** convert to 16 kHz mono Int16 with `AVAudioConverter` and write the WAV header yourself. Upload to `/voice/command`.
 - **Listen only in the Ready and Rest states,** never while a set records. That cuts false commands from gym noise. If false triggers still happen, add a setting that requires the prefix "Setecho …".
 
+### Training cycle, rest days and add-ons
+A coach's sheet isn't always one tab per training day. The athlete's has a tab per day (Day 1, Day 2, Day 3, Rest, Day 5, Day 6, Rest 2), and an "Ab Training" tab first that isn't a day at all: two blocks to do on top of other days. The import and Today must read it the way he does.
+- **What the import returns** (§8, Import program):
+  - **The cycle:** the training and rest days, in the sheet's order. A rest day (`kind: .rest`) has no lifts; its cardio line ("25 minutes of fasted LISS") goes in `cardio`, verbatim.
+  - **Add-ons:** a block with a frequency ("Complete these 4x per week upon waking", "Complete this 2x per week") is an `AddOn`, never a day, wherever its tab sits. "Upon waking" means `.onWaking`; otherwise `.withSession`. His sentence goes in `quote`.
+  - **Timed sets:** "20 seconds", "60 sec each" and "5 minutes" set `seconds`, with reps nil. A warm-up like "Stationary Bike, 5 minutes" is an exercise with one timed set.
+  - **Set roles:** "1 top set. 1 back down set" (or "work down") on 2 sets makes set 1 `.top` and set 2 `.backOff`. "1 top set. 1 rest pause (20)" makes set 2 `.restPause` with `totalReps` 20. "20 total reps" with "rest pause set" is one `.restPause` set.
+  - **Rest period:** a day-level "Rest Period: 90-180 seconds" applies to every exercise that day: `restSeconds` 180 for the countdown, plus a quiet "ready when you are" at 90.
+  - **A slash name** ("Hanging/Lying Leg Raises") is one exercise with his two options. Keep the name; the second option goes in `alternates`.
+- **Import review:** the cycle in order with rest days marked, then one card per add-on with his words and the days it joins (DESIGN.md, Import). Setecho proposes the days and the athlete confirms them once:
+  - `.withSession`: spread over the training days as evenly as the cycle allows (2× in his cycle: Day 2 and Day 5).
+  - `.onWaking`: spread over the whole cycle, rest days included.
+- **Which day is today** (`PlanState.cycle`). This replaces `Store.nextDay`, which picks the first day never completed: after one full cycle that's always the first tab.
+  - On the first launch of each calendar day, move the cursor to the next cycle day if the current one is a rest day, or a training day whose session is complete. Wrap at the end of the cycle (the last week of a multi-week program wraps to week 1).
+  - A missed training day doesn't move: it waits for the next day, the way athletes follow a split.
+  - "Change day" on Today, or saying "I'm doing Day 5 today" at the start of a session, moves the cursor by hand.
+  - Rest day: Today shows "Rest day" and his cardio line. There's no session to start; the LISS shows up through Apple Health as before.
+- **Two workouts in one day:**
+  - **With the session:** on a day an add-on joins, its exercises go after the day's last lift, in the same session, under its own name in Up next ("Abs"). "Add abs" or "skip abs" by voice changes today only.
+  - **Catch-up:** if there are fewer days left in the check-in week than the add-on still needs, it joins today's session anyway, and Setecho says so: "Adding abs today, 1 of 2 this week."
+  - **On waking:** its own short session (`programDayId` nil), started by "Hey Siri, start my Setecho morning" (an App Shortcut) or Today's Morning card. It runs hands-free like any session, at home, with no tripod.
+  - A second session the same day is fine: Today keeps offering whatever is still due, and an add-on never moves the cycle.
+- **Timed sets in a session:** no set detection, no clip, no SAM. "Plank, 60 seconds. Say go." Then the countdown in the HUD, "10 seconds", "Time." The set logs `seconds`. Rest between holds is the sheet's, else 30 s. "Done" ends a hold early and logs how long it ran.
+- **Rest-pause sets:** his definition is three rounds to failure with 15 deep breaths between. Set detection holds the set open through the pauses (§7, Set detection), and the count is the total across the rounds: "22 total, measured." No effort estimate.
+- **Warm-up sets.** His instructions call for 1–3 warm-up sets of 6–8 reps at most before each lift, never exhausting, and the sheet doesn't list them. Without this, set detection would log about 15 warm-ups a session as working sets.
+  - Each exercise starts in warm-up mode: "Incline DB press. Warm-ups first."
+  - Saying "top set" (`topSet`) before a set makes it the top set. "That was a warm-up" (`warmup`) or "that was my top set" fixes one either way, with undo.
+  - Otherwise each detected set is classified at set end from the phone's count and pose signal: 8 reps or fewer with under 20% slowdown is a warm-up ("Warm-up 2."); anything else is the next working set in the plan's order (top, then back-off).
+  - Warm-ups log with `role: .warmup`, aren't uploaded to SAM, and never count anywhere. A warm-up reclassified by voice uploads then; its clip is still on the phone.
+- **In the check-in:** `TrainingSummary` carries each add-on's count for the week ("Abs 2 of 2, vacuums 3 of 4"), so "Training consistency" can cite it.
+
 ### Set detection (Session screen)
 - **Capture:** `AVCaptureSession` on the back 1× wide camera, 1080p. Run `VNDetectHumanBodyPoseRequest` on every 4th frame, about 15 fps.
 - **Signal:** the mean y of both wrists, normalized and smoothed with a 5-frame median.
 - **Start:** the wrist signal's range over the last 2 s exceeds 0.08, with at least one direction reversal. Set the state to Recording. The set's real start is the last moment before that when the signal was still (range under 0.03 for 1 s).
-- **End:** range under 0.03 for 4 s. The set's real end is the last moment the signal moved. Log the set (Rep counting, below).
-- **Recording:** the camera records continuously, and each file runs from one set's end to the next set's end, so every set has pre-roll. At set end, stop the file and start the next one right away. Then export the window [start − 3 s, end + 1 s] twice: at full quality as the set's clip, and at 720p, 10 fps with no audio for `/sets/count` (`AVAssetExportSession` with a video composition, `frameDuration` 1/10 s). Delete the untrimmed file.
+- **End:** range under 0.03 for 4 s (a rest-pause set ends after its third round, after 75 s still, or on "done", so its pauses stay inside one set). The set's real end is the last moment the signal moved. Log the set (Rep counting, below).
+- **Recording:** the camera records continuously, and each file runs from one set's end to the next set's end, so every set has pre-roll. At set end, stop the file and start the next one right away. Then export the window [start − 3 s, end + 1 s] twice: at full quality as the set's clip, and at 720p, 15 fps with no audio for `/sets/count` (`AVAssetExportSession` with a video composition, `frameDuration` 1/15 s). Delete the untrimmed file.
 - **Always available fallback:** the voice intents `starting` and `endSet`.
 - **Tune the thresholds on real footage.** Save the wrist series from each test session to a debug JSON file so it can be tuned offline.
 - **Logging rule:** load comes from the plan, or the last voice override for that exercise. Reps follow Rep counting, below. RPE is spoken.
-- **Callout template** (deterministic, no model): "8 reps. Next, 225 for 8. Rest two thirty." Then show the rest countdown; the rest time comes from the program, defaulting to 150 s.
+- **Set-end callout** (deterministic, no model, instant): "Set 3 done. Rest two thirty." Then show the rest countdown; the rest time comes from the program, defaulting to 150 s. The count, the effort and the next target come during rest (Rep counting, below).
 - **Undo:** keep a stack of applied actions. "Undo" reverts the last one and says what it reverted.
 
 ### Rep counting
-- **Phone count** (`RepCounter.swift`, mirroring `reps.py` steps 4–5): over the set window, use the joint (wrists, elbows, hips, knees, ankles, Vision confidence above 0.3) whose smoothed y has the largest range, then count the same way as the backend at 15 fps. If no joint moves more than 0.05, or tracking drops for more than 20% of the set, there's no phone count and the set logs the plan's reps.
-- **At set end,** speak the phone count first: "8 reps. Next, 225 for 8. Rest two thirty." If it's under the plan's minimum, say so as a fact: "6 reps, 2 short of plan."
-- **Measured count:** upload the 720p clip to `/sets/count` as soon as it's exported. When it returns during the same rest:
-  - **Same number:** say nothing. The set's chip changes from "Phone" to "Measured".
-  - **Different, confidence 0.6 or more:** update the log (undoable) and say "Set 3: 7, not 8." `VoiceEcho` shows it.
-  - **Different, confidence under 0.6:** ask "Set 3, was that 7 or 8?" No answer keeps the phone count.
-  - **Arrives after the next set started:** hold it, and apply it at the next rest. Never speak during a set.
+- **SAM is the count of record on tripod sets.** Upload the 15 fps clip to `/sets/count` as soon as it's exported. When it returns during the rest:
+  - **Confidence 0.6 or more:** log it as Measured and say it with the effort (§7, Measured effort): "8 reps, measured. The last two slowed a lot, so about 1 left in the tank."
+  - **Under 0.6:** ask "Set 3, was that 8?" A yes logs it as Measured, a number logs it as You said, and no answer keeps the phone's count.
+  - **Arrives after the next set started:** log it quietly, and mention it at the next rest only if it changed the count: "Set 3 updated: 7, measured." Never speak during a set.
+- **The phone's count is a silent fallback** (`RepCounter.swift`, mirroring `reps.py` steps 4–5).
+  - Over the set window, use the joint (wrists, elbows, hips, knees, ankles, Vision confidence above 0.3) whose smoothed y has the largest range, and count the same way at 15 fps.
+  - It's never spoken while SAM is pending. If SAM fails, or hasn't answered 60 s after the set ended, say the phone's count ("8 reps") and log it as Phone. A later SAM result replaces it as above.
+  - If no joint moves more than 0.05, there's no phone count and the set logs the plan's reps.
+- **Short of plan** is said as a fact: "6 reps, 2 short of plan."
 - **"That was N" always wins** and sets the source to `.spoken`.
-- **Offline or failed:** retry the upload in the background for up to 10 minutes. The phone count stands.
+- **Offline:** retry the upload in the background for up to 10 minutes.
+- **Latency check:** if SAM's median time from set end to result on real sets is over 60 s, the phone fallback becomes the usual spoken path, and the effort for the suggestion comes from the phone's pose signal (the same velocity-loss math on the joint series). SAM still lands as the record in the log and the check-in. Report the measured median after P1b.
 - **Shared tests:** `RepCounter` and `reps.py` run on the same synthetic series in `backend/tests/fixtures/reps/` and must give the same counts.
 
-### Session inputs: camera, watch and voice
-A session never requires the tripod. Three inputs feed the same `SessionEngine`, in any combination, and the athlete never picks a mode.
+### Session inputs: camera and voice (watch in P6)
+A session never requires the tripod. The camera and the athlete's voice feed the same `SessionEngine`, in any combination, and the athlete never picks a mode. The Garmin watch joins as a third input if that stretch item is built; the rules below already allow for it.
 - **Camera on duty:** body pose finds at least 6 joints with confidence above 0.3 in at least half the frames of the last 10 s. Otherwise the camera is off duty: it neither starts nor ends sets, and no clip is kept. A pocketed phone is simply off duty.
 - **Set start:** the first of camera start, watch `setStart` and voice "starting". A start from another input within 3 s of the first is the same set.
 - **Set end:** voice ("done", "that was 8", `endSet`) ends it at once. Otherwise the camera's end when it's on duty, else the watch's `setEnd`.
@@ -446,7 +591,83 @@ A session never requires the tripod. Three inputs feed the same `SessionEngine`,
 - **HUD:** the state line shows which inputs are live (camera, watch), so the athlete can tell at a glance (DESIGN.md, `InputStatus`).
 - **An input dropping out never stops the session.** A lost watch shows "Watch off" and the session carries on with camera and voice.
 
-### Garmin watch (Connect IQ app)
+### Measured effort and the coach's rules
+Setecho never invents a load change. It measures how hard a set was, compares that with the coach's target, and applies the coach's own rule. The athlete decides, and the coach sees every adjustment.
+
+**The athlete's coach, from his onboarding email:** top sets and back-off sets both go to muscle failure, inside the listed rep range; back-off sets are 20–25% lighter than the top set, after 3–4 minutes' rest; a rest-pause set that beats its total-rep goal means more weight next week; progress means beating the logbook (more load, more reps or better execution) every week. So for him, measured effort answers one question: did that set really reach failure?
+- **Effort, per set:**
+  - **Spoken RPE** ("felt like a 9") is the athlete's word, and it wins.
+  - **Measured:** `velocityLossPct` from SAM (or the phone's pose signal as the fallback), mapped to estimated reps in reserve. The starting map, tuned in P5: under 10% → 4+ left · 10–20% → 3 · 20–30% → 2 · 30–40% → 1 · over 40% → 0. It's stronger on barbell lifts (the research is on bench press and squat), and it's labelled "estimated" everywhere.
+  - **Calibration:** whenever the athlete says an RPE, store (velocity loss, 10 − RPE) for that exercise. After 5 pairs, fit that exercise's map to his own sets.
+- **Targets** come from the sheet: an RPE or RIR per set, or a rep range. A sheet with rep ranges and no effort targets (the athlete's has top and back-down sets and no RPE anywhere) gets one more one-time question on Import: "How close to failure does your coach want top sets, and back-down sets?" It's stored as `roleTargets`, with his words if he gave them, and confirmed like a rule. For the athlete, `/import/rules` finds the answer in his email: failure (0 in reserve) for both top and back-off sets.
+- **Rules** (`ProgressionRule`, §4):
+  - **From his material:** `/import/program` drafts rules from the sheet's notes ("if RPE is over 9, drop 5%"), and `/coach/reply` can add or change them as `.rule` changes. Each carries his quote. `/import/rules` drafts the rest from his written instructions (§5).
+  - **Asked once:** if the sheet has targets but no rule, Import asks "How does your coach want you to adjust when a set misses the target?" with three examples to pick from or say: drop or add 5%, drop or add 5 lb, keep the weight and adjust the reps. The athlete confirms it's what the coach wants.
+  - **Nothing applies unconfirmed.** With no confirmed rule there's no suggestion: Setecho still says the measured effort, and the coach sees it in the check-in.
+- **The engine** (`RuleEngine.swift`, deterministic, unit-tested):
+  - After each set, compare effort with the target, find the confirmed rule that matches, and compute the next set's load.
+  - Round to what the athlete can load (Settings: barbell steps, dumbbell steps, machine stack steps).
+  - At most one step per set, and never more than 10% from the coach's planned load in a session. A back-off rule is the exception: it's computed from the top set actually done.
+  - **No planned loads** (his sheet has none): a set's load is last time's for the same exercise and role, plus any confirmed next-session step, else asked: "Weight for the top set?"
+  - Double progression (the top of the rep range on every set) suggests the change for the **next session**, never mid-session.
+  - **Set roles:** a set is compared with its own target, never with a set of another role. A top set's suggestion is for the next session's top set. A back-off set's load comes from his back-off rule when there is one; his is 20–25% lighter than the top set, so Setecho says the load step nearest 22.5% lighter. With no rule, it comes from its own history or the athlete. A rest-pause set gets no mid-session suggestion; its total is logged against `totalReps`.
+  - **Next session:** a rest-pause total over its goal suggests one load step up next time (his rule, in his words). A top set that reached failure past the top of its range does too; that rule is drafted from his rep window, so it applies only once the athlete confirms it.
+- **Saying it:** during rest, after the measured count. For the athlete: "Top set: 11 reps, measured. Slowed 46%, that's failure. Back-off at 170, his rule: 20 to 25% lighter. Say 'go with it' or a weight."
+  - If the measure says reps were left, it's said as a fact against his target, never as advice: "About 2 left by the measure. His target is failure."
+  - On a sheet with RPE targets: "Your target was RPE 8, so his rule says 215 next. Say 'go with it' or 'keep it'."
+  - "Go with it" (or yes; intent `acceptSuggestion`) sets the next target, shown with the HUD's yellow tag. "Keep it" (or no; intent `keepLoad`) keeps the plan's load. No answer keeps the plan's load.
+  - Every decision is logged as a `LoadSuggestion`.
+- **Rest after a top set:** his 3–4 minutes (`restRules`) overrides the sheet's day range: the countdown runs to 4:00, with a quiet "ready when you are" at 3:00.
+- **The logbook line:** at each exercise's top set, the spotter says last time's and his phrase: "Last time 80s for 9. Beat the logbook." Numbers from the log.
+- **Off switch:** Settings → "Next-set suggestions" (on). When it's off, effort is still measured and still reaches the coach.
+- **In the check-in:** `/checkin/render` appends one line after his last field: "Adjustments (your rule): Incline press set 3, 225 → 215 (RPE 9.5 vs 8)". Only accepted suggestions are listed.
+- **Videos for his check-in:** §7, Two videos for your coach. He asks for two movements the athlete feels unsteady on, so the athlete picks them; Setecho never ranks sets for review.
+
+### Machine taken (stretch, P6)
+A busy gym means the bench is taken. Setecho offers what the coach would accept, in the order he said he prefers, and reports every change to him. It never picks a lift outside the same movement or his own alternates, and it never changes the plan.
+- **Tags, at import:** `/import/program` also returns each exercise's `tags` (§8, Import program): a movement family from `ios/Setecho/Resources/ExerciseFamilies.json` (a per-request enum, plus none), the main and secondary muscles, and heavy or light. The athlete confirms them once on Import (DESIGN.md, Exercise tags). Until they're confirmed, no reorder is offered.
+- **The catalog** (`ExerciseFamilies.json`, hand-written, about 30 families) lists each family's variants by equipment, with their names. For example, `incline-press`: barbell "Incline barbell press", dumbbell "Incline dumbbell press", Smith "Incline Smith press", machine "Incline machine press". Variant names come from the catalog, never the model.
+- **His preference, asked once** on Import's rules review: "When a machine's taken, what does your coach want: the same lift on other equipment, move a later lift up, or wait?" The athlete puts them in order (or says it) and confirms it's what the coach wants. It's stored as `PlanState.takenRule`.
+  - His "or" options in the sheet ("Hack squat or leg press") are drafted at import as `alternates`, with his words.
+  - `/coach/reply` can add one as an `.alternate` change.
+- **Trigger:** "the bench is taken" or "incline's taken" (`equipmentTaken`). With no exercise named, it's the next one up; during rest, the next set's exercise.
+- **The engine** (`TakenEngine.swift`, deterministic, unit-tested). For the taken exercise T, walk his options in his order and keep the first two that exist:
+  - **Alternate:** his listed alternates, in his order.
+  - **Same lift:** the other variants in T's family, minus the taken equipment and anything already taken this session. Prefer the variant done most recently, then the catalog's order.
+  - **Move up:** the first later exercise in today's plan, C, that passes the fatigue check.
+    - A heavy C always passes: flat press can go before incline press.
+    - A light C passes only if its main muscles don't overlap the main or secondary muscles of any heavy lift still due before it in the plan, T included. Flyes or pushdowns before incline press fail. Lateral raises pass.
+    - **Pre-exhaust:** if today's plan already puts a light lift before a heavy one for the same muscle (pec deck before incline press), he does that on purpose, so a light lift for that muscle may move ahead too.
+    - T then comes right after C. If it's still taken then, the engine runs again.
+  - **Wait:** always available, and last. The rest timer keeps running, and "it's free" (`equipmentFree`) brings T back.
+  - **With no confirmed `takenRule`:** only Wait, plus whatever the athlete names himself.
+- **Saying it**, templated and instant (not `/spotter/line`, because he's standing there waiting):
+  - "Bench is taken. His first choice is the same lift on dumbbells. Or flat press first. Say 'go with it', 'the other one', or 'I'll wait'."
+  - If nothing passes: "Nothing else fits before incline without tiring your chest. Wait, or do it on dumbbells?"
+- **The athlete can name it himself:** "doing dumbbells instead" (`swapTo`) always works, even with the feature off. It's logged as he said it, matched to a catalog variant when one fits.
+- **Logging:** each swap or reorder is a `PlanDeviation` on the session, confirmed with a spoken "Noted for Thursday." A swapped set logs `doneAs`. The plan itself never changes.
+- **Loads on a swapped lift:** from that variant's own history (its last top set), or the athlete says it ("fifties"). **Never convert between barbell and dumbbell loads.** Next-set suggestions key on `exerciseId + doneAs`, so a variant with no history gets none until its first set is logged.
+- **In the check-in:** the week's deviations are all in by default, and the athlete can untick one on Review and send. `/checkin/render` adds one line after the adjustments: "Gym changes: Tue, incline barbell → incline dumbbell press (bench taken). Tue, flat press moved ahead of incline press (bench taken)."
+- **Pain doesn't wait for Thursday:** a `note` marked `urgent` ("my elbow's bugging me on these") gets "That's one for him. Want me to message him now?"
+  - Yes puts a ready message on screen at session end, and on the Lock Screen: "Send to coach" opens WhatsApp with the text (`https://wa.me/?text=…`), and the athlete sends it himself.
+  - On his quiet day (Sunday, per `quietDays`), it offers a Monday 8 AM reminder instead, unless the athlete says it's urgent.
+  - Setecho never advises on pain. The note also goes in the check-in.
+- **Off switch:** Settings → "Machine-taken help" (on). When it's off, the athlete's own swaps and the logging still work.
+
+### The spotter voice
+The athlete should feel like he's talking with a training partner, not a machine. It has one consistent personality, and it's never the coach's voice.
+- **What it says:**
+  - The set-end callout is instant and templated, with a few variants rotated so it never repeats back to back.
+  - Rest-time lines come from `/spotter/line`, written by Spark from the facts: "Big set. Eight, and that last one was a grind."
+  - It remembers the session: PRs, "third set in a row at the top of your range", and what he said earlier.
+  - It uses his first name sparingly, and never comments on form or food.
+- **When:** it's quiet during sets, answers a voice command within about a second, and never talks over the athlete.
+- **The voice itself:** a `Speaker` protocol with two implementations.
+  - `SystemSpeaker`: `AVSpeechSynthesizer` with the best installed voice, premium first. This is the default.
+  - `NaturalVoiceSpeaker`: built only if the human decides, after Wednesday's test, that the system voice is too robotic. It's a third-party text-to-speech service the human picks, called through the backend so its key stays there. It receives only the text to speak, never audio or health data, and must start speaking within about 500 ms. The README names it as the one non-Meta piece.
+- **One voice everywhere:** sessions, Check-in morning and the wrap-up all use the same `Speaker`.
+
+### Garmin watch (Connect IQ app): stretch, P6
 The athlete wears a Garmin Venu 4. The watch app is a second, small app in Monkey C under `watch/`. It does motion, haptics and messages only: no network, no models.
 - **Project:** `watch/manifest.xml` (a watch app; permissions `Sensor`, `Communications`, `Fit`; products: the Venu 4 device ids listed by the SDK Manager, both sizes), `watch/monkey.jungle`, `watch/source/*.mc`, `watch/resources/`. The app UUID in the manifest is the same constant the iOS side uses.
 - **Make targets:** `make watch` builds `watch/bin/SetechoWatch.prg` with `monkeyc` and the developer key at `~/.garmin/developer_key.der` (outside the repo). `make watch-sim` runs it in the Connect IQ simulator. The human copies the `.prg` to the watch's `GARMIN/APPS` folder over USB (OpenMTP on macOS if the watch mounts as MTP).
@@ -484,13 +705,15 @@ His instructions about a specific exercise, played in his own voice before that 
 - **Collage:** 2×2 by default (front, right / back, left), or 1×4 as a setting. Write a JPEG, about 2400 px wide, to the photo set.
 
 ### Check-in
+**Cadence** (`PlanState.checkInSchedule`, from his email, confirmed by the athlete): every other week for now, weekly later in prep; Thursday on waking, everything in by 9:00 AM Central. The check-in covers the period since the last sent check-in, so on a two-week cadence `WeekFacts` holds 14 days and every average spans them. Reminders and Check-in morning key off the due time.
+
 1. Build `WeekFacts`, `TrainingSummary` and the week's `VoiceNote`s, then call `/checkin/draft`.
 2. Show the coach's form in his order (DESIGN.md, Check-in).
 3. **Wrap-up:** for each `.missing` or `.voice` field, speak the coach's label as a question. For example, "Energy levels, 1 to 10?". The three tape measurements are one question: "Waist, bicep and thigh?".
 4. Record one utterance and call `/checkin/answer`.
 5. Speak back a one-line confirmation: "Energy 6. Next: appetite." Support "skip", "go back" and "say that again".
-6. **Send:** `/checkin/render` → `UIActivityViewController` with `[collageImage, text]`. Gate G6 decides whether WhatsApp keeps both.
-7. **Fallback:** share only the image, put the text on `UIPasteboard`, and show the banner "Paste the check-in text under the photo." Mark the draft `sentAt` when the share completes.
+6. **Send, in his order** (his email asks for two separate messages): first the plan message (the carried blocks: macros, cardio protocol, and the full supplement list marking which he's taking), then the questionnaire with the collage, then the two videos. `/checkin/render` returns both texts. Review and send runs three share sheets in a row: `[text1]`, `[collageImage, text2]`, `[video1, video2]`. Gate G6 checks each lands as one WhatsApp message.
+7. **Fallback:** for the second step, share only the image, put the text on `UIPasteboard`, and show the banner "Paste the check-in text under the photo." Mark the draft `sentAt` when the last step completes.
 
 ### Check-in morning (conversational, hands-free)
 The whole check-in as one conversation on check-in morning, in Setecho's own voice, with the coach's exact wording for his questions. **Never a synthetic copy of the coach's voice.**
@@ -522,20 +745,12 @@ The whole check-in as one conversation on check-in morning, in Setecho's own voi
 4. **Everything downstream reads the new version:** Today's session, the Session targets, `WeekFacts.targets`, the cardio protocol, and the check-in's carried blocks.
 5. **MacroFactor:** Setecho can't change MacroFactor's targets, and Apple Health doesn't carry them. After a macro change is applied, Today shows "Update MacroFactor: training-day carbs 250 → 225 g" until the athlete marks it done.
 
-### Clips for your coach (stretch)
-This replaces any AI form or posing critique. Setecho gives the coach evidence, never a verdict, and **no model is involved**.
-
-- **Selection rule (deterministic, in Swift):** from the check-in week's sessions, pick:
-  1. the last logged set of each session's first exercise
-  2. any set where logged reps < planned reps (or < `repsMin`)
-- Keep at most 4, preferring rule 2, then the most recent.
-- **Each clip:**
-  - trim the set's MOV to its `startedAt − 1 s … endedAt + 1 s`
-  - export as H.264 720p with `AVAssetExportSession`, aiming for 20 MB or less
-  - tag it with a reason: "Last set · Bench press" or "6 of 8 reps · Bench press, set 4"
-- **UI:** a "Clips for your coach" card on Review and send. One row per clip, with a thumbnail, the reason as a secondary line, and a remove button. The athlete can add any other set from History.
-- **Message:** `/checkin/render` appends one line after the coach's last field, "Clips attached: Bench press set 4 (6 of 8 reps), Squat set 3", and the clips join the share items after the collage.
-- **Risk:** check that WhatsApp accepts the image, the text and several videos in one share. If not, share the clips as a second batch right after the check-in.
+### Two videos for your coach
+His instructions: each check-in carries videos of two different movements the athlete feels unsteady on or wants sharper, cropped to just the reps, with no setup and no rest. The athlete picks; Setecho crops and attaches. **No model judges or ranks anything.**
+- **Flag it:** "flag that" or "send that one to coach" during rest (`flagSet`) marks the last set: "Flagged for Thursday." Any set from the check-in period can also be picked on Review and send.
+- **Each clip:** the set's MOV cropped from 0.5 s before the first rep to 0.5 s after the last, using SAM's `repTimes` (with no SAM result, the set's own start and end); H.264 720p, 20 MB or less; captioned with the exercise and set ("Incline DB press · top set").
+- **UI:** a "Videos for your coach" card on Review and send: the flagged sets, two at most, from two different movements. If more were flagged, the athlete keeps two; if none, "Pick two" lists the period's sets by exercise.
+- **Message:** the clips are the third share, after the questionnaire (§7, Check-in). No verdicts, and no numbers he didn't ask for.
 
 ---
 
@@ -545,11 +760,11 @@ Keep the prompts in `backend/app/prompts.py` and the schemas in `backend/app/sch
 
 **Import program** (`/import/program`, structured output, schema = `Program` minus `importedAt`):
 
-> You convert a strength coach's training spreadsheet into JSON. Copy exercise names, set counts, reps, rep ranges, loads, RPE/RIR and rest times exactly as written. Never invent a value. If a cell is ambiguous, keep your best reading and add an entry to `flags` explaining what is unclear. Weeks and days follow the sheet's own order and names. Set each exercise's `equipment` from its name (barbell, dumbbell, machine, cable or bodyweight); if the name doesn't make it clear, pick the likeliest and add a flag.
+> You convert a strength coach's training spreadsheet into JSON. Copy exercise names, set counts, reps, rep ranges, loads, RPE/RIR and rest times exactly as written. Never invent a value. If a cell is ambiguous, keep your best reading and add an entry to `flags` explaining what is unclear. Weeks and days follow the sheet's own order and names. Set each exercise's `equipment` from its name (barbell, dumbbell, machine, cable or bodyweight); if the name doesn't make it clear, pick the likeliest and add a flag. Tag each exercise with its movement family from this list: {families}, or none; its main and secondary muscles from {muscles}; and heavy (a compound lift) or light (an isolation lift). If the coach wrote an alternate ("or leg press"), copy it into `alternates` with his words. Never add an alternate he didn't write. Each sheet may be a training day, a rest day, or a block the coach adds on top of days. The training and rest days form the cycle, in the sheet's order. A block with a frequency ("4x per week", "2x per week") goes in `addOns` with `perWeek`, its timing ("upon waking" is onWaking, otherwise withSession) and his sentence in `quote`; it is never a day, even when its tab comes first. A rest day has no exercises; copy its cardio line into `cardio`. A time ("20 seconds", "5 minutes") is `seconds`, with reps null. "1 top set. 1 back down set" makes the first set top and the second backOff; a rest-pause set is restPause, with "20 total reps" as totalReps. A day-level rest period applies to each exercise that day.
 
 **Import form** (`/import/form`, structured output, schema = `CheckInTemplate`):
 
-> You convert a coach's weekly check-in form into a template. Keep every field label exactly as written, in order, including hint text in parentheses as `prompt`. Blocks that are the coach's instructions rather than questions (macro targets, supplement lists) become `carriedBlocks` with their text copied verbatim. For each field, choose `kind` and a `source` from this list of available data keys: {DataKey list with one-line meanings}. Use `voice` when no data key fits. Never answer the fields. Also copy the macro targets (training and rest day kcal, protein, carbs, fat) and the cardio protocol out of those blocks into `targets` and `cardioProtocol`; if a number isn't clearly written there, leave it null.
+> You convert a coach's check-in form into a template. Keep every field label exactly as written, in order, including hint text in parentheses as `prompt`. Blocks that are the coach's instructions rather than questions (macro targets, supplement lists) become `carriedBlocks` with their text copied verbatim. For each field, choose `kind` and a `source` from this list of available data keys: {DataKey list with one-line meanings}. Use `voice` when no data key fits. Never answer the fields. Also copy the macro targets (training and rest day kcal, protein, carbs, fat) and the cardio protocol out of those blocks into `targets` and `cardioProtocol`; if a number isn't clearly written there, leave it null.
 
 **Check-in agent** (`/checkin/draft`, Responses API with tools):
 - **Tools:** `get_week_facts()`, `get_training_summary()`, `get_notes()` and `get_last_checkin()`. They return what the phone sent.
@@ -560,15 +775,27 @@ Keep the prompts in `backend/app/prompts.py` and the schemas in `backend/app/sch
 - **Every data field comes from code** (§7 table), never from the model.
 - **The validator checks every number in the agent's text** against `WeekFacts` and the training summary. Any number not found makes that answer `.drafted`, with a "Check this" provenance. Never hide a mismatch.
 
-> You fill in an athlete's weekly check-in for their coach, in the athlete's own voice. Here are examples of how they write: {styleExamples}. Use only facts returned by your tools. Do not give advice, judge form or suggest changes; the coach does that. Keep answers short and casual, like the examples.
+> You fill in an athlete's check-in for their coach, in the athlete's own voice. Here are examples of how they write: {styleExamples}. Use only facts returned by your tools. Do not give advice, judge form or suggest changes; the coach does that. Keep answers short and casual, like the examples.
 
 **Voice command** (`/voice/command`, structured output = `VoiceIntent`):
 
-> Classify one short spoken command from an athlete during a lifting session. Context: {state, exercise, set, planned load and reps}. Map to one intent. Numbers are pounds for loads and counts for reps; "felt like a 9" is rpe 9. If unsure, return intent "unknown" with low confidence.
+> Classify one short spoken command from an athlete during a lifting session. Context: {state, exercise, set, planned load and reps}. Map to one intent. Numbers are pounds for loads and counts for reps; "felt like a 9" is rpe 9. Today's exercises: {ids and names}. "The bench is taken" is equipmentTaken, with the exercise it's about or null; "doing dumbbells instead" is swapTo; "it's free" is equipmentFree. Mark a note urgent only when it's about pain or an injury. If unsure, return intent "unknown" with low confidence.
 
 **Wrap-up answer** (`/checkin/answer`, structured output = `{text, number?, measurements?: {waistIn, bicepIn, thighIn}, confidence}`):
 
 > Turn the athlete's spoken answer to "{label}" into the text they'd type. Keep their words and tone; fix only filler and false starts. Extract the number for scale or measurement fields. "Twenty-four and three quarters" is 24.75.
+
+**Rules from the sheet** (part of `/import/program`, structured output = `{rules: [...]}` without `id` or `confirmed`):
+
+> List only the load-adjustment rules the coach actually wrote in this sheet, such as "if RPE is over 9, drop 5%" or "when you hit 8 reps on every set, add 5 lb next week". Copy his words into `quote`. If the sheet has targets but no rule, return none. Never invent a rule, and never suggest one.
+
+**Rules from his instructions** (`/import/rules`, structured output = `{rules, roleTargets, restRules, warmups, checkInSchedule, quietDays, flags}`):
+
+> You read a strength coach's written instructions to his athlete, such as an onboarding email, and list only the rules he states about: how hard each kind of set should be, the weight of back-off sets, rest after each kind of set, warm-up sets, when to add weight, how often check-ins are due and by when, and days he doesn't want to be messaged. Copy his exact words into `quote` for each. Never invent a rule, never fill a gap with common practice, and never include names, phone numbers, links, discount codes, macros or supplement doses.
+
+**Spotter line** (`/spotter/line`, structured output = `{text}`):
+
+> You're the voice of a training partner spotting an athlete between sets. You are not his coach: never give advice about form, food or programming, and never suggest a weight other than the one in the facts. Facts: {facts}. Lines you said recently: {recent}. Say one or two short, natural sentences, at most 30 words, the way a friend at the gym would. Use only the numbers in the facts. Don't start the way any recent line started.
 
 **Check-in turn** (`/checkin/turn`, structured output = `{intent, answers: [{fieldId, text, number?, measurements?}], reply, confidence}`, `fieldId` as a per-request enum):
 
@@ -576,7 +803,7 @@ Keep the prompts in `backend/app/prompts.py` and the schemas in `backend/app/sch
 
 **Coach reply** (`/coach/reply`, structured output = `{changes: [...], unclear: [String]}`, with `path` as a per-request enum):
 
-> You read a strength coach's reply to his athlete's weekly check-in and list every change he makes to the athlete's plan. The plan's items are listed with a path, a label and the current value: {items}. For each change, pick the item's path, the operation, and the number he said, and copy his exact words into `quote`. List only changes he actually makes; a question, praise or "let's see how it goes" is not a change. If he changes something that isn't in the list, or you can't tell which item he means, put his sentence in `unclear`. Never work out a new value and never suggest one.
+> You read a strength coach's reply to his athlete's check-in and list every change he makes to the athlete's plan. The plan's items are listed with a path, a label and the current value: {items}. For each change, pick the item's path, the operation, and the number he said, and copy his exact words into `quote`. List only changes he actually makes; a question, praise or "let's see how it goes" is not a change. If he changes something that isn't in the list, or you can't tell which item he means, put his sentence in `unclear`. Never work out a new value and never suggest one.
 
 **Cue labels** (`/coach/reply`, structured output = `{segments: [{index, exerciseId, isCue}]}`, `exerciseId` as a per-request enum):
 
@@ -588,27 +815,52 @@ Keep the prompts in `backend/app/prompts.py` and the schemas in `backend/app/sch
 
 Each phase ends with its checks passing, a commit, and a TestFlight build the human can take to the gym. Report after each phase: what passed, what didn't, what you need from the human.
 
-**Stretch items** happen only when P1–P5 are green, in this order: Withings direct, WhatsApp history import, set clips turned into content, clips for your coach, bar speed. Posing practice is out of this build.
+**Stretch items** happen only when P1–P5 are green, in this order: Machine taken, the Garmin watch (G8 first), Withings direct, WhatsApp history import. Machine taken is about a day; plan on it being the only one that fits. Posing practice, content clips and any bar-speed or bar-path display are out of this build.
 
-### Status (Oct 27 morning)
-- **Built Oct 26:** everything in §2. The backend probes for G4 (SAM photo), G5 (import) and the voice smoke ran live; their fixtures are in `backend/tests/fixtures/`.
+### Status (Oct 27 afternoon)
+- **Built Oct 26:** everything in §2.
+- **Built Oct 27:**
+  - P1 rep counting: the phone count, continuous recording split at set ends, `/sets/count` with SAM, and G7 fixtures from a real Smith-machine bench set (hand count 7).
+  - The P2 backend: `/coach/reply` with the validator and cues, and `/import/form` returning targets and cardio.
+- **Decided Oct 27:**
+  - SAM is the count of record, and the phone is the silent fallback.
+  - Measured effort with the coach's rules, next-set suggestions, two weekly videos for the coach, and the spotter voice.
+  - The watch moves to stretch. Content clips and bar-speed displays are out.
+  - The tagline is "The prep that logs itself."
+  - Machine taken (swaps and reorders in the coach's order, reported in the check-in) is the first stretch item, ahead of the watch.
+  - The athlete's real sheet needs the cycle, rest days, add-ons, timed sets and set roles (P1c), before his gym tests.
 - **Decided Oct 26** (§13): the spreadsheet arrives as a Google Sheets link; the check-in is due **Thursday morning**; the backend is on Fly.
 - **Untested:** every phone flow, in a real gym or at home.
 
 ### Gates still open
-- [ ] **G1 organizers.** The human confirms in writing that an app that counts reps from phone video, to log them for a human coach, isn't a "sports analyzer or coach".
+- [ ] **G1 organizers.** The human confirms in writing that the app isn't a "sports analyzer or coach": it counts reps from phone video and applies the coach's own rules to suggest the next set's weight, for a human coach. The next-set suggestions and the machine-taken swaps and reorders are asked about by name.
 - [ ] **G2 audio, G3 Apple Health, G6 share.** The human runs the probes from TestFlight (More → Probes). G6 also covers exporting one of the coach's voice notes out of WhatsApp.
 - [ ] **G5, extended.** Run `import_probe` on two other coaches' check-in forms the human brings, and `reply_probe` on two of his real past replies.
-- [ ] **G7 SAM reps.** `scripts/sam_reps_probe.py <mov> --equipment barbell` (built in P1) downscales the clip to 720p at 10 fps, calls SAM with "weight plate", runs `reps.py`, and prints the count, the rep times and the seconds from upload to count. Raw output goes to `backend/private/`; `--fixture` saves only the per-frame centroid series. **Pass:** the count matches the human's count of a real set of 8, one plate is tracked on every frame, and it takes under 60 s.
-- [ ] **G8 watch** (Wed Oct 28). A minimal watch app sends `setEnd` with a wrist count after each set to a probe screen under More → Probes, which shows each message and its delay. **Pass:** messages arrive within 3 s, and counts match on 3 sets each of bench press, rows and curls. **Fallback:** camera and voice only; the watch moves to the stretch list.
+- [ ] **G7 SAM reps.** `scripts/sam_reps_probe.py <mov> --equipment barbell` (built in P1) downscales the clip to 720p at 15 fps, calls SAM with "weight plate", runs `reps.py`, and prints the count, the rep times and the seconds from upload to count. Raw output goes to `backend/private/`; `--fixture` saves only the per-frame centroid series. **Pass:** the count matches the human's count of a real set of 8, one plate is tracked on every frame, and it takes under 60 s.
 
-### P1 — Rep counting (Tue Oct 27)
+### P1 — Rep counting (Tue Oct 27, built)
 - [ ] `scripts/sam_reps_probe.py` (G7: §6 SAM on video, §5 `/sets/count`).
 - [ ] `backend/app/reps.py` and `/sets/count`, with the synthetic series and tests.
 - [ ] `SetDetector`: continuous recording split at set ends, the real start and end, and the two exports (§7, Set detection). Today it starts `AVCaptureMovieFileOutput` at set start, which loses the first rep.
 - [ ] `RepCounter` on the pose frames, extending `WristSignal` to every joint.
 - [ ] `LoggedSet.repCount` with its migration; the measured-count rules and callouts; `SourceChip` on Session and History.
 - **Done when:** G7 passes on the human's clip, and a simulated session in `SessionEngineTests` logs a phone count, then applies a measured correction with undo.
+
+### P1b — SAM as the record (Wed Oct 28 morning, small)
+- [ ] The rep-counting rules in §7: SAM as the record, the silent phone fallback at 60 s, and the set-end callout without the count.
+- [ ] 15 fps clip export, and `/sets/count` returning `repSpeeds` and `velocityLossPct` (§5, steps 8–9).
+- [ ] Report the median SAM time from set end to result, on the G7 clips and one real session.
+- **Done when:** `SessionEngineTests` cover SAM on time, SAM late (the phone count spoken at 60 s, then replaced), SAM at low confidence, and "that was N".
+
+### P1c — His real sheet (Wed Oct 28, before Check-in morning)
+His sheet has an abs tab first, two rest days, timed holds, top and back-down sets and rest-pause sets (§7, Training cycle and add-ons). Today it would import with abs as Day 1, and Today would show it forever.
+- [ ] The import: the cycle, `kind`, `cardio`, `addOns`, `seconds`, `totalReps`, `role`, the day-level rest period, slash names; the prompt and schema changes; the Import review for the cycle and add-on days.
+- [ ] `PlanState.cycle` replacing `Store.nextDay`; "Change day"; the rest-day card; add-ons joining sessions, catch-up, "add abs" / "skip abs".
+- [ ] Warm-up sets: warm-up mode, the `topSet` and `warmup` intents, the phone classification, no SAM upload for warm-ups.
+- [ ] `/import/rules` with its validator, run on his onboarding email, and the Import review for each rule found.
+- [ ] Timed sets in `SessionEngine`; the morning add-on session with its App Shortcut; rest-pause sets held open in `SetDetector`; `setRole` sent to `/sets/count`.
+- **Done when:** the human's sheet imports with 7 cycle days (5 training, 2 rest) and 2 add-ons, nothing flagged that's clearly written. A simulated week shows the right day each morning (a missed day waits, rest days pass with the calendar), abs join the two days he confirmed, and the vacuums session runs 4 × 20 s hands-free.
+- **If it threatens Check-in morning's Wednesday-evening ship:** the import, the cycle and Today go first; timed sets and the morning session move to Thursday.
 
 ### P2 — Check-in morning, coach reply and voice cues (Wed Oct 28 – Thu Oct 29)
 Order matters. **Check-in morning ships to TestFlight by Wednesday evening,** because Thursday morning is its first real use. The coach reply loop ships by Thursday evening, because his reply to that check-in is its first real test.
@@ -618,6 +870,7 @@ Order matters. **Check-in morning ships to TestFlight by Wednesday evening,** be
 - [ ] Getting replies in: paste and audio file import first, then the `SetechoShare` share extension.
 - [ ] Voice cues: cutting, review, playback rules, `replayCue`, and the Settings switch.
 - [ ] **First:** Check-in morning (§7) with `/checkin/turn`, the App Shortcut, pause and resume, and the voice picker.
+- [ ] **Also before Thursday:** the send in his order (the plan message, then the questionnaire with the collage, then the videos), the check-in period since the last check-in, and the free-meal draft (§7, Check-in).
 - **Done when:** two of his past replies (one text, one voice note) produce the right changes and cues, and a simulated session plays the cue before the right exercise and never during a set. A scripted run of Check-in morning, with a pause, a two-field answer, a correction and a question for the coach, finishes with every number taken from the transcript.
 
 ### P3 — First real check-in (Thu Oct 29 morning)
@@ -625,19 +878,35 @@ Order matters. **Check-in morning ships to TestFlight by Wednesday evening,** be
 - **The agent:** fixes only, from whatever broke.
 - **When the coach replies,** the human shares it in and screen-records the Coach reply screen.
 
-### P4 — Garmin watch (Thu Oct 29 – Fri Oct 30)
-- [ ] The watch app (§7, Garmin watch), starting from the G8 probe.
-- [ ] `WatchService`, the Connections screen, and the input rules (§7, Session inputs), with the `config` thresholds sent from the phone.
-- [ ] Watch summaries in the session debug JSON.
-- **Done when:** a real session with the tripod on some exercises and the phone in a pocket for the rest has zero taps after Start, and every set is logged with the right source.
+### P4 — Measured effort, the coach's rules and the spotter (Thu Oct 29 – Fri Oct 30)
+- [ ] The effort map and calibration; `RuleEngine` with rounding and limits; rules drafted at import and confirmed; the one-time question when there's no rule; set roles and the role-targets question (§7, Measured effort).
+- [ ] The rest-time line (measured count, effort, suggestion); the "go with it" / "keep it" intents; the `LoadSuggestion` log; the Settings switch.
+- [ ] `/spotter/line` with its validator; the set-end callout variants; session memory for PRs and streaks.
+- [ ] Videos for your coach: `flagSet`, the crop to the reps from `repTimes`, the Review and send card; the adjustments line in `/checkin/render`.
+- [ ] His rules in the engine: the back-off load, rest after a top set, the logbook line, and the next-session steps (§7, Measured effort).
+- [ ] The `Speaker` protocol with `SystemSpeaker`. `NaturalVoiceSpeaker` only if the human asks for it after Wednesday's voice test.
+- **Done when:**
+  - In a real session, warm-ups log as warm-ups, every top set gets its measured line against his failure target and a back-off load from his 20–25% rule, and nothing is suggested without a confirmed rule.
+  - The check-in carries the two flagged videos cropped to the reps, and the adjustments line.
 
 ### P5 — Tune (Fri Oct 30 – Sat Oct 31)
-- [ ] Thresholds for `SetDetector`, `RepCounter` and the watch, from the debug JSON of real sessions.
+- [ ] Thresholds for `SetDetector`, `RepCounter` and the effort map, from the debug JSON of real sessions with spoken RPEs.
 - [ ] Fixes from P3 and P4.
-- **Done when:** three real sessions in a row where every set's reps are right or were fixed by voice.
+- **Done when:**
+  - Three real sessions in a row where every set's reps are right or were fixed by voice.
+  - On barbell sets, the estimated reps in reserve are within one rep of the athlete's spoken RPE most of the time.
 
 ### P6 — Stretch (Sat Oct 31 – Sun Nov 1), only if P1–P5 are green
 In the order above. Specs:
+- **Machine taken** (§7, Machine taken). About a day.
+  - [ ] `ExerciseFamilies.json`; tags and alternates from `/import/program` with the prompt change; the Exercise tags review and the "When a machine's taken" question on Import.
+  - [ ] `TakenEngine` and its tests; the new voice intents; the templated lines; `PlanDeviation` logging with `doneAs`; loads from the variant's own history.
+  - [ ] The Gym changes card on Review and send, the line in `/checkin/render`, the urgent-note message, and the Settings switch.
+  - **Done when:** in a real session, "the bench is taken" offers his first choice and a second, "go with it" logs it, the swapped lift's load comes from its own history or the athlete, and the check-in shows the change. On a scripted chest day, flyes or pushdowns are never offered ahead of a press.
+- **Garmin watch.**
+  - **First, G8:** a minimal watch app sends `setEnd` with a wrist count after each set to a probe screen under More → Probes. **Pass:** messages arrive within 3 s, and counts match on 3 sets each of bench press, rows and curls. If it fails, drop the watch: no second attempt.
+  - **Then:** the watch app (§7, Garmin watch), `WatchService`, the Connections screen, and the input rules (§7, Session inputs), with the `config` thresholds sent from the phone and watch summaries in the debug JSON.
+  - **Done when:** a session with the tripod on some exercises and the phone in a pocket for the rest has zero taps after Start.
 - **Withings direct.** The athlete's scale is on Wi-Fi, so each weigh-in reaches Withings' servers within moments. Reading it from Withings' public API means the Withings app never has to be opened. About half a day.
   - **Human:** registers a Public API app on Withings' developer dashboard (no contract), with the callback `https://setecho-api.fly.dev/withings/callback`, and sets `WITHINGS_CLIENT_ID` and `WITHINGS_CLIENT_SECRET` as Fly secrets. Never in the repo.
   - **Sign-in:** the phone opens `https://account.withings.com/oauth2_user/authorize2` (scope `user.metrics`, a random `state`) in `ASWebAuthenticationSession`.
@@ -658,11 +927,6 @@ In the order above. Specs:
   - Classify each message: check-in, coach reply, program file, photo, other. Keep only the first four; drop the rest on the backend.
   - Past check-ins become history values through the form template. His replies run through `/coach/reply` against the plan as it stood then, building a timeline of changes with his quotes. Photo collages join the photo timeline. Past check-ins also become the check-in agent's `styleExamples`.
   - Re-importing skips messages already seen (timestamp + sender + text).
-- **Set clips turned into content.** For a set the athlete picks in History:
-  - Render a vertical post on the backend with OpenCV and ffmpeg: the lifter kept bright and the background dimmed (SAM "person" masks), the plate's path drawn from the `/sets/count` track, a rep counter that ticks at the measured `repTimes`, and the load and prep week as text.
-  - No judgement words anywhere.
-  - Return an MP4 for the share sheet.
-
 ### P7 — Rehearsal and freeze (Mon Nov 2)
 - [ ] A full end-to-end run: a session mixing tripod and pocket, photos, check-in, coach reply. Fix bugs only.
 - [ ] Feature freeze tonight.
@@ -690,12 +954,21 @@ In the order above. Specs:
   - a generated Opus file converts to 16 kHz mono 16-bit WAV (skipped if ffmpeg is missing)
   - cue segmentation merges and splits segments by the §5 rules, and a cue with an unknown `exerciseId` is dropped
   - `/checkin/turn` handles a pause, a resume, a two-field answer, a correction and a question for the coach, and turns any number not in the transcript into `unclear`
-- **iOS:** `make ios-test`. Unit-test the adherence and day-type rules, PR detection, the set logging rules, undo, the collage layout math, the HealthKit aggregation, `RepCounter` on the shared series, the measured-count rules, each change kind's apply logic and plan revert, the `PlanState` and `repCount` migrations, the input rules in §7 (every start/end/reps precedence case), watch message decoding and clock conversion, cue playback timing (Ready only, once per session, never during a set), and Check-in morning's step order, pause and resume after a relaunch, all with synthetic samples.
+  - `reps.py` returns rep speeds and velocity loss on a synthetic set that slows by a known amount, and on the G7 series
+  - `/spotter/line` rejects a line with a number not in the facts, with advice, or with an opening it used recently
+  - the rules prompt returns no rule for a sheet that has targets but no rule
+  - the import tags every exercise with a family from the enum or none, and never adds an alternate the sheet doesn't contain
+  - `/import/rules` on a hand-written email with the same kinds of rules returns each with a verbatim quote, moves a rule whose number isn't in its quote to `flags`, and returns no names, numbers or links
+  - the render returns the plan message and the questionnaire as two messages, in that order
+  - a hand-made sheet with the athlete's shape (an add-on tab first with a 4x-on-waking block and a 2x block, rest tabs with a cardio line, timed holds, top/back-down and rest-pause sets, a day-level rest period) imports with add-ons outside the cycle, rest days as `.rest`, and the right `seconds`, `role` and `totalReps`
+- **iOS:** `make ios-test`. Unit-test the adherence and day-type rules, PR detection, the set logging rules, undo, the collage layout math, the HealthKit aggregation, `RepCounter` on the shared series, the measured-count rules, each change kind's apply logic and plan revert, the `PlanState` and `repCount` migrations, the input rules in §7 (every start/end/reps precedence case), watch message decoding and clock conversion, cue playback timing (Ready only, once per session, never during a set), Check-in morning's step order, pause and resume after a relaunch, the rep-counting rules (SAM on time, late, low confidence, the phone fallback at 60 s), the effort map and its calibration, `RuleEngine` (every trigger, rounding, the step and 10% limits, double progression to the next session), suggestion decisions, the two-video ranking, and `TakenEngine` (his order, the fatigue check on a chest day and a leg day, no reorder with unconfirmed tags, a second taken machine, no barbell-to-dumbbell load conversion) with the Gym changes line, the cycle cursor (a missed day waits, a rest day passes with the calendar, the wrap), add-on days and catch-up, timed sets, rest-pause sets held open, role-scoped suggestions, warm-up classification and its voice fixes, the back-off load (the step nearest 22.5% lighter), the next-session steps, crop windows from `repTimes`, a two-week check-in period, and the quiet day, all with synthetic samples.
 - **Never** hit the live API in tests.
 
 ## 11. Privacy and repo hygiene (the repo becomes public)
 - **Never commit:**
   - the athlete's photos, set videos or audio
+  - the coach's program sheet: the import fixture is a hand-made sheet with the same shape
+  - the coach's onboarding email or any of his written instructions: the `/import/rules` fixture is a hand-written email with the same kinds of rules, naming no one
   - real Health values or real check-in answers
   - the coach's name, phone number, replies or voice notes (`/coach/reply` fixtures are synthetic replies written for the tests)
   - API keys, `.env` files or `Local.xcconfig`
@@ -707,7 +980,7 @@ In the order above. Specs:
   - **Why:** it holds working files and references, not product code, and only work from after the kickoff cutoff (12:24 PM ET, Oct 26) belongs in the submitted repo.
   - **History:** the folder is already in history from `6fc246f`. In P9, before the first push and only with the human's go-ahead, purge it with `git filter-repo --invert-paths --path design/`, which keeps commit dates.
   - **The app's logo, wordmark and icon** in `ios/Setecho/Assets.xcassets` stay.
-- Photos go to Meta only through `/photos/segment`, set clips only through `/sets/count` (downscaled, no audio), and the coach's voice notes only through `/coach/reply`. All Standard tier: gyms have bystanders. Cut cue clips of the coach's voice stay on the phone, under `media/cues/`. Withings tokens live in the Keychain, never on the backend or in the repo.
+- Photos go to Meta only through `/photos/segment`, set clips only through `/sets/count` (downscaled, no audio), and the coach's voice notes only through `/coach/reply`. All Standard tier: gyms have bystanders. Cut cue clips of the coach's voice stay on the phone, under `media/cues/`. Withings tokens live in the Keychain, never on the backend or in the repo. If a natural-voice service is used, it receives only the text to speak: no audio, no health data, and no name beyond the athlete's first name.
 
 ## 12. Things only the human can do
 - Put `MODEL_API_KEY` in `~/.zshrc`, claim the $150 credits, and set a spend limit.
@@ -716,8 +989,14 @@ In the order above. Specs:
 - Keep the GitHub repo private while building (run `git remote add origin https://github.com/Lyquifyy/setecho.git` when ready), and make it public before submitting.
 - Ask the office-hours question, and get the coach's OK to appear in the demo.
 - Tell the coach his voice notes are transcribed through Meta's API, and collect two of his past replies (one text, one voice note) for G5 and P2.
-- Hand-count every set during the gym tests.
-- Garmin setup (Wed Oct 28, about an hour): install the Connect IQ SDK Manager, the SDK and the Venu 4 device files; generate a developer key outside the repo; install OpenMTP if the watch mounts as MTP; sideload the G8 probe.
+- Hand-count every set during the gym tests, and call out an RPE on every set so the effort map can be checked.
+- Wednesday: test the spotter voice with a premium iOS voice, and decide whether it's good enough or a natural-voice service should speak (and which one).
+- Tell the agent your coach's load-adjustment rule if it isn't in the sheet, and check it with him.
+- Ask the organizers about the next-set suggestions and the machine-taken swaps in the same thread as G1.
+- On Import, confirm which days abs join and which mornings the vacuums go on.
+- Paste your coach's onboarding email into Import → His instructions and confirm each rule it finds. It already answers how hard top and back-off sets go (to failure) and the back-off load (20–25% lighter). Confirm whether check-ins are still every other week.
+- Ask your coach what he wants when a machine's taken (the same lift on other equipment, move a later lift up, or wait), and whether his sheet's "or" options are the swaps he'd accept. During gym tests, say "it's taken" whenever it really happens.
+- Garmin setup (about an hour, only when the watch stretch item starts): install the Connect IQ SDK Manager, the SDK and the Venu 4 device files; generate a developer key outside the repo; install OpenMTP if the watch mounts as MTP; sideload the G8 probe.
 - Ask the coach whether his voice can play in your sessions, and appear in the demo.
 - Bring two other coaches' check-in forms for G5.
 - For Withings direct (stretch): register the Withings developer app and set its two Fly secrets.
@@ -740,4 +1019,18 @@ In the order above. Specs:
 | Coach's voice in sessions | On; Settings switch, plus a checkbox per cue |
 | Check-in morning voice | The best installed iOS voice, premium first. Never the coach's |
 | Watch thresholds | `startStd` 120 mg, `endStd` 40 mg, sent from the phone; tune in P5 |
-| Tagline | Unchanged until the human decides |
+| Next-set suggestions | On; only with a confirmed coach's rule; the athlete decides each one |
+| Effort map (velocity loss → reps left) | Under 10% → 4+, 10–20% → 3, 20–30% → 2, 30–40% → 1, over 40% → 0; calibrated per exercise from spoken RPE |
+| Load steps | Barbell 5 lb, dumbbells 5 lb, machines from Settings |
+| Spotter voice | The best installed iOS voice; a natural-voice service only if the human picks one |
+| Tagline | "The prep that logs itself." |
+| When a machine's taken | Only Wait and the athlete's own swaps until the coach's order is confirmed; then his order |
+| Exercise families | `ExerciseFamilies.json`, about 30, hand-written; the import tags against it |
+| Add-on days | Proposed evenly (with-session over training days, on-waking over the whole cycle); the athlete confirms |
+| Rest between timed holds | The sheet's, else 30 s |
+| A rest-pause set ends after | Its third round, 75 s still, or "done" |
+| A day-level rest range | The countdown runs to the top of it; a quiet cue at the bottom |
+| Back-off load from a 20–25% rule | The load step nearest 22.5% lighter than the top set actually done |
+| Rest after a top set | His rule (3–4 min) over the sheet's day range |
+| Warm-up classification | 8 reps or fewer with under 20% slowdown, before the first working set |
+| Check-in cadence | His email's: every other week, Thursday, by 9:00 AM Central, until the athlete changes it |

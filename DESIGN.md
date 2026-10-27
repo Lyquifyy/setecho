@@ -1,6 +1,6 @@
 # Setecho — design spec for coding agents
 
-Setecho takes the manual work out of a coached bodybuilding prep. Sets log and count themselves, check-in photos take themselves, the weekly WhatsApp check-in is half written before the athlete says a word, and the coach's reply updates the plan. **Setecho is not a coach.** The athlete's human coach coaches. Setecho does the logging, the photos and the paperwork.
+Setecho takes the manual work out of a coached bodybuilding prep. Sets log and count themselves, check-in photos take themselves, the WhatsApp check-in is half written before the athlete says a word, and the coach's reply updates the plan. **Setecho is the spotter, not the coach.** The athlete's human coach coaches. Setecho counts and measures every set, applies the coach's own rules, and does the photos and the paperwork.
 
 Read this before writing any UI in `ios/`. The design system (tokens, type, components, brand assets) is built. Build the screens below from it.
 
@@ -21,10 +21,10 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 7. **Every number uses tabular digits.** Loads are in pounds, formatted only through `Format`.
 8. **The wordmark is an image** (`Image("Lockup")` / `Image("Wordmark")`). Never type "Setecho" in a serif font.
 9. **One primary button per screen**, in the `FooterBar`.
-10. **Session, Check-in morning, Photo session and Wrap-up are full-screen and hands-free.** No tab bar. No action may *require* a tap; every tap target has a voice equivalent. A session never requires the tripod: with the phone in a pocket, the watch and voice run it.
+10. **Session, Check-in morning, Photo session and Wrap-up are full-screen and hands-free.** No tab bar. No action may *require* a tap; every tap target has a voice equivalent. A session never requires the tripod: with the phone in a pocket, voice runs it (and the watch, if it's built).
 11. **Every number shows where it came from.** A check-in answer filled from data carries a `SourceChip`. The model never produces a number; numbers come from Apple Health, the training log or what the athlete said. A logged rep count shows how it was counted: Plan, Watch, Phone, Measured or You said.
 12. **The athlete's words stay theirs.** Spoken answers are tidied, not rewritten. Casual stays casual.
-13. **Never coach.** No load suggestions framed as advice, no nutrition advice, no form judgments. The coach's plan is shown as the coach's plan.
+13. **Never coach on Setecho's own authority.** No form judgments, no nutrition advice, no rules Setecho invents. A next-set suggestion always names the coach's rule it came from, the athlete decides, and the coach sees it in the check-in. A machine-taken swap stays within the same lift or his own alternates, and every swap and reorder reaches him in the check-in. The coach's plan is shown as the coach's plan.
 14. **Every voice action is echoed on screen and out loud, and can be undone by saying "undo".** A low-confidence transcription is asked back ("Did you say 215?"), never acted on silently.
 15. Hit targets are at least 44 pt, and icon-only buttons carry an `accessibilityLabel`. The app is light mode only.
 16. **Nothing from the coach's reply changes the plan until the athlete approves it.** Every proposed change shows the coach's exact words beside it, and an applied reply can be reverted from History.
@@ -72,15 +72,25 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 | `ChangeRow(change:)` | One proposed plan change: what it touches ("Training-day carbs"), before → after ("250 g → 225 g", before in `textSecondary` with a strikethrough), when it starts, the coach's exact words beneath in `textSecondary`, and a checkbox (cobalt when on). An unclear item uses the same row with no checkbox and an "Add by hand" link. |
 | `InputStatus(camera:watch:)` | Two small icons in the HUD state line, camera and watch: cobalt when live, `textSecondary` with a slash when not. `accessibilityLabel` "Camera on, watch off". |
 | `CueRow(cue:)` | One coach voice cue: the exercise it plays before, his words in `textSecondary`, a `PlayButton`, and a checkbox (cobalt when on). |
+| `SuggestionTag(suggestion:)` | In the HUD during rest: "Next: 215 × 8" on a yellow fill, "his rule · RPE 9.5 vs 8" in `textSecondary`, and "Say 'go with it' or 'keep it'". |
+| `EffortLine(set:)` | Under a set's result: "~1 left · slowed 38% · estimated" in `textSecondary`. |
+| `RuleRow(rule:)` | One coach's rule in plain words, its source (his quote, or "you confirmed"), and a yellow "Confirm" `TargetTag` until confirmed. |
+| `VideoPickRow(pick:)` | One of the two videos for the check-in: thumbnail, the caption ("Incline DB press · top set"), the cropped length, "Swap". |
+| `TakenCard(offer:)` | In the HUD when a machine's taken (stretch): "Bench taken" in `.hudState`, then up to two options as `.hudLabel` lines, the first marked "His first choice", and "Say 'go with it', 'the other one' or 'I'll wait'". |
+| `TagRow(exercise:)` | One exercise on the tags review: its name, movement family, main muscles and Heavy or Light, with a yellow "Confirm" `TargetTag` until confirmed. Tapping it fixes a tag. |
+| `DeviationRow(deviation:)` | One gym change: planned → done ("Incline barbell → incline dumbbell press"), the reason and the day in `textSecondary`, and a checkbox (cobalt when on). |
+| `AddOnRow(addOn:)` | On Import: an add-on's name, his words in `textSecondary`, "2× a week", and the cycle days it joins as chips (cobalt when chosen). |
 | `PoseSlots(slots:)` | The four check-in photo slots in the coach's order, each empty, current (yellow ring) or captured (thumbnail and check). |
 
 ## Screens
 
-Tabs: **Today / History / Check-in.** Settings, Connections and imports live in the More menu. Settings gains one switch: "Coach's voice in sessions" (on by default).
+Tabs: **Today / History / Check-in.** Settings, Connections and imports live in the More menu. Settings gains "Coach's voice in sessions" (on), "Next-set suggestions" (on), "Machine-taken help" (on, stretch), the voice picker, and what you can load (barbell, dumbbell and machine steps).
 
 ### Today (tab)
-- **Purpose:** the home base. What's planned today, and where the week's check-in stands.
-- **Today's session card:** the coach's day, e.g. "Upper A · Week 4", with each exercise as "4 × 8 · RPE 8", straight from the imported spreadsheet.
+- **Purpose:** the home base. What's planned today, and where the current check-in stands.
+- **Today's session card:** the coach's day, e.g. "Day 2", with each exercise as "2 × 6–8 · top + back-down", straight from the imported spreadsheet, and any add-on joining it below a `CardDivider` ("+ Abs · 1 of 2 this week"). A "Change day" link.
+- **Morning card,** on a day an on-waking add-on is due: "This morning: stomach vacuums · 4 × 20 s · 2 of 4 this week", with "Start".
+- **Rest day:** the session card becomes "Rest day" with his cardio line ("25 minutes of fasted LISS"). No Start button.
 - **This week's check-in card:** "11 of 22 ready", the due day, an "Open check-in" link. On check-in morning, a "Start check-in" link with a yellow "Due today" tag.
 - **Check-in photos card:** last taken, next due, a "Take photos" link that opens Photo session.
 - **Coach reply card,** only when one is waiting: "Coach replied · voice note 1:12", a "Review changes" link to Coach reply.
@@ -90,23 +100,30 @@ Tabs: **Today / History / Check-in.** Settings, Connections and imports live in 
 
 ### Import (More menu, and first run)
 - **Purpose:** bring in the coach's material once, and re-import when he changes it.
-- **Two steps:** the spreadsheet program, then the check-in form. Each can be shared in as a file, pasted as text, or added as a screenshot.
+- **Three steps:** the spreadsheet program, the check-in form, then his instructions (his onboarding email, pasted once). Each can be shared in as a file, pasted as text, or added as a screenshot.
 - **Program review:** weeks → days → exercises → sets and reps, in cards. Uncertain cells get a yellow "Confirm" tag. Nothing is guessed silently.
+- **Cycle and add-ons:** the cycle in order, with rest days marked "Rest · 25 min fasted LISS". Then one `AddOnRow` per add-on: its name, his words ("Complete this 2x per week"), and the cycle days it joins as chips, proposed and confirmed once.
 - **Form review:** every field in the coach's order, with how it'll be answered: Data, Drafted, Voice or Photos, plus the source. This is the check-in map from the plan, as UI.
+- **Rules review:** how the coach adjusts loads, one `RuleRow` each, drafted from his sheet and his instructions, or asked once ("How does your coach want you to adjust when a set misses the target?"). The same card lists how hard each kind of set goes, the rest after top sets, warm-ups, the check-in cadence and his quiet day, each beside his words. Nothing applies until it's confirmed.
+- **Exercise tags** (Machine taken, stretch): each day's exercises as `TagRow`s, with the family, main muscles and Heavy/Light drafted, and "Confirm all". Then one card, "When a machine's taken, what does your coach want?", with the three options to put in order and confirm, and his own "or" options from the sheet beside his words.
 - **Footer:** "Save program" / "Save check-in form".
 
 ### Session (full-screen, hands-free)
 - **Purpose:** a whole training session with zero taps after Start. The phone sits on the tripod, 2–3 m away.
-- **Layout, top to bottom:** exercise name (`.hudLabel`); target "225 × 8" with "Set 3 of 4" (`.hudTarget`, yellow tag on the set counter); `HUDState`; `InputStatus` at the end of the state line; the last set's result line with its count's `SourceChip` ("Phone", then "Measured" once SAM confirms); `VoiceEcho` when relevant; up next.
+- **Layout, top to bottom:** exercise name (`.hudLabel`); target "225 × 8" with "Set 3 of 4" (`.hudTarget`, yellow tag on the set counter); `HUDState`; `InputStatus` at the end of the state line; the last set's result line with its count's `SourceChip` ("Measured" from SAM; "Phone" only as the fallback) and its `EffortLine`; `VoiceEcho` when relevant; up next.
 - **States:**
   - **Ready:** waiting for the bar to move.
   - **Recording:** set detected, red dot.
-  - **Saved:** set logged with the phone's rep count, the plan's load, and anything said. When SAM's count differs, `VoiceEcho` shows the correction: "Set 3 → 7 reps (measured). Say undo to revert."
-  - **Rest:** a countdown, the next set, and the callout text matching what's spoken in the headphones.
+  - **Saved:** the set is logged with the plan's load and anything said. The count and the effort arrive from SAM during rest.
+  - **Rest:** a countdown; the measured result and its `EffortLine`; the next set, with a `SuggestionTag` when his rule suggests a change; and the line being spoken, as text.
   - **Listening:** a voice command in progress.
+  - **Taken** (stretch): a `TakenCard` replaces the up-next line, and the rest timer keeps running.
+  - **Warm-up:** "Warm-up 2" in `HUDState`; the set counter doesn't move.
+  - **Hold:** a timed set. The countdown in `.hudTarget` ("0:42"), the hold's name in `.hudLabel`, and no camera state.
 - **Coach cue:** when one plays, `VoiceEcho` shows "Coach · Incline DB press" with his words.
+- **Add-ons:** the day's add-on comes after the last lift, under its own name in Up next ("Abs"). A rest-pause set shows "Rest-pause · 20 total" as its target.
 - **Phone in a pocket:** the screen doesn't matter. The Lock Screen Live Activity and the watch carry the target and the rest countdown.
-- **Voice commands:** "felt like a 9" · "that was 7 reps" · "drop to 215" / "add 5" · "skip this set" · "next exercise" · "note for check-in: …" · "undo" · "pause" · "end session" · a number, to answer "was that 7 or 8?" · "say that again" (replays the coach's cue) · "yes" / "no".
+- **Voice commands:** "felt like a 9" · "that was 7 reps" · "drop to 215" / "add 5" · "skip this set" · "next exercise" · "note for check-in: …" · "undo" · "pause" · "end session" · a number, to answer "was that 7 or 8?" · "say that again" (replays the coach's cue) · "yes" / "no" · "go with it" / "keep it" (a suggestion) · "the bench is taken", then "go with it" / "the other one" / "I'll wait", and "it's free" · "doing dumbbells instead" · "add abs" / "skip abs" · "I'm doing Day 5 today" · "top set" / "that was a warm-up" · "flag that".
 - **Lock screen / Live Activity:** the rest countdown and the next set, for when the phone is pocketed between stations.
 - **The only tap target:** "End session", which needs a long press. Saying "end session" works too.
 
@@ -121,7 +138,7 @@ Tabs: **Today / History / Check-in.** Settings, Connections and imports live in 
 - **Ends on Collage review:** the four photos as one image in the coach's layout, each cropped and scaled to match last week. A toggle compares with last week side by side. Alignment only: the image is never edited.
 
 ### Check-in (tab)
-- **Purpose:** the week's check-in, filling itself as the week goes.
+- **Purpose:** the current check-in, filling itself as the days go.
 - **Header card:** "11 of 22 ready · 11 to answer", the due day, and a "Start 2-minute wrap-up" link.
 - **The coach's form, in his order:** the carried-over blocks (macro targets, supplements) collapsed at the top, then one `FieldRow` per field. Drafted fields show yellow "Confirm"; missing ones show "Ask in wrap-up".
 - **Tapping a field** opens it to edit, with its source values listed.
@@ -153,9 +170,11 @@ Tabs: **Today / History / Check-in.** Settings, Connections and imports live in 
 
 ### Review and send
 - **Purpose:** the exact message the coach receives, before it goes.
-- **Content:** the full text in the coach's format and order, with the collage image beneath it. Every number can be tapped to see its source.
-- **Clips for your coach** (stretch): a card with up to four set videos worth the coach's eyes, picked by rule, never by AI judgment. Each row shows a thumbnail, its reason ("6 of 8 reps · Bench press, set 4" or "Last set · Squat") and a remove button, plus "Add a set" from History. No verdicts, scores or form labels anywhere.
-- **Footer:** "Send to WhatsApp". If WhatsApp drops the text when an image is shared, the fallback is two steps: the image goes through the share sheet, the text is copied, and a banner says "Paste the check-in text under the photo."
+- **Content:** both messages in the coach's format and order (the plan message, then the check-in), with the collage beneath the check-in. Every number can be tapped to see its source.
+- **Videos for your coach:** the sets the athlete flagged ("flag that"), two at most from two different movements, each cropped to just the reps. One `VideoPickRow` each, with "Swap"; with none flagged, "Pick two". No verdicts, scores or form labels anywhere.
+- **Adjustments:** the week's accepted suggestions, one line each, as they'll appear in the message.
+- **Gym changes** (stretch): the week's swaps and reorders, one `DeviationRow` each, all checked. Untick one to leave it out.
+- **Footer:** "Send to WhatsApp", in his order as three steps, one share sheet each: the plan message (macros, cardio, supplements), the check-in with the collage, then the two videos. The footer names the next step ("Next: the check-in"). If WhatsApp drops the text when an image is shared, step 2 falls back to the image through the share sheet and the text copied, with a banner: "Paste the check-in text under the photo."
 
 ### Coach reply
 - **Purpose:** see exactly what the coach changed before anything changes.
@@ -170,11 +189,11 @@ Tabs: **Today / History / Check-in.** Settings, Connections and imports live in 
 ### Connections (More menu, and first run)
 - **Purpose:** the outside things Setecho reads from, in one place. Not a tab: it's visited at setup and rarely after.
 - **Apple Health card:** status, and the sources seen in the last 7 days (Withings, MacroFactor, Garmin), each a `SourceChip`.
-- **Garmin watch card:** "Connect" (opens the Garmin Connect app to pick the watch), then "Venu 4 · connected · last seen 2 min ago" and a "Test buzz" link. If the Setecho watch app isn't on the watch, one line says how to install it.
+- **Garmin watch card** (stretch): "Connect" (opens the Garmin Connect app to pick the watch), then "Venu 4 · connected · last seen 2 min ago" and a "Test buzz" link. If the Setecho watch app isn't on the watch, one line says how to install it.
 - **Withings card** (stretch): "Connect Withings", then "Withings · connected · last weigh-in 7:02 AM". Until it's connected, weight comes through Apple Health.
 - **WhatsApp card** (stretch): "Import chat history", then the date of the last import and the message count.
 
-### Watch (Setecho app on the Venu 4)
+### Watch (Setecho app on the Venu 4): stretch
 - **Display:** round AMOLED, black background, white text. Cobalt for the logged ring. The target sits on a yellow fill with navy text, like `TargetTag`. Big numbers use the largest number font; everything else stays readable at arm's length mid-set.
 - **Target:** the exercise (two lines at most), "225 × 8" big, "Set 3 of 4".
 - **In set:** a red dot and the elapsed seconds. No live rep count; the count comes at the end.
@@ -193,14 +212,14 @@ Tabs: **Today / History / Check-in.** Settings, Connections and imports live in 
 ## Flow
 
 1. **Import once:** program and form.
-2. **Training day:** Today → Start session → hands-free Session → End session → Today.
+2. **Training day:** Today → Start session (the day, plus any add-on) → hands-free Session → End session → Today. A morning add-on is its own short session: "Hey Siri, start my Setecho morning", or Today's Morning card.
 3. **Photo day:** Today → Take photos → Photo session → Collage review → Check-in.
 4. **Check-in day:** "Hey Siri, start my Setecho check-in" → Check-in morning (weight, glucose, photos, questions) → Review and send → WhatsApp. The Photo session and Wrap-up still work on their own.
 5. **Coach replies:** WhatsApp → Share → Setecho (or paste) → Coach reply → Apply → Today shows the updated plan. His cues play in the next sessions.
-6. **Setup:** Import → Connections (Apple Health, Garmin watch) → Today.
+6. **Setup:** Import → Connections (Apple Health; the watch only if it's built) → Today.
 
 ## Open design questions
 - **Collage layout:** 1×4 or 2×2? Match the image the athlete sends today. Ask for a sample.
 - **Spreadsheet delivery:** decided Oct 26, a Google Sheets link. The Import screen's first step takes a pasted link, with a file or screenshot as the fallback.
 - **Change rows checked by default?** The default is checked, with the Apply tap as the approval. If that makes rubber-stamping too easy, start them unchecked.
-- **Tagline:** "A coach that remembers every rep" conflicts with rule 13. That's the athlete's call.
+- **Tagline:** decided: "The prep that logs itself."
