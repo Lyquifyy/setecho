@@ -61,6 +61,8 @@ targets:
       - path: Setecho/DesignSystem
       - path: Setecho/Assets.xcassets
       - path: Setecho/Services/WAVFile.swift
+      - path: Setecho/Services/AudioCapture.swift
+      - path: Setecho/App/AppRouter.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.getsetecho.probes

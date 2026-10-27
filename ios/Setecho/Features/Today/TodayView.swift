@@ -3,6 +3,7 @@ import SwiftUI
 /// Today (DESIGN.md): the home base. What's planned today, and where the week's check-in stands.
 struct TodayView: View {
     @Environment(Store.self) private var store
+    @State private var showSession = false
     private let schedule = CheckInSchedule()
 
     var body: some View {
@@ -27,9 +28,15 @@ struct TodayView: View {
             checkInCard
             photosCard
         } footer: {
-            Button("Start session") {}
+            // The only tap of a training day.
+            Button("Start session") { showSession = true }
                 .buttonStyle(.setechoPrimary)
-                .disabled(true) // M2: the hands-free session
+                .disabled(store.nextDay == nil)
+        }
+        .fullScreenCover(isPresented: $showSession) {
+            if let next = store.nextDay {
+                SessionView(day: next.day, weekNumber: next.week.number, store: store)
+            }
         }
     }
 
