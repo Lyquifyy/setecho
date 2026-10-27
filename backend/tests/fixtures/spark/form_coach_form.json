@@ -1,0 +1,472 @@
+{
+  "source": "coach_form.txt",
+  "latency_s": 27.82840394973755,
+  "raw": {
+    "carriedBlocks": [
+      {
+        "text": "On Training Days:\n Calories - 2400\n Protein \u2013 200g\n Carbohydrate \u2013 250g\n Fats \u2013 65g\n\nOn Non-Training Days:\nCalories \u2013 2100\nProtein \u2013 200g\nCarbohydrate \u2013 175g\nFats \u2013 65g",
+        "title": "Nutrition:"
+      },
+      {
+        "text": "-        Whole food multivitamin & mineral\n-      Whey isolate - have on hand in order to never miss your protein goal\n-      Creatine Monohydrate - 5g daily\n\n-      Vit D3&K2 - 1 serving daily with a meal\n\n-      Omega 3 - 2 softgels daily with meals\n\n-       Magnesium glycinate - 200mg daily taken before bed\n\n-       You can continue to take the zinc, and ashwagandha (in the afternoon or evenings, not AM) as well.\n\n-      Intra workout: Your preferred EAAs (optional) mixed with 500mg sodium + daily serving of creatine + 30oz water mixed together and sipped throughout your workout.",
+        "title": "Current Supplements:"
+      }
+    ],
+    "fields": [
+      {
+        "kind": "number",
+        "label": "Weeks away from target date",
+        "prompt": "(if in prep)",
+        "source": {
+          "key": "weeksToShow",
+          "type": "calculated"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Biggest win this last week",
+        "prompt": null,
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Accuracy on plan",
+        "prompt": null,
+        "source": {
+          "key": "planAccuracy",
+          "type": "data"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Nutrition Consistency",
+        "prompt": null,
+        "source": {
+          "key": "nutritionConsistency",
+          "type": "data"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Training Consistency",
+        "prompt": null,
+        "source": {
+          "key": "trainingConsistency",
+          "type": "data"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Current Cardio Protocol Assigned",
+        "prompt": "(minutes per session & sessions per week)",
+        "source": {
+          "key": "cardioProtocol",
+          "type": "data"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Notes on Sleep",
+        "prompt": "(Quality and duration)",
+        "source": {
+          "key": "sleepDuration",
+          "type": "drafted"
+        }
+      },
+      {
+        "kind": "scale10",
+        "label": "Energy Levels",
+        "prompt": "(scale 1-10)",
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Notes on performance",
+        "prompt": "(did you beat the logbook in increasing weight, reps, or quality of execution?)",
+        "source": {
+          "key": "performanceNotes",
+          "type": "drafted"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Notes on Recovery",
+        "prompt": null,
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Notes on Digestion",
+        "prompt": "(any bloating following certain food sources, gas, etc.)",
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "scale10",
+        "label": "Notes on Appetite",
+        "prompt": "(1-10)",
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "date",
+        "label": "Date of last refeed or cheat meal",
+        "prompt": null,
+        "source": {
+          "key": "lastRefeedDate",
+          "type": "drafted"
+        }
+      },
+      {
+        "kind": "scale10",
+        "label": "Notes on stress levels",
+        "prompt": "(1-10)",
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "number",
+        "label": "Average daily steps",
+        "prompt": null,
+        "source": {
+          "key": "avgDailySteps",
+          "type": "data"
+        }
+      },
+      {
+        "kind": "measurement",
+        "label": "Last check-in Body Weight",
+        "prompt": null,
+        "source": {
+          "key": "lastCheckInWeight",
+          "type": "data"
+        }
+      },
+      {
+        "kind": "measurement",
+        "label": "Current Body Weight",
+        "prompt": null,
+        "source": {
+          "key": "currentWeight",
+          "type": "data"
+        }
+      },
+      {
+        "kind": "measurement",
+        "label": "Measurement of waist",
+        "prompt": null,
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "measurement",
+        "label": "Measure right bicep",
+        "prompt": "(flexed)",
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "measurement",
+        "label": "Measure right thigh",
+        "prompt": "(flexed)",
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "number",
+        "label": "Fasted Blood Glucose",
+        "prompt": null,
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Additional notes or concerns",
+        "prompt": null,
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      }
+    ]
+  },
+  "template": {
+    "fields": [
+      {
+        "label": "Weeks away from target date",
+        "prompt": "(if in prep)",
+        "kind": "number",
+        "source": {
+          "type": "calculated",
+          "key": "weeksToShow"
+        },
+        "id": "weeks_away_from_target_date",
+        "order": 0
+      },
+      {
+        "label": "Biggest win this last week",
+        "prompt": null,
+        "kind": "text",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "biggest_win_this_last_week",
+        "order": 1
+      },
+      {
+        "label": "Accuracy on plan",
+        "prompt": null,
+        "kind": "text",
+        "source": {
+          "type": "data",
+          "key": "planAccuracy"
+        },
+        "id": "accuracy_on_plan",
+        "order": 2
+      },
+      {
+        "label": "Nutrition Consistency",
+        "prompt": null,
+        "kind": "text",
+        "source": {
+          "type": "data",
+          "key": "nutritionConsistency"
+        },
+        "id": "nutrition_consistency",
+        "order": 3
+      },
+      {
+        "label": "Training Consistency",
+        "prompt": null,
+        "kind": "text",
+        "source": {
+          "type": "data",
+          "key": "trainingConsistency"
+        },
+        "id": "training_consistency",
+        "order": 4
+      },
+      {
+        "label": "Current Cardio Protocol Assigned",
+        "prompt": "(minutes per session & sessions per week)",
+        "kind": "text",
+        "source": {
+          "type": "data",
+          "key": "cardioProtocol"
+        },
+        "id": "current_cardio_protocol_assigned",
+        "order": 5
+      },
+      {
+        "label": "Notes on Sleep",
+        "prompt": "(Quality and duration)",
+        "kind": "text",
+        "source": {
+          "type": "drafted",
+          "key": "sleepDuration"
+        },
+        "id": "notes_on_sleep",
+        "order": 6
+      },
+      {
+        "label": "Energy Levels",
+        "prompt": "(scale 1-10)",
+        "kind": "scale10",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "energy_levels",
+        "order": 7
+      },
+      {
+        "label": "Notes on performance",
+        "prompt": "(did you beat the logbook in increasing weight, reps, or quality of execution?)",
+        "kind": "text",
+        "source": {
+          "type": "drafted",
+          "key": "performanceNotes"
+        },
+        "id": "notes_on_performance",
+        "order": 8
+      },
+      {
+        "label": "Notes on Recovery",
+        "prompt": null,
+        "kind": "text",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "notes_on_recovery",
+        "order": 9
+      },
+      {
+        "label": "Notes on Digestion",
+        "prompt": "(any bloating following certain food sources, gas, etc.)",
+        "kind": "text",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "notes_on_digestion",
+        "order": 10
+      },
+      {
+        "label": "Notes on Appetite",
+        "prompt": "(1-10)",
+        "kind": "scale10",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "notes_on_appetite",
+        "order": 11
+      },
+      {
+        "label": "Date of last refeed or cheat meal",
+        "prompt": null,
+        "kind": "date",
+        "source": {
+          "type": "drafted",
+          "key": "lastRefeedDate"
+        },
+        "id": "date_of_last_refeed_or_cheat_meal",
+        "order": 12
+      },
+      {
+        "label": "Notes on stress levels",
+        "prompt": "(1-10)",
+        "kind": "scale10",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "notes_on_stress_levels",
+        "order": 13
+      },
+      {
+        "label": "Average daily steps",
+        "prompt": null,
+        "kind": "number",
+        "source": {
+          "type": "data",
+          "key": "avgDailySteps"
+        },
+        "id": "average_daily_steps",
+        "order": 14
+      },
+      {
+        "label": "Last check-in Body Weight",
+        "prompt": null,
+        "kind": "measurement",
+        "source": {
+          "type": "data",
+          "key": "lastCheckInWeight"
+        },
+        "id": "last_check_in_body_weight",
+        "order": 15
+      },
+      {
+        "label": "Current Body Weight",
+        "prompt": null,
+        "kind": "measurement",
+        "source": {
+          "type": "data",
+          "key": "currentWeight"
+        },
+        "id": "current_body_weight",
+        "order": 16
+      },
+      {
+        "label": "Measurement of waist",
+        "prompt": null,
+        "kind": "measurement",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "measurement_of_waist",
+        "order": 17
+      },
+      {
+        "label": "Measure right bicep",
+        "prompt": "(flexed)",
+        "kind": "measurement",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "measure_right_bicep",
+        "order": 18
+      },
+      {
+        "label": "Measure right thigh",
+        "prompt": "(flexed)",
+        "kind": "measurement",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "measure_right_thigh",
+        "order": 19
+      },
+      {
+        "label": "Fasted Blood Glucose",
+        "prompt": null,
+        "kind": "number",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "fasted_blood_glucose",
+        "order": 20
+      },
+      {
+        "label": "Additional notes or concerns",
+        "prompt": null,
+        "kind": "text",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "additional_notes_or_concerns",
+        "order": 21
+      }
+    ],
+    "carriedBlocks": [
+      {
+        "title": "Nutrition:",
+        "text": "On Training Days:\n Calories - 2400\n Protein \u2013 200g\n Carbohydrate \u2013 250g\n Fats \u2013 65g\n\nOn Non-Training Days:\nCalories \u2013 2100\nProtein \u2013 200g\nCarbohydrate \u2013 175g\nFats \u2013 65g"
+      },
+      {
+        "title": "Current Supplements:",
+        "text": "-        Whole food multivitamin & mineral\n-      Whey isolate - have on hand in order to never miss your protein goal\n-      Creatine Monohydrate - 5g daily\n\n-      Vit D3&K2 - 1 serving daily with a meal\n\n-      Omega 3 - 2 softgels daily with meals\n\n-       Magnesium glycinate - 200mg daily taken before bed\n\n-       You can continue to take the zinc, and ashwagandha (in the afternoon or evenings, not AM) as well.\n\n-      Intra workout: Your preferred EAAs (optional) mixed with 500mg sodium + daily serving of creatine + 30oz water mixed together and sipped throughout your workout."
+      }
+    ]
+  }
+}
