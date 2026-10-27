@@ -17,6 +17,7 @@ import base64
 import json
 import logging
 import os
+import socket
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -49,9 +50,27 @@ def client() -> OpenAI:
 VIDEO_TIMEOUT = httpx.Timeout(1800.0, connect=30.0)
 
 
+def _keepalive_options() -> list[tuple[int, int, int]]:
+    """TCP keepalives every 15 s. SAM says nothing for a minute or more while it works, and a
+    silent connection out of the Fly host was being dropped before the first event."""
+    opts = [(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)]
+    idle = getattr(socket, "TCP_KEEPIDLE", None) or getattr(socket, "TCP_KEEPALIVE", None)
+    if idle is not None:
+        opts.append((socket.IPPROTO_TCP, idle, 15))
+    if hasattr(socket, "TCP_KEEPINTVL"):
+        opts.append((socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 15))
+    if hasattr(socket, "TCP_KEEPCNT"):
+        opts.append((socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 20))
+    return opts
+
+
 @lru_cache
 def aclient() -> AsyncOpenAI:
-    return AsyncOpenAI(base_url=BASE_URL, api_key=_key(), timeout=VIDEO_TIMEOUT)
+    http_client = httpx.AsyncClient(
+        timeout=VIDEO_TIMEOUT,
+        transport=httpx.AsyncHTTPTransport(socket_options=_keepalive_options()),
+    )
+    return AsyncOpenAI(base_url=BASE_URL, api_key=_key(), timeout=VIDEO_TIMEOUT, http_client=http_client)
 
 
 # ---------------------------------------------------------------------------
