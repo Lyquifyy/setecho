@@ -23,10 +23,15 @@ def _objects(node, path="$"):
 
 
 def _walk(node):
+    """Every schema node; a `properties` map itself is skipped, since its keys are field names."""
     if isinstance(node, dict):
         yield node
-        for v in node.values():
-            yield from _walk(v)
+        for key, value in node.items():
+            if key == "properties" and isinstance(value, dict):
+                for sub in value.values():
+                    yield from _walk(sub)
+            else:
+                yield from _walk(value)
     elif isinstance(node, list):
         for v in node:
             yield from _walk(v)
@@ -56,9 +61,34 @@ def test_template_schema_is_strict():
 
 def test_optional_plain_types_collapse_to_type_list():
     schema = strict_schema(ProgramOut)
-    planned_set = schema["$defs"]["PlannedSet"]["properties"]
+    sets = schema["properties"]["weeks"]["items"]["properties"]["days"]["items"]["properties"]["exercises"]
+    planned_set = sets["items"]["properties"]["sets"]["items"]["properties"]
     assert planned_set["reps"]["type"] == ["integer", "null"]
     assert planned_set["loadLb"]["type"] == ["number", "null"]
+
+
+def test_a_property_named_title_survives():
+    # The walker strips JSON-schema "title" annotations; it must not strip a field called title.
+    schema = strict_schema(CheckInTemplateOut)
+    block = schema["properties"]["carriedBlocks"]["items"]
+    assert "title" in block["properties"]
+    assert block["required"] == ["title", "text"]
+    assert block["properties"]["title"]["type"] == ["string", "null"]
+
+
+def test_defs_are_inlined():
+    for model in (ProgramOut, CheckInTemplateOut):
+        schema = strict_schema(model)
+        assert "$defs" not in schema
+        assert all("$ref" not in node for node in _walk(schema))
+
+
+def test_block_title_falls_back_to_first_line():
+    from app.schemas import CarriedBlockOut, block_title
+
+    assert block_title(CarriedBlockOut(title="Macro targets", text="x")) == "Macro targets"
+    assert block_title(CarriedBlockOut(title=None, text="Supplements:\nCreatine 5 g daily")) == "Supplements"
+    assert block_title(CarriedBlockOut(title="  ", text="\n\n")) == "Notes"
 
 
 def test_schema_is_byte_stable():

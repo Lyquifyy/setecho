@@ -78,6 +78,14 @@ def save(name: str, payload: dict, fixture: bool) -> None:
         print(f"fixture {FIXTURES.relative_to(ROOT) / out.name}")
 
 
+def save_invalid(name: str, source: Path, error: importing.ImportValidationError) -> None:
+    """Spark answered but the JSON failed validation: keep the raw output so the schema can be fixed."""
+    PRIVATE.mkdir(parents=True, exist_ok=True)
+    out = PRIVATE / f"{name}.invalid.json"
+    out.write_text(json.dumps({"source": source.name, "error": str(error.error), "raw": error.raw}, indent=2))
+    print(f"\nINVALID: {error.error}\nraw output saved to {out.relative_to(ROOT)}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument(
@@ -100,7 +108,11 @@ def main() -> None:
 
     if sheet:
         t0 = time.time()
-        program, raw, resp = importing.import_program(source=sheet)
+        try:
+            program, raw, resp = importing.import_program(source=sheet)
+        except importing.ImportValidationError as e:
+            save_invalid(f"program_{sheet.stem}", sheet, e)
+            raise SystemExit(1) from e
         dt = time.time() - t0
         print_program(program)
         print(f"spark: {dt:.1f}s, usage {resp.usage.model_dump() if resp.usage else None}")
@@ -111,7 +123,11 @@ def main() -> None:
         )
     if form:
         t0 = time.time()
-        template, raw, resp = importing.import_form(source=form)
+        try:
+            template, raw, resp = importing.import_form(source=form)
+        except importing.ImportValidationError as e:
+            save_invalid(f"form_{form.stem}", form, e)
+            raise SystemExit(1) from e
         dt = time.time() - t0
         print_template(template)
         print(f"spark: {dt:.1f}s, usage {resp.usage.model_dump() if resp.usage else None}")

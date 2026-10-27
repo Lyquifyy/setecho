@@ -1,0 +1,492 @@
+{
+  "source": "synthetic_form.txt",
+  "latency_s": 23.351452112197876,
+  "raw": {
+    "carriedBlocks": [
+      {
+        "text": "Training days: 2400 kcal / 200 P / 250 C / 65 F\nRest days: 2100 kcal / 200 P / 175 C / 65 F",
+        "title": "Macro targets (until I change them):"
+      },
+      {
+        "text": "Creatine 5 g daily\nVitamin D 2000 IU daily\nFish oil 2 g daily",
+        "title": "Supplements:"
+      }
+    ],
+    "fields": [
+      {
+        "kind": "number",
+        "label": "Weeks away from target date",
+        "prompt": null,
+        "source": {
+          "key": "weeksToShow",
+          "type": "calculated"
+        }
+      },
+      {
+        "kind": "percent",
+        "label": "Accuracy on plan",
+        "prompt": "(%)",
+        "source": {
+          "key": "planAccuracy",
+          "type": "data"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Nutrition consistency",
+        "prompt": null,
+        "source": {
+          "key": "nutritionConsistency",
+          "type": "data"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Training consistency",
+        "prompt": null,
+        "source": {
+          "key": "trainingConsistency",
+          "type": "data"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Current cardio protocol",
+        "prompt": null,
+        "source": {
+          "key": "cardioProtocol",
+          "type": "data"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Notes on performance",
+        "prompt": null,
+        "source": {
+          "key": "performanceNotes",
+          "type": "drafted"
+        }
+      },
+      {
+        "kind": "date",
+        "label": "Date of last refeed or cheat meal",
+        "prompt": null,
+        "source": {
+          "key": "lastRefeedDate",
+          "type": "drafted"
+        }
+      },
+      {
+        "kind": "number",
+        "label": "Average daily steps",
+        "prompt": null,
+        "source": {
+          "key": "avgDailySteps",
+          "type": "data"
+        }
+      },
+      {
+        "kind": "measurement",
+        "label": "Last check-in body weight",
+        "prompt": null,
+        "source": {
+          "key": "lastCheckInWeight",
+          "type": "data"
+        }
+      },
+      {
+        "kind": "measurement",
+        "label": "Current body weight",
+        "prompt": null,
+        "source": {
+          "key": "currentWeight",
+          "type": "data"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Notes on sleep",
+        "prompt": null,
+        "source": {
+          "key": "sleepDuration",
+          "type": "drafted"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Biggest win this week",
+        "prompt": null,
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "scale10",
+        "label": "Energy levels",
+        "prompt": "(scale 1-10)",
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Notes on recovery",
+        "prompt": null,
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Notes on digestion",
+        "prompt": null,
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "scale10",
+        "label": "Notes on appetite",
+        "prompt": "(scale 1-10)",
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "scale10",
+        "label": "Notes on stress",
+        "prompt": "(scale 1-10)",
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "measurement",
+        "label": "Waist measurement",
+        "prompt": "(inches)",
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "measurement",
+        "label": "Bicep measurement, flexed",
+        "prompt": "(inches)",
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "measurement",
+        "label": "Thigh measurement, flexed",
+        "prompt": "(inches)",
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "number",
+        "label": "Fasted blood glucose",
+        "prompt": null,
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "text",
+        "label": "Additional notes or concerns",
+        "prompt": null,
+        "source": {
+          "key": null,
+          "type": "voice"
+        }
+      },
+      {
+        "kind": "photo",
+        "label": "Check-in photos: front, right side arms up, back, left side arms up",
+        "prompt": null,
+        "source": {
+          "key": null,
+          "type": "photo"
+        }
+      }
+    ]
+  },
+  "template": {
+    "fields": [
+      {
+        "label": "Weeks away from target date",
+        "prompt": null,
+        "kind": "number",
+        "source": {
+          "type": "calculated",
+          "key": "weeksToShow"
+        },
+        "id": "weeks_away_from_target_date",
+        "order": 0
+      },
+      {
+        "label": "Accuracy on plan",
+        "prompt": "(%)",
+        "kind": "percent",
+        "source": {
+          "type": "data",
+          "key": "planAccuracy"
+        },
+        "id": "accuracy_on_plan",
+        "order": 1
+      },
+      {
+        "label": "Nutrition consistency",
+        "prompt": null,
+        "kind": "text",
+        "source": {
+          "type": "data",
+          "key": "nutritionConsistency"
+        },
+        "id": "nutrition_consistency",
+        "order": 2
+      },
+      {
+        "label": "Training consistency",
+        "prompt": null,
+        "kind": "text",
+        "source": {
+          "type": "data",
+          "key": "trainingConsistency"
+        },
+        "id": "training_consistency",
+        "order": 3
+      },
+      {
+        "label": "Current cardio protocol",
+        "prompt": null,
+        "kind": "text",
+        "source": {
+          "type": "data",
+          "key": "cardioProtocol"
+        },
+        "id": "current_cardio_protocol",
+        "order": 4
+      },
+      {
+        "label": "Notes on performance",
+        "prompt": null,
+        "kind": "text",
+        "source": {
+          "type": "drafted",
+          "key": "performanceNotes"
+        },
+        "id": "notes_on_performance",
+        "order": 5
+      },
+      {
+        "label": "Date of last refeed or cheat meal",
+        "prompt": null,
+        "kind": "date",
+        "source": {
+          "type": "drafted",
+          "key": "lastRefeedDate"
+        },
+        "id": "date_of_last_refeed_or_cheat_meal",
+        "order": 6
+      },
+      {
+        "label": "Average daily steps",
+        "prompt": null,
+        "kind": "number",
+        "source": {
+          "type": "data",
+          "key": "avgDailySteps"
+        },
+        "id": "average_daily_steps",
+        "order": 7
+      },
+      {
+        "label": "Last check-in body weight",
+        "prompt": null,
+        "kind": "measurement",
+        "source": {
+          "type": "data",
+          "key": "lastCheckInWeight"
+        },
+        "id": "last_check_in_body_weight",
+        "order": 8
+      },
+      {
+        "label": "Current body weight",
+        "prompt": null,
+        "kind": "measurement",
+        "source": {
+          "type": "data",
+          "key": "currentWeight"
+        },
+        "id": "current_body_weight",
+        "order": 9
+      },
+      {
+        "label": "Notes on sleep",
+        "prompt": null,
+        "kind": "text",
+        "source": {
+          "type": "drafted",
+          "key": "sleepDuration"
+        },
+        "id": "notes_on_sleep",
+        "order": 10
+      },
+      {
+        "label": "Biggest win this week",
+        "prompt": null,
+        "kind": "text",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "biggest_win_this_week",
+        "order": 11
+      },
+      {
+        "label": "Energy levels",
+        "prompt": "(scale 1-10)",
+        "kind": "scale10",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "energy_levels",
+        "order": 12
+      },
+      {
+        "label": "Notes on recovery",
+        "prompt": null,
+        "kind": "text",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "notes_on_recovery",
+        "order": 13
+      },
+      {
+        "label": "Notes on digestion",
+        "prompt": null,
+        "kind": "text",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "notes_on_digestion",
+        "order": 14
+      },
+      {
+        "label": "Notes on appetite",
+        "prompt": "(scale 1-10)",
+        "kind": "scale10",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "notes_on_appetite",
+        "order": 15
+      },
+      {
+        "label": "Notes on stress",
+        "prompt": "(scale 1-10)",
+        "kind": "scale10",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "notes_on_stress",
+        "order": 16
+      },
+      {
+        "label": "Waist measurement",
+        "prompt": "(inches)",
+        "kind": "measurement",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "waist_measurement",
+        "order": 17
+      },
+      {
+        "label": "Bicep measurement, flexed",
+        "prompt": "(inches)",
+        "kind": "measurement",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "bicep_measurement_flexed",
+        "order": 18
+      },
+      {
+        "label": "Thigh measurement, flexed",
+        "prompt": "(inches)",
+        "kind": "measurement",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "thigh_measurement_flexed",
+        "order": 19
+      },
+      {
+        "label": "Fasted blood glucose",
+        "prompt": null,
+        "kind": "number",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "fasted_blood_glucose",
+        "order": 20
+      },
+      {
+        "label": "Additional notes or concerns",
+        "prompt": null,
+        "kind": "text",
+        "source": {
+          "type": "voice",
+          "key": null
+        },
+        "id": "additional_notes_or_concerns",
+        "order": 21
+      },
+      {
+        "label": "Check-in photos: front, right side arms up, back, left side arms up",
+        "prompt": null,
+        "kind": "photo",
+        "source": {
+          "type": "photo",
+          "key": null
+        },
+        "id": "check_in_photos_front_right_side_arms_up_back_left_side_arms_up",
+        "order": 22
+      }
+    ],
+    "carriedBlocks": [
+      {
+        "title": "Macro targets (until I change them):",
+        "text": "Training days: 2400 kcal / 200 P / 250 C / 65 F\nRest days: 2100 kcal / 200 P / 175 C / 65 F"
+      },
+      {
+        "title": "Supplements:",
+        "text": "Creatine 5 g daily\nVitamin D 2000 IU daily\nFish oil 2 g daily"
+      }
+    ]
+  }
+}

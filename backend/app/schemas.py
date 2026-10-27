@@ -137,9 +137,16 @@ class FieldSource(StrictModel):
     )
 
 
-class CarriedBlock(StrictModel):
-    title: str = Field(description='The block heading as written, e.g. "Macro targets"')
+class CarriedBlockOut(StrictModel):
+    title: str | None = Field(
+        description='The block heading line as written, e.g. "Macro targets"; null when the block has none'
+    )
     text: str = Field(description="The block body copied verbatim, line breaks kept")
+
+
+class CarriedBlock(StrictModel):
+    title: str
+    text: str
 
 
 class FieldSpecOut(StrictModel):
@@ -151,7 +158,7 @@ class FieldSpecOut(StrictModel):
 
 class CheckInTemplateOut(StrictModel):
     fields: list[FieldSpecOut] = Field(description="Every question, in the coach's order")
-    carriedBlocks: list[CarriedBlock] = Field(description="Instruction blocks that are not questions")
+    carriedBlocks: list[CarriedBlockOut] = Field(description="Instruction blocks that are not questions")
 
 
 class FieldSpec(FieldSpecOut):
@@ -174,10 +181,27 @@ def strict_schema(model: type[BaseModel]) -> dict[str, Any]:
 
     - every object has additionalProperties: false and lists all properties in required
     - `X | None` becomes {"type": ["X", "null"]} where X is a plain type
+    - $defs are inlined, so the server sees one self-contained tree (a live run showed a
+      required key inside a $ref'd object being dropped)
     - titles are dropped so the schema stays small and byte-stable
     - no oneOf / allOf anywhere (anyOf is allowed below the root)
     """
-    return _strictify(model.model_json_schema())
+    raw = model.model_json_schema()
+    defs = raw.pop("$defs", {})
+    return _strictify(_inline(raw, defs))
+
+
+def _inline(node: Any, defs: dict[str, Any]) -> Any:
+    if isinstance(node, list):
+        return [_inline(n, defs) for n in node]
+    if not isinstance(node, dict):
+        return node
+    if "$ref" in node:
+        name = node["$ref"].rsplit("/", 1)[-1]
+        target = dict(defs[name])
+        target.update({k: v for k, v in node.items() if k != "$ref"})
+        return _inline(target, defs)
+    return {k: _inline(v, defs) for k, v in node.items()}
 
 
 def _strictify(node: Any) -> Any:
@@ -188,6 +212,10 @@ def _strictify(node: Any) -> Any:
     out: dict[str, Any] = {}
     for key, value in node.items():
         if key == "title":
+            continue  # a schema annotation, dropped for size and byte-stability
+        if key == "properties" and isinstance(value, dict):
+            # property names are data, never annotations: a field called "title" must survive
+            out[key] = {name: _strictify(sub) for name, sub in value.items()}
             continue
         out[key] = _strictify(value)
     if out.get("type") == "object" and "properties" in out:
@@ -248,10 +276,19 @@ def to_program(out: ProgramOut, imported_at: datetime) -> Program:
     return Program(name=out.name, weeks=weeks, importedAt=imported_at, flags=out.flags)
 
 
+def block_title(block: CarriedBlockOut) -> str:
+    """The heading as given, else the block's first line without its trailing colon. Never invented."""
+    if block.title and block.title.strip():
+        return block.title.strip()
+    lines = [line.strip() for line in block.text.splitlines() if line.strip()]
+    return lines[0].rstrip(":").strip() if lines else "Notes"
+
+
 def to_template(out: CheckInTemplateOut) -> CheckInTemplate:
     taken: set[str] = set()
     fields = [
         FieldSpec(id=_unique(slug(f.label), taken), order=i, **f.model_dump())
         for i, f in enumerate(out.fields)
     ]
-    return CheckInTemplate(fields=fields, carriedBlocks=out.carriedBlocks)
+    blocks = [CarriedBlock(title=block_title(b), text=b.text) for b in out.carriedBlocks]
+    return CheckInTemplate(fields=fields, carriedBlocks=blocks)

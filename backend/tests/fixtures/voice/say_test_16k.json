@@ -1,0 +1,11 @@
+{
+  "clip": "say_test_16k.wav",
+  "converted": false,
+  "latency_s": 1.7409839630126953,
+  "response": {
+    "sessionId": "voyager/transcribe/4A9F251B694A4E0ABE8B7C56E585364B",
+    "transcript": "Set three done, felt like a nine, drop to 215.",
+    "audioDurationMs": 3840,
+    "turns": []
+  }
+}

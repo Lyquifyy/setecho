@@ -1,0 +1,20 @@
+{
+  "image": "shape.png",
+  "prompt": "red circle",
+  "prepared": {
+    "width": 1200,
+    "height": 900,
+    "scale": 1.0
+  },
+  "outcome": "completed",
+  "masks": 1,
+  "diagnostics": [],
+  "latency_s": 3.64,
+  "box": [
+    482,
+    232,
+    437,
+    437
+  ],
+  "confidence": null
+}

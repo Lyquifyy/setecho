@@ -14,6 +14,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, ValidationError
+
 from app import meta, prompts
 from app.schemas import (
     CheckInTemplate,
@@ -89,11 +91,27 @@ def _user_content(source: Path | None, text: str | None, instruction: str) -> me
     return f"{instruction}\n\n{text}"
 
 
+class ImportValidationError(ValueError):
+    """Spark answered, but the JSON does not fit the schema. Carries the raw output for inspection."""
+
+    def __init__(self, raw: dict, error: ValidationError):
+        super().__init__(f"model output failed validation: {error}")
+        self.raw = raw
+        self.error = error
+
+
+def _validate[T: BaseModel](model: type[T], raw: dict) -> T:
+    try:
+        return model.model_validate(raw)
+    except ValidationError as e:
+        raise ImportValidationError(raw, e) from e
+
+
 def import_program(source: Path | None = None, text: str | None = None) -> tuple[Program, dict, Any]:
     """Returns the Program with ids, Spark's raw JSON, and the raw response."""
     user = _user_content(source, text, "Convert this training spreadsheet.")
     raw, resp = meta.spark_json(prompts.IMPORT_PROGRAM, user, "Program", PROGRAM_SCHEMA)
-    program = to_program(ProgramOut.model_validate(raw), datetime.now(UTC))
+    program = to_program(_validate(ProgramOut, raw), datetime.now(UTC))
     return program, raw, resp
 
 
@@ -101,5 +119,5 @@ def import_form(source: Path | None = None, text: str | None = None) -> tuple[Ch
     """Returns the CheckInTemplate with ids and order, Spark's raw JSON, and the raw response."""
     user = _user_content(source, text, "Convert this weekly check-in form.")
     raw, resp = meta.spark_json(prompts.IMPORT_FORM, user, "CheckInTemplate", TEMPLATE_SCHEMA)
-    template = to_template(CheckInTemplateOut.model_validate(raw))
+    template = to_template(_validate(CheckInTemplateOut, raw))
     return template, raw, resp
