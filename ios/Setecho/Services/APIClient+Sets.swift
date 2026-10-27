@@ -35,11 +35,17 @@ extension APIClient {
         request.httpBody = body.data
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError(status: 0, message: "No HTTP response") }
+        struct ErrorBody: Decodable { let error: String }
         guard (200..<300).contains(http.statusCode) else {
-            struct ErrorBody: Decodable { let error: String }
             let message = (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "HTTP \(http.statusCode)"
             throw APIError(status: http.statusCode, message: message)
         }
-        return try JSONCoding.decoder.decode(CountResponse.self, from: data)
+        // The backend streams newlines while SAM works, then one JSON line: the count, or {"error"}
+        // when the clip could not be counted (already a 200: the stream had started).
+        let payload = Data(String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines).utf8)
+        if let failure = try? JSONDecoder().decode(ErrorBody.self, from: payload) {
+            throw APIError(status: 422, message: failure.error)
+        }
+        return try JSONCoding.decoder.decode(CountResponse.self, from: payload)
     }
 }
