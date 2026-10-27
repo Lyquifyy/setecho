@@ -14,7 +14,7 @@ from typing import Any
 from pydantic import Field
 
 from app import meta
-from app.schemas import CheckInTemplate, FieldSpec, StrictModel, strict_schema
+from app.schemas import CheckInTemplate, FieldSpec, Macros, MacroTargets, StrictModel, strict_schema
 
 # ---------------------------------------------------------------------------
 # Models mirroring the Swift structs
@@ -37,18 +37,6 @@ class DayFacts(StrictModel):
     sleepHours: float | None = None
     weighInLb: float | None = None
     liss: list[LissSession]
-
-
-class Macros(StrictModel):
-    kcal: float
-    proteinG: float
-    carbsG: float
-    fatG: float
-
-
-class MacroTargets(StrictModel):
-    training: Macros
-    rest: Macros
 
 
 class WeekFacts(StrictModel):

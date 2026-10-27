@@ -21,10 +21,11 @@ from pydantic import BaseModel, ValidationError
 
 from app import meta, prompts
 from app.schemas import (
-    CheckInTemplate,
     CheckInTemplateOut,
+    FormImport,
     Program,
     ProgramOut,
+    form_targets,
     strict_schema,
     to_program,
     to_template,
@@ -197,9 +198,11 @@ def import_program(
 
 def import_form(
     *, upload: Upload | None = None, text: str | None = None, url: str | None = None
-) -> tuple[CheckInTemplate, dict, Any]:
-    """Returns the CheckInTemplate with ids and order, Spark's raw JSON, and the raw response."""
+) -> tuple[FormImport, dict, Any]:
+    """Returns the template with ids and order plus the targets and cardio protocol read from the
+    form's blocks, Spark's raw JSON, and the raw response."""
     user = _user_content(upload, text, url, "Convert this weekly check-in form.")
     raw, resp = meta.spark_json(prompts.IMPORT_FORM, user, "CheckInTemplate", TEMPLATE_SCHEMA)
-    template = to_template(_validate(CheckInTemplateOut, raw))
-    return template, raw, resp
+    out = _validate(CheckInTemplateOut, raw)
+    cardio = (out.cardioProtocol or "").strip() or None
+    return FormImport(template=to_template(out), targets=form_targets(out), cardioProtocol=cardio), raw, resp

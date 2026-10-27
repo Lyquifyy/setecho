@@ -124,12 +124,16 @@ def main() -> None:
     if form:
         t0 = time.time()
         try:
-            template, raw, resp = importing.import_form(upload=importing.Upload.from_path(form))
+            result, raw, resp = importing.import_form(upload=importing.Upload.from_path(form))
+            template = result.template
         except importing.ImportValidationError as e:
             save_invalid(f"form_{form.stem}", form, e)
             raise SystemExit(1) from e
         dt = time.time() - t0
         print_template(template)
+        print(
+            f"targets: {result.targets.model_dump() if result.targets else None}; cardio: {result.cardioProtocol!r}"
+        )
         print(f"spark: {dt:.1f}s, usage {resp.usage.model_dump() if resp.usage else None}")
         save(
             f"form_{form.stem}",

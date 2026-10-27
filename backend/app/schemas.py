@@ -174,9 +174,27 @@ class FieldSpecOut(StrictModel):
     source: FieldSource
 
 
+class MacrosOut(StrictModel):
+    kcal: float | None = Field(default=None, description="Calories for this day type, else null")
+    proteinG: float | None = Field(default=None, description="Protein in grams, else null")
+    carbsG: float | None = Field(default=None, description="Carbohydrate in grams, else null")
+    fatG: float | None = Field(default=None, description="Fat in grams, else null")
+
+
+class MacroTargetsOut(StrictModel):
+    training: MacrosOut = Field(description="Training-day targets, copied from the form's nutrition block")
+    rest: MacrosOut = Field(description="Rest-day (non-training) targets")
+
+
 class CheckInTemplateOut(StrictModel):
     fields: list[FieldSpecOut] = Field(description="Every question, in the coach's order")
     carriedBlocks: list[CarriedBlockOut] = Field(description="Instruction blocks that are not questions")
+    targets: MacroTargetsOut | None = Field(
+        default=None, description="The macro targets written in the form's blocks; null when there are none"
+    )
+    cardioProtocol: str | None = Field(
+        default=None, description="The assigned cardio protocol as written in the form, else null"
+    )
 
 
 class FieldSpec(FieldSpecOut):
@@ -303,6 +321,43 @@ def block_title(block: CarriedBlockOut) -> str:
         return block.title.strip()
     lines = [line.strip() for line in block.text.splitlines() if line.strip()]
     return lines[0].rstrip(":").strip() if lines else "Notes"
+
+
+class Macros(StrictModel):
+    kcal: float
+    proteinG: float
+    carbsG: float
+    fatG: float
+
+
+class MacroTargets(StrictModel):
+    training: Macros
+    rest: Macros
+
+
+class FormImport(StrictModel):
+    """What /import/form returns: the template plus the plan values read from the carried blocks."""
+
+    template: CheckInTemplate
+    targets: MacroTargets | None = None
+    cardioProtocol: str | None = None
+
+
+def form_targets(out: CheckInTemplateOut) -> MacroTargets | None:
+    """Targets only when every number is there; a half-read block is worse than none."""
+    t = out.targets
+    if t is None:
+        return None
+    values = [t.training.kcal, t.training.proteinG, t.training.carbsG, t.training.fatG,
+              t.rest.kcal, t.rest.proteinG, t.rest.carbsG, t.rest.fatG]  # fmt: skip
+    if any(v is None for v in values):
+        return None
+    return MacroTargets(
+        training=Macros(
+            kcal=t.training.kcal, proteinG=t.training.proteinG, carbsG=t.training.carbsG, fatG=t.training.fatG
+        ),  # type: ignore[arg-type]
+        rest=Macros(kcal=t.rest.kcal, proteinG=t.rest.proteinG, carbsG=t.rest.carbsG, fatG=t.rest.fatG),  # type: ignore[arg-type]
+    )
 
 
 def to_template(out: CheckInTemplateOut) -> CheckInTemplate:

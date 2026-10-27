@@ -37,3 +37,7 @@ ios/Probes/output/
 !design/**/*.png
 !design/**/*.jpg
 !ios/Setecho/Assets.xcassets/**/*.png
+
+# Coach voice notes and any audio outside the fixtures (HANDOFF.md §11)
+*.opus
+*.ogg

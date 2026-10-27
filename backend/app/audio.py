@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import struct
 import subprocess
+import tempfile
 import wave
 from dataclasses import dataclass
 from pathlib import Path
@@ -68,12 +69,18 @@ def write_wav(pcm16_mono: bytes, sample_rate: int = 16000) -> bytes:
 
 
 def convert_to_transcribe_wav(src: Path, sample_rate: int = 16000) -> bytes:
-    """Any audio ffmpeg can read -> mono 16-bit PCM WAV at `sample_rate`, metadata stripped."""
+    """Any audio ffmpeg can read -> mono 16-bit PCM WAV at `sample_rate`, metadata stripped.
+
+    Written to a file, not a pipe: a piped WAV carries an unknown-length header that the wave
+    module reads as a 37-hour clip."""
     if sample_rate not in TRANSCRIBE_RATES:
         raise ValueError(f"sample_rate must be one of {TRANSCRIBE_RATES}")
-    cmd = [
-        "ffmpeg", "-loglevel", "error", "-i", str(src),
-        "-ac", "1", "-ar", str(sample_rate), "-c:a", "pcm_s16le", "-map_metadata", "-1",
-        "-f", "wav", "pipe:1",
-    ]  # fmt: skip
-    return subprocess.run(cmd, check=True, capture_output=True).stdout
+    with tempfile.TemporaryDirectory(prefix="setecho-wav-") as tmp:
+        out = Path(tmp) / "out.wav"
+        cmd = [
+            "ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
+            "-ac", "1", "-ar", str(sample_rate), "-c:a", "pcm_s16le",
+            "-map_metadata", "-1", "-fflags", "+bitexact", "-f", "wav", str(out),
+        ]  # fmt: skip
+        subprocess.run(cmd, check=True, capture_output=True)
+        return out.read_bytes()

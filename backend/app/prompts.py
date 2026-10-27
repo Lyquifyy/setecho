@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from app.schemas import DATA_KEY_MEANINGS
 
-PROMPTS_VERSION = 2
+PROMPTS_VERSION = 3
 
 IMPORT_PROGRAM = (
     "You convert a strength coach's training spreadsheet into JSON. Copy exercise names, set counts, "
@@ -35,5 +35,30 @@ IMPORT_FORM = (
     "notes that add a spoken quality note). `calculated` with weeksToShow for weeks until the show. "
     "`photo` for the check-in photos. `voice` with key null when no data key fits, including ratings, "
     "measurements, blood glucose, wins and free-text notes. Use each key at most once. Never answer "
-    "the fields."
+    "the fields.\n\n"
+    "Also copy the macro targets (training and rest day kcal, protein, carbs, fat) and the cardio "
+    "protocol out of those blocks into `targets` and `cardioProtocol`; if a number isn't clearly "
+    "written there, leave it null."
+)
+
+COACH_REPLY = (
+    "You read a strength coach's reply to his athlete's weekly check-in and list every change he "
+    "makes to the athlete's plan. The plan's items are listed with a path, a label and the current "
+    "value. For each change, pick the item's path, the operation, and the number he said, and copy "
+    "his exact words into `quote`. List only changes he actually makes; a question, praise or "
+    "\"let's see how it goes\" is not a change. If he changes something that isn't in the list, or "
+    "you can't tell which item he means, put his sentence in `unclear`. Never work out a new value "
+    "and never suggest one.\n\n"
+    'Rules: `amount` is only a number he said, exactly as he said it: "drop carbs by 25" is op '
+    'decrease, amount 25; "carbs to 225" is op set, amount 225. For a swap, an addition or a rep '
+    "range, put the new exercise, supplement or range in `newItem` in his words. `quote` must be a "
+    "verbatim span of the reply. One change per item he changes; a change to training and rest "
+    "days is two changes. `appliesFrom` only when he names a day."
+)
+
+CUE_LABELS = (
+    "Each numbered segment is one sentence or phrase from a coach's reply. For each, give the "
+    'exercise it\'s about, from the list given, or "none". Mark `isCue` true only when it tells the '
+    "athlete how to perform that exercise (tempo, form, setup, effort). A change to sets, reps, load, "
+    "macros, cardio or supplements is not a cue. Never rewrite his words. Return one entry per segment."
 )

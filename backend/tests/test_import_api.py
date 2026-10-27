@@ -111,7 +111,8 @@ def test_import_program_invalid_model_output_is_422(client, monkeypatch):
 def test_import_form_from_json_text(client, spark):
     r = client.post("/import/form", json={"text": FORM_TXT.read_text()})
     assert r.status_code == 200, r.text
-    body = r.json()
+    body = r.json()["template"]
+    assert r.json()["targets"] is None and r.json()["cardioProtocol"] is None  # the fixture predates them
     assert len(body["fields"]) == 23
     assert body["fields"][0] == {
         "label": "Weeks away from target date", "prompt": None, "kind": "number",
@@ -151,3 +152,21 @@ def test_fetch_sheet_rejects_a_private_sheet(monkeypatch):
     monkeypatch.setattr(importing.httpx, "get", lambda *a, **k: resp)
     with pytest.raises(importing.ImportError_, match="not shared"):
         importing.fetch_sheet("https://docs.google.com/spreadsheets/d/abc/edit")
+
+
+def test_import_form_returns_targets_and_cardio_when_spark_reads_them(client, monkeypatch):
+    raw = dict(FORM_RAW)
+    raw["targets"] = {
+        "training": {"kcal": 2400, "proteinG": 200, "carbsG": 250, "fatG": 65},
+        "rest": {"kcal": 2100, "proteinG": 200, "carbsG": 175, "fatG": 65},
+    }
+    raw["cardioProtocol"] = " 25 min LISS x 2 "
+    monkeypatch.setattr(meta, "spark_json", lambda *a, **k: (raw, None))
+    r = client.post("/import/form", json={"text": "form"})
+    assert r.status_code == 200, r.text
+    assert r.json()["targets"]["training"]["carbsG"] == 250 and r.json()["targets"]["rest"]["kcal"] == 2100
+    assert r.json()["cardioProtocol"] == "25 min LISS x 2"
+    # A half-read block gives no targets rather than wrong ones.
+    raw["targets"]["rest"]["fatG"] = None
+    r = client.post("/import/form", json={"text": "form"})
+    assert r.json()["targets"] is None

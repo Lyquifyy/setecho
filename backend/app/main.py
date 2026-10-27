@@ -6,17 +6,19 @@ model output does not validate. It never guesses.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from app import audio, checkin_api, importing, meta, photos_api, sets_api, voice
-from app.schemas import CheckInTemplate, Program, StrictModel
+from app import audio, checkin_api, coach, importing, meta, photos_api, sets_api, voice
+from app.schemas import FormImport, Program, StrictModel
 
-app = FastAPI(title="Setecho API", version="0.3.0")
+app = FastAPI(title="Setecho API", version="0.4.0")
 app.include_router(photos_api.router)
 app.include_router(sets_api.router)
 app.include_router(checkin_api.router)
@@ -102,16 +104,52 @@ async def voice_command(
     return VoiceCommandResponse(transcript=transcript, intent=intent, sessionId=result.get("sessionId"))
 
 
-@app.post("/import/form", response_model=CheckInTemplate)
+@app.post("/import/form", response_model=FormImport)
 async def import_form(
     request: Request,
     file: Annotated[UploadFile | None, File()] = None,
     text: Annotated[str | None, Form()] = None,
-) -> CheckInTemplate:
-    """The coach's check-in form: multipart (file or text), or JSON {"text": "..."}."""
+) -> FormImport:
+    """The coach's check-in form: multipart (file or text), or JSON {"text": "..."}. Returns the
+    template plus the macro targets and cardio protocol read from its blocks (the first PlanState)."""
     upload = await _upload(file)
     if upload is None and text is None and "application/json" in request.headers.get("content-type", ""):
         body = await request.json()
         text = body.get("text") if isinstance(body, dict) else None
-    template, _, _ = importing.import_form(upload=upload, text=text)
-    return template
+    result, _, _ = importing.import_form(upload=upload, text=text)
+    return result
+
+
+def _today(value: str | None) -> date | None:
+    try:
+        return date.fromisoformat(value) if value else None
+    except ValueError:
+        return None
+
+
+@app.post("/coach/reply", response_model=coach.ReplyResponse)
+async def coach_reply(
+    request: Request,
+    audio_file: Annotated[UploadFile | None, File(alias="audio")] = None,
+    plan: Annotated[str | None, Form()] = None,
+    cuesEnabled: Annotated[bool | None, Form()] = None,
+    today: Annotated[str | None, Form()] = None,
+) -> coach.ReplyResponse:
+    """The coach's reply as JSON {text, plan, cuesEnabled, today} or multipart `audio` (a WhatsApp
+    voice note) + `plan` JSON. Returns the proposed changes with his quotes, the unclear sentences,
+    and the voice cues. Nothing is applied here."""
+    if audio_file is not None and audio_file.filename:
+        if not plan:
+            raise importing.ImportError_("plan is required")
+        state = coach.PlanState.model_validate_json(plan)
+        data = await audio_file.read()
+        return await run_in_threadpool(
+            coach.read_audio_reply, data, audio_file.filename, state, cuesEnabled is not False, _today(today)
+        )
+    body = await request.json() if "application/json" in request.headers.get("content-type", "") else {}
+    req = coach.ReplyRequest.model_validate(body)
+    if not req.text:
+        raise importing.ImportError_("give the reply as text, or an audio file")
+    return await run_in_threadpool(
+        coach.read_text_reply, req.text, req.plan, req.cuesEnabled, _today(req.today)
+    )

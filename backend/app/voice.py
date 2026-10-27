@@ -31,6 +31,9 @@ Intent = Literal[
     "endSession",
     "starting",
     "endSet",
+    "replayCue",
+    "yes",
+    "no",
     "answer",
     "unknown",
 ]
@@ -69,7 +72,9 @@ SYSTEM_PROMPT = (
     'setLoad: a new load in pounds ("drop to 215", "go to 225"). loadDelta: a change in pounds '
     '("add 5" is +5, "take off 10" is -10). skipSet. nextExercise. starting: the set is about to begin. '
     "endSet: the set just finished. undo. pause. resume. endSession. note: something for the weekly check-in, "
-    "with the text in `text` verbatim. answer: a reply to a question the app asked. unknown when unsure.\n"
+    'with the text in `text` verbatim. replayCue: play the coach\'s cue again ("say that again"). yes / no: '
+    "a plain answer to a question the app asked. answer: a reply with a number or words to a question the "
+    "app asked. unknown when unsure.\n"
     "Numbers are pounds for loads and counts for reps. Never invent a number: `number` holds only a value "
     "the athlete said. Keep `text` in the athlete's own words. Set confidence honestly; under 0.7 the app "
     "will ask the athlete to repeat."
@@ -184,6 +189,9 @@ def _small_number(words: list[str]) -> tuple[int, int]:
 
 _RULES: list[tuple[str, re.Pattern[str]]] = [
     ("undo", re.compile(r"\b(undo|scratch that|never ?mind|take that back)\b")),
+    ("replayCue", re.compile(r"\b(say that again|repeat that|play (that|it) again|again please)\b")),
+    ("yes", re.compile(r"^(yes|yeah|yep|yup|correct|right|sure|affirmative)( please)?$")),
+    ("no", re.compile(r"^(no|nope|nah|negative|wrong)( thanks)?$")),
     ("pause", re.compile(r"\b(pause|hold on|wait)\b")),
     ("resume", re.compile(r"\b(resume|unpause|continue|keep going)\b")),
     (
