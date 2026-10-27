@@ -16,6 +16,9 @@ struct BrandHeader: View {
             Menu {
                 Button("Program", systemImage: "doc.text.viewfinder") {}
                 Button("Settings", systemImage: "gearshape") {}
+                Divider()
+                // Temporary until M6: the M0 gate probes, testable from TestFlight.
+                Button("Gate probes", systemImage: "stethoscope") { ProbesPresenter.shared.isShown = true }
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.body.weight(.semibold))

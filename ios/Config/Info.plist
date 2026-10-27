@@ -4,6 +4,10 @@
 <dict>
 	<key>SetechoAPIBase</key>
 	<string>$(SETECHO_API_BASE)</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

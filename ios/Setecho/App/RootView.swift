@@ -25,6 +25,10 @@ struct RootView: View {
             }
         }
         .tint(Theme.cobalt)
+        .sheet(isPresented: Bindable(ProbesPresenter.shared).isShown) {
+            NavigationStack { ProbeHomeView() }
+                .tint(Theme.cobalt)
+        }
     }
 }
 

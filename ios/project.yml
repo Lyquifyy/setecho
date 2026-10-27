@@ -17,7 +17,11 @@ targets:
   Setecho:
     type: application
     platform: iOS
-    sources: [Setecho]
+    sources:
+      - Setecho
+      # Temporary until M6: the M0 gate probes ship inside the app, behind the More menu.
+      - path: Probes
+        excludes: [ProbesApp.swift, Info.plist, Probes.entitlements, README.md]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.getsetecho.app
@@ -25,11 +29,13 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Setecho
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
-        INFOPLIST_KEY_NSCameraUsageDescription: "Setecho films your sets to measure bar speed and bar path."
-        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Setecho records what you say after a set so it can log your RPE and notes."
-        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Import program photos and set videos."
+        INFOPLIST_KEY_NSCameraUsageDescription: "Setecho films your sets and takes your check-in photos."
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Setecho listens for your voice commands and check-in answers during hands-free sessions."
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "Import a program or check-in form from a screenshot."
+        INFOPLIST_KEY_NSHealthShareUsageDescription: "Setecho reads your weight, nutrition, steps and sleep to fill in your coach's check-in."
         INFOPLIST_KEY_UIUserInterfaceStyle: Light
         INFOPLIST_FILE: Config/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Config/Setecho.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
   SetechoTests:

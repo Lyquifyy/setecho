@@ -3,6 +3,9 @@ import SwiftUI
 struct ProbeHomeView: View {
     var body: some View {
         ScreenScaffold {
+            if ProbesPresenter.shared.isShown {
+                LinkButton(title: "Close probes", chevron: .leading) { ProbesPresenter.shared.isShown = false }
+            }
             TitleBlock(
                 eyebrow: "M0 · Tuesday's gates",
                 title: "Probes",

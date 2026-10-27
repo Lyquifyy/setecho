@@ -433,8 +433,10 @@ Report the results to the human before M1. A failed gate switches to its fallbac
 ## 13. Defaults for open questions (change when the human answers)
 | Question | Default |
 |---|---|
-| How the spreadsheet arrives | Support a `.csv`/`.xlsx` file from the share sheet, pasted text and a screenshot |
-| Check-in day | Sunday; wrap-up reminder Saturday 7 PM |
+| How the spreadsheet arrives | **Decided Oct 26: a Google Sheets link.** The backend fetches the sheet's CSV export (`/export?format=csv`); the sheet must be shared "anyone with the link". A `.csv`/`.xlsx` file, pasted text and a screenshot stay as fallbacks |
+| Check-in day | **Decided Oct 26: Thursday morning**; wrap-up reminder Wednesday 7 PM |
+| G1 organizers | **Decided Oct 26: not a sports analyzer or coach.** Human confirms in writing on Oct 27 |
+| Gates G2–G6 | **Decided Oct 26: build on the plan's defaults** and test on the phone from TestFlight, not from the Mac. The probe screens live behind the More menu until M6 |
 | Collage layout | 2×2: front, right / back, left |
 | "Current body weight" | Check-in morning weigh-in |
 | Rest time when the sheet has none | 150 s |

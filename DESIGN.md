@@ -145,5 +145,5 @@ Tabs: **Today / History / Check-in.** Settings and imports live in the More menu
 
 ## Open design questions
 - **Collage layout:** 1×4 or 2×2? Match the image the athlete sends today. Ask for a sample.
-- **Spreadsheet delivery:** a Google Sheets link or a file? It changes the Import screen's first step.
+- **Spreadsheet delivery:** decided Oct 26, a Google Sheets link. The Import screen's first step takes a pasted link, with a file or screenshot as the fallback.
 - **Tagline:** "A coach that remembers every rep" conflicts with rule 13. That's the athlete's call.
