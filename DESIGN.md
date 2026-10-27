@@ -128,6 +128,7 @@ Tabs: **Today / History / Check-in.** Settings and imports live in the More menu
 ### Review and send
 - **Purpose:** the exact message the coach receives, before it goes.
 - **Content:** the full text in the coach's format and order, with the collage image beneath it. Every number can be tapped to see its source.
+- **Clips for your coach** (stretch): a card with up to four set videos worth the coach's eyes, picked by rule, never by AI judgment. Each row shows a thumbnail, its reason ("6 of 8 reps · Bench press, set 4" or "Last set · Squat") and a remove button, plus "Add a set" from History. No verdicts, scores or form labels anywhere.
 - **Footer:** "Send to WhatsApp". If WhatsApp drops the text when an image is shared, the fallback is two steps: the image goes through the share sheet, the text is copied, and a banner says "Paste the check-in text under the photo."
 
 ### History (tab)

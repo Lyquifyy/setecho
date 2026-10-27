@@ -315,6 +315,21 @@ Prompt caching is automatic for repeated prefixes. Keep system prompts and schem
 6. **Send:** `/checkin/render` → `UIActivityViewController` with `[collageImage, text]`. Gate G6 decides whether WhatsApp keeps both.
 7. **Fallback:** share only the image, put the text on `UIPasteboard`, and show the banner "Paste the check-in text under the photo." Mark the draft `sentAt` when the share completes.
 
+### Clips for your coach (stretch, after posing practice)
+This replaces any AI form or posing critique. Setecho gives the coach evidence, never a verdict, and **no model is involved**.
+
+- **Selection rule (deterministic, in Swift):** from the check-in week's sessions, pick:
+  1. the last logged set of each session's first exercise
+  2. any set where logged reps < planned reps (or < `repsMin`)
+- Keep at most 4, preferring rule 2, then the most recent.
+- **Each clip:**
+  - trim the set's MOV to its `startedAt − 1 s … endedAt + 1 s`
+  - export as H.264 720p with `AVAssetExportSession`, aiming for 20 MB or less
+  - tag it with a reason: "Last set · Bench press" or "6 of 8 reps · Bench press, set 4"
+- **UI:** a "Clips for your coach" card on Review and send. One row per clip, with a thumbnail, the reason as a secondary line, and a remove button. The athlete can add any other set from History.
+- **Message:** `/checkin/render` appends one line after the coach's last field, "Clips attached: Bench press set 4 (6 of 8 reps), Squat set 3", and the clips join the share items after the collage.
+- **Risk:** check that WhatsApp accepts the image, the text and several videos in one share. If not, share the clips as a second batch right after the check-in.
+
 ---
 
 ## 8. Model prompts
@@ -394,7 +409,7 @@ Report the results to the human before M1. A failed gate switches to its fallbac
 ### M6 — Rehearsal (Mon Nov 2)
 - [ ] A full end-to-end run: session, photos, check-in. Fix bugs only.
 - [ ] History tab (DESIGN.md).
-- [ ] Stretch only if everything is green, in this order: posing-practice rounds, bar speed, prep questions, watch.
+- [ ] Stretch only if everything is green, in this order: posing-practice rounds, clips for your coach (§7), bar speed, prep questions, watch.
 
 ### M7–M8 — Film and submit (Tue Nov 3 – Wed Nov 4)
 - [ ] The README states what was built during Oct 26 – Nov 4 and which Meta model does what.
