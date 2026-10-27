@@ -58,7 +58,20 @@ def test_counts_a_barbell_set(client, fake_sam):
     assert body["reps"] == 8 and body["trackFound"] and body["frames"] == body["trackedFrames"]
     assert len(body["repTimes"]) == 8 and body["confidence"] > 0.9
     assert body["prompt"] == "weight plate"
+    assert len(body["repSpeeds"]) == 8 and all(v > 0 for v in body["repSpeeds"])
+    assert body["velocityLossPct"] == 0.0  # an even set
     assert fake_sam["uploaded"] == ["set.mp4"] and fake_sam["deleted"] == ["file_1"]
+
+
+def test_rest_pause_set_gets_no_velocity_loss(client, fake_sam):
+    r = _post(client, context={"exerciseId": "x", "equipment": "barbell", "setRole": "restPause"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["reps"] == 8 and body["velocityLossPct"] is None and len(body["repSpeeds"]) == 8
+    r = _post(client, context={"exerciseId": "x", "equipment": "barbell", "setRole": "warmup"})
+    assert r.json()["velocityLossPct"] == 0.0
+    r = _post(client, context={"exerciseId": "x", "equipment": "barbell", "setRole": "amrap"})
+    assert r.status_code == 422
 
 
 def test_equipment_picks_the_prompt(client, fake_sam):
@@ -126,8 +139,14 @@ def test_no_track_gives_no_count(client, fake_sam, monkeypatch):
     assert r.status_code == 200
     body = r.json()
     assert body["reps"] is None and body["trackFound"] is False and body["repTimes"] == []
+    assert body["repSpeeds"] == [] and body["velocityLossPct"] is None
 
 
 def test_context_model_defaults():
     ctx = sets_api.CountContext.model_validate_json('{"exerciseId":"e","equipment":"cable"}')
-    assert ctx.plannedReps is None and ctx.phoneReps is None
+    assert ctx.plannedReps is None and ctx.phoneReps is None and ctx.setRole is None
+
+
+def test_clips_are_720p_at_15_fps():
+    assert video.COUNT_FPS == 15 and video.COUNT_HEIGHT == 720
+    assert video.MAX_COUNT_FRAMES == 4 * 60 * 15

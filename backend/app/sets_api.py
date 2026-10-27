@@ -32,11 +32,20 @@ class CountContext(StrictModel):
     equipment: reps.Equipment
     plannedReps: int | None = None
     phoneReps: int | None = None
+    setRole: reps.SetRole | None = Field(default=None, description="A rest-pause set gets no velocity loss")
 
 
 class CountResponse(StrictModel):
     reps: int | None = Field(description="Null when the equipment was not tracked on enough frames")
     repTimes: list[float] = Field(description="Seconds from the clip's first frame, one per rep")
+    repSpeeds: list[float] = Field(
+        default_factory=list, description="Mean lifting speed per rep, px/s at 720p (HANDOFF.md §5, step 8)"
+    )
+    velocityLossPct: float | None = Field(
+        default=None,
+        description="How much the last two reps slowed against the first two, 0-100; null under 3 reps "
+        "or on a rest-pause set (step 9)",
+    )
     confidence: float = Field(description="0-1; under 0.6 the phone asks the athlete")
     trackFound: bool
     frames: int
@@ -86,11 +95,13 @@ async def count_clip(data: bytes, context: CountContext) -> CountResponse:
     timings["segment"] = round(time.monotonic() - t2, 2)
     t3 = time.monotonic()
     track = await run_in_threadpool(reps.track_from_raw, raw, times)
-    counted = reps.count(track)
+    counted = reps.count(track, context.setRole)
     timings["track"] = round(time.monotonic() - t3, 2)
     return CountResponse(
         reps=counted.reps,
         repTimes=counted.rep_times,
+        repSpeeds=counted.rep_speeds,
+        velocityLossPct=counted.velocity_loss_pct,
         confidence=counted.confidence,
         trackFound=counted.track_found,
         frames=counted.frames,
@@ -111,8 +122,8 @@ async def sets_count(
     video_file: Annotated[UploadFile, File(alias="video")],
     context: Annotated[str, Form()],
 ) -> StreamingResponse:
-    """`video`: MP4, 720p, 10 fps, no audio, trimmed to the set. `context`: JSON
-    {exerciseId, equipment, plannedReps, phoneReps}.
+    """`video`: MP4, 720p, 15 fps, no audio, trimmed to the set. `context`: JSON
+    {exerciseId, equipment, plannedReps, phoneReps, setRole}.
 
     SAM takes a minute or more and says nothing meanwhile, so the response streams a newline
     every few seconds until the JSON is ready: proxies and the phone's connection stay open.

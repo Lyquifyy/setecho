@@ -8,8 +8,8 @@ import subprocess
 from pathlib import Path
 
 COUNT_HEIGHT = 720
-COUNT_FPS = 10
-MAX_COUNT_FRAMES = 2400  # four minutes at 10 fps; a set is never that long
+COUNT_FPS = 15  # rep speed needs the extra frames over 10 (HANDOFF.md §6, SAM on video)
+MAX_COUNT_FRAMES = 3600  # four minutes at 15 fps; a set is never that long
 
 
 def frame_times(path: Path) -> list[float]:
@@ -30,7 +30,7 @@ def frame_times(path: Path) -> list[float]:
 
 
 def prepare_for_count(src: Path, dst: Path, height: int = COUNT_HEIGHT, fps: int = COUNT_FPS) -> Path:
-    """720p, 10 fps, no audio, H.264 faststart: what the phone sends and what SAM gets."""
+    """720p, 15 fps, no audio, H.264 faststart: what the phone sends and what SAM gets."""
     dst.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         "ffmpeg", "-y", "-loglevel", "error", "-i", str(src),

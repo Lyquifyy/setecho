@@ -38,6 +38,7 @@ def build(
     rest: float = 0.55,
     expected: int | None,
     notes: str,
+    extra: dict | None = None,
 ) -> dict:
     rng = np.random.default_rng(7)
     pauses = pauses or {}
@@ -63,7 +64,9 @@ def build(
         y = y + rng.normal(0, noise, size=n)
     for start, end in gaps or []:
         y[(t >= start) & (t < end)] = np.nan
-    series = reps.Series(t=t, y=y, expected_reps=expected, name=name, notes=notes, extra={"fps": fps})
+    series = reps.Series(
+        t=t, y=y, expected_reps=expected, name=name, notes=notes, extra={"fps": fps, **(extra or {})}
+    )
     return reps.series_to_json(series)
 
 
@@ -84,6 +87,10 @@ def main() -> None:
         build("variable_frame_rate", [(2.5, 0.15)] * 8, jitter=0.012, expected=8,
               notes="Eight reps with the frame times jittered, as iPhone video is."),
         build("single_rep", [(3.0, 0.15)], expected=1, notes="A heavy single."),
+        build("slowing_8", [(2.0, 0.15)] * 2 + [(2.4, 0.15)] * 2 + [(2.8, 0.15)] * 2 + [(3.6, 0.15)] * 2,
+              expected=8, notes="Eight reps that slow down: the last two take 3.6 s against 2.0 s for the "
+              "first two, so the lifting speed drops by 44%.",
+              extra={"expectedVelocityLossPct": 44.4}),
         build("mostly_lost", [(2.5, 0.15)] * 6, gaps=[(2.0, 12.0)], expected=None,
               notes="Tracking lost for most of the set: no count, trackFound false."),
         build("no_motion", [], lead=4.0, tail=4.0, noise=0.004, expected=0,

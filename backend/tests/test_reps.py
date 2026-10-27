@@ -32,7 +32,46 @@ def test_shared_fixture_counts_match(path):
 
 def test_fixture_set_covers_the_required_cases():
     names = {p.stem for p in FIXTURE_FILES}
-    assert {"paused_rep", "half_rep", "short_gap", "mostly_lost", "clean_8"} <= names
+    assert {"paused_rep", "half_rep", "short_gap", "mostly_lost", "clean_8", "slowing_8"} <= names
+
+
+# --- Steps 8-9: rep speed and velocity loss (HANDOFF.md §5) ---
+
+
+def test_slowing_set_reports_its_velocity_loss():
+    """The last two reps take 3.6 s against 2.0 s for the first two: a 44% drop in lifting speed."""
+    series = _series(FIXTURES / "slowing_8.json")
+    result = reps.count_1d(series)
+    assert result.reps == 8 and len(result.rep_speeds) == 8
+    assert result.rep_speeds == sorted(result.rep_speeds, reverse=True)
+    assert result.velocity_loss_pct == pytest.approx(series.extra["expectedVelocityLossPct"], abs=3)
+
+
+def test_even_set_has_no_velocity_loss_and_a_pause_at_the_bottom_is_not_lifting():
+    assert reps.count_1d(_series(FIXTURES / "clean_8.json")).velocity_loss_pct == 0.0
+    paused = reps.count_1d(_series(FIXTURES / "paused_rep.json"))
+    assert paused.velocity_loss_pct == 0.0  # the 2 s hold at the bottom of rep 3 is not a slow lift
+    assert max(paused.rep_speeds) - min(paused.rep_speeds) < 0.01
+
+
+def test_velocity_loss_needs_three_reps_and_never_applies_to_a_rest_pause_set():
+    assert reps.count_1d(_series(FIXTURES / "single_rep.json")).velocity_loss_pct is None
+    assert reps.velocity_loss([1.0, 0.5]) is None
+    assert reps.velocity_loss([1.0, 0.9, 0.5, 0.5]) == pytest.approx(50.0)
+    assert reps.velocity_loss([1.0, 0.9, 0.5, 0.5], "restPause") is None
+    assert reps.velocity_loss([1.0, 0.9, 1.2, 1.3]) == 0.0  # faster at the end: floored at 0
+    assert reps.velocity_loss([0.0, 0.0, 0.5]) is None
+    assert reps.count_1d(_series(FIXTURES / "slowing_8.json"), set_role="restPause").velocity_loss_pct is None
+    assert reps.count_1d(_series(FIXTURES / "slowing_8.json"), set_role="top").velocity_loss_pct is not None
+
+
+def test_rep_speed_uses_real_timestamps():
+    """The same motion sampled at half the frame rate must give the same speed."""
+    series = _series(FIXTURES / "slowing_8.json")
+    full = reps.count_1d(series)
+    half = reps.count_1d(reps.Series(series.t[::2], series.y[::2]))
+    assert half.reps == 8
+    assert half.velocity_loss_pct == pytest.approx(full.velocity_loss_pct, abs=4)
 
 
 def test_paused_rep_is_one_rep_and_confident():
@@ -202,8 +241,30 @@ def test_saved_g7_centroid_series_count_correctly(path):
             for x, y in zip(data["x"], data["y"], strict=True)
         ]
     )
-    result = reps.count(reps.Track(np.asarray(data["t"], float), centroids))
+    track = reps.Track(np.asarray(data["t"], float), centroids, data.get("objectSizePx", 0.0))
+    result = reps.count(track)
     assert result.reps == data["expectedReps"]
+    # Step 8-9 on a real set: every rep has a speed, and the set slowed (it was taken near failure).
+    assert len(result.rep_speeds) == result.reps and all(v > 0 for v in result.rep_speeds)
+    assert result.velocity_loss_pct is not None and 30 <= result.velocity_loss_pct <= 70
+    assert reps.count(track, "restPause").velocity_loss_pct is None
+
+
+def test_the_two_g7_passes_agree_on_the_velocity_loss():
+    """SAM runs are not deterministic, but the two passes over the same set land within a point."""
+    results = []
+    for path in SAM_FIXTURES:
+        data = json.loads(path.read_text())
+        centroids = np.array(
+            [
+                [np.nan if x is None else x, np.nan if y is None else y]
+                for x, y in zip(data["x"], data["y"], strict=True)
+            ]
+        )
+        results.append(reps.count(reps.Track(np.asarray(data["t"], float), centroids)))
+    assert len(results) >= 2
+    losses = [r.velocity_loss_pct for r in results]
+    assert max(losses) - min(losses) < 1.0
 
 
 def test_parse_boxes_reads_frames_and_objects_and_skips_masks():

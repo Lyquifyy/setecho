@@ -2,7 +2,7 @@
 
   uv run python -m scripts.sam_reps_probe <set.mov> --equipment barbell [--expected 8] [--fixture]
 
-Downscales the clip to 720p at 10 fps with no audio, uploads it, runs SAM with the equipment's
+Downscales the clip to 720p at 15 fps with no audio, uploads it, runs SAM with the equipment's
 prompt, counts, and prints the count, the rep times and the seconds from upload to count.
 Raw output goes to backend/private/reps/ (gitignored). `--fixture` saves only the per-frame
 centroid series (no masks, no video) to tests/fixtures/sam_reps/<name>.json, so the count can
@@ -30,7 +30,7 @@ async def run(args: argparse.Namespace) -> None:
     src = Path(args.clip)
     name = args.name or src.stem
     PRIVATE.mkdir(parents=True, exist_ok=True)
-    small = video.prepare_for_count(src, PRIVATE / f"{name}_720p10.mp4")
+    small = video.prepare_for_count(src, PRIVATE / f"{name}_720p{video.COUNT_FPS}.mp4")
     times = video.frame_times(small)
     prompt = reps.SAM_PROMPTS[args.equipment]
     print(f"{small.name}: {len(times)} frames, {times[-1] - times[0]:.1f} s, prompt {prompt!r}")
@@ -50,6 +50,7 @@ async def run(args: argparse.Namespace) -> None:
     print(f"tracked {counted.tracked_frames}/{counted.frames} frames ({track.share:.0%})")
     print(f"reps: {counted.reps}  confidence: {counted.confidence}  trackFound: {counted.track_found}")
     print(f"rep times: {counted.rep_times}")
+    print(f"rep speeds (px/s): {counted.rep_speeds}  velocity loss: {counted.velocity_loss_pct}%")
     if args.expected is not None:
         verdict = "PASS" if counted.reps == args.expected else "FAIL"
         print(f"{verdict}: expected {args.expected}, counted {counted.reps}")
@@ -70,6 +71,8 @@ async def run(args: argparse.Namespace) -> None:
                 "reps": counted.reps,
                 "confidence": counted.confidence,
                 "rep_times": counted.rep_times,
+                "rep_speeds": counted.rep_speeds,
+                "velocity_loss_pct": counted.velocity_loss_pct,
                 "expected": args.expected,
             },
             indent=2,

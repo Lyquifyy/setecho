@@ -10,6 +10,12 @@ The pipeline, numbered as in the handoff:
 5. Reps are the peaks of d(t) with prominence of at least 35% of d's 95th percentile, at least
    0.8 s apart. A half rep never reaches the prominence and is not counted.
 6. confidence = tracked share x (1 - min(1, CV of the rep intervals)).
+7. (Tuned constants below.)
+8. Rep speed: each rep's lifting phase runs from its deepest point (the peak of d) back toward
+   the rest position, until d falls to 20% of that peak. rep_speeds = the mean |d'(t)| over that
+   phase, with real timestamps. Pixels per second; the next step is a ratio, so no scale is needed.
+9. Velocity loss: 100 x (1 - mean of the last two speeds / fastest of the first two), floored at 0.
+   Sets under 3 reps and rest-pause sets return none: the pauses make the slowdown meaningless.
 
 Steps 3-5 on a one-dimensional series are `count_series`, which `RepCounter.swift` mirrors on
 the phone. Both run on the fixtures in tests/fixtures/reps/ and must agree.
@@ -50,6 +56,15 @@ REST_WINDOW_SECONDS = 0.5
 PROMINENCE_FRACTION = 0.35
 MIN_REP_INTERVAL_SECONDS = 0.8
 LOW_CONFIDENCE = 0.6
+# Step 8: the lifting phase starts when the bar leaves the deepest point (the last sample still
+# within this fraction of the rep's peak, since a pause at the chest is a plateau, not a lift) and
+# ends when d(t) has fallen to LIFT_PHASE_END_FRACTION of that peak.
+LIFT_PHASE_START_FRACTION = 0.90
+LIFT_PHASE_END_FRACTION = 0.20
+# Step 9: velocity loss compares the last two reps with the first two, so it needs three.
+MIN_REPS_FOR_VELOCITY = 3
+
+SetRole = Literal["warmup", "top", "backOff", "restPause"]
 
 
 @dataclass(frozen=True)
@@ -60,6 +75,8 @@ class RepResult:
     track_found: bool
     frames: int
     tracked_frames: int
+    rep_speeds: list[float] = field(default_factory=list)  # step 8, one per rep, px/s (or units/s)
+    velocity_loss_pct: float | None = None  # step 9; None under 3 reps or on a rest-pause set
 
     @property
     def is_confident(self) -> bool:
@@ -327,6 +344,46 @@ def count_series(t: np.ndarray, y: np.ndarray, min_amplitude: float = 0.0) -> tu
     return sorted(kept), d
 
 
+def rep_speeds(t: np.ndarray, d: np.ndarray, peaks: list[int]) -> list[float]:
+    """Step 8. For each rep, the mean |d'(t)| over its lifting phase: from the moment the bar leaves
+    the deepest point (the last sample still within 90% of the peak, so a pause at the chest is
+    not counted as lifting) until d falls to 20% of that peak. When the bar never gets that close
+    to rest before the next rep (touch-and-go), the phase ends at the lowest point between the
+    two peaks. Unrounded; the caller rounds for output."""
+    t = np.asarray(t, dtype=float)
+    d = np.asarray(d, dtype=float)
+    speeds: list[float] = []
+    for k, p in enumerate(peaks):
+        peak = float(d[p])
+        stop = peaks[k + 1] if k + 1 < len(peaks) else len(d) - 1
+        if peak <= 0 or stop <= p:
+            speeds.append(0.0)
+            continue
+        segment = d[p : stop + 1]
+        below = np.flatnonzero(segment <= LIFT_PHASE_END_FRACTION * peak)
+        end = int(below[0]) if len(below) else int(np.argmin(segment))
+        high = np.flatnonzero(segment[:end] >= LIFT_PHASE_START_FRACTION * peak)
+        start = int(high[-1]) if len(high) else 0
+        duration = float(t[p + end] - t[p + start])
+        if end <= start or duration <= 0:
+            speeds.append(0.0)
+            continue
+        travelled = float(np.abs(np.diff(segment[start : end + 1])).sum())
+        speeds.append(travelled / duration)
+    return speeds
+
+
+def velocity_loss(speeds: list[float], set_role: str | None = None) -> float | None:
+    """Step 9. None under three reps, on a rest-pause set, or when the first reps did not move."""
+    if set_role == "restPause" or len(speeds) < MIN_REPS_FOR_VELOCITY:
+        return None
+    fastest = max(speeds[:2])
+    if fastest <= 0:
+        return None
+    loss = 100.0 * (1.0 - (speeds[-2] + speeds[-1]) / 2.0 / fastest)
+    return round(max(0.0, loss), 1)
+
+
 def confidence_of(track_share: float, rep_times: list[float]) -> float:
     """Step 6. No reps: 0. One rep has no intervals; its spread is unknown, so it scores halfway."""
     if not rep_times:
@@ -340,19 +397,37 @@ def confidence_of(track_share: float, rep_times: list[float]) -> float:
     return float(np.clip(track_share * (1 - min(1.0, cv)), 0.0, 1.0))
 
 
-def count(track: Track) -> RepResult:
+def _result(
+    t: np.ndarray,
+    peaks: list[int],
+    d: np.ndarray,
+    share: float,
+    frames: int,
+    tracked: int,
+    set_role: str | None,
+) -> RepResult:
+    rep_times = [round(float(t[p] - t[0]), 3) for p in peaks]
+    speeds = rep_speeds(t, d, peaks)
+    return RepResult(
+        len(peaks), rep_times, round(confidence_of(share, rep_times), 3), True, frames, tracked,
+        [round(v, 3) for v in speeds], velocity_loss(speeds, set_role),
+    )  # fmt: skip
+
+
+def count(track: Track, set_role: str | None = None) -> RepResult:
     """The full pipeline on a centroid track."""
     frames = len(track.times)
     tracked = int(track.tracked.sum())
     share = track.share
     if frames == 0 or share < MIN_TRACK_SHARE:
         return RepResult(None, [], 0.0, False, frames, tracked)
-    peaks, _ = count_series(track.times, project(track), MIN_AMPLITUDE_OBJECT_FRACTION * track.object_size)
-    rep_times = [round(float(track.times[p] - track.times[0]), 3) for p in peaks]
-    return RepResult(len(peaks), rep_times, round(confidence_of(share, rep_times), 3), True, frames, tracked)
+    peaks, d = count_series(track.times, project(track), MIN_AMPLITUDE_OBJECT_FRACTION * track.object_size)
+    return _result(track.times, peaks, d, share, frames, tracked, set_role)
 
 
-def count_1d(series: Series, min_amplitude: float = MIN_AMPLITUDE_NORMALIZED) -> RepResult:
+def count_1d(
+    series: Series, min_amplitude: float = MIN_AMPLITUDE_NORMALIZED, set_role: str | None = None
+) -> RepResult:
     """The pipeline on an already one-dimensional, normalized series (the shared fixtures, the
     phone's joint)."""
     frames = len(series.t)
@@ -360,9 +435,8 @@ def count_1d(series: Series, min_amplitude: float = MIN_AMPLITUDE_NORMALIZED) ->
     share = tracked / frames if frames else 0.0
     if frames == 0 or share < MIN_TRACK_SHARE:
         return RepResult(None, [], 0.0, False, frames, tracked)
-    peaks, _ = count_series(series.t, series.y, min_amplitude)
-    rep_times = [round(float(series.t[p] - series.t[0]), 3) for p in peaks]
-    return RepResult(len(peaks), rep_times, round(confidence_of(share, rep_times), 3), True, frames, tracked)
+    peaks, d = count_series(series.t, series.y, min_amplitude)
+    return _result(np.asarray(series.t, dtype=float), peaks, d, share, frames, tracked, set_role)
 
 
 # ---------------------------------------------------------------------------
