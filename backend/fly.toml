@@ -1,0 +1,29 @@
+# Fly.io config for the Setecho API. The human runs, once, from backend/:
+#   fly auth login
+#   fly launch --copy-config --no-deploy      # keeps this file; pick a region near the gym
+#   fly secrets set MODEL_API_KEY=...         # the key never lives in the repo
+#   fly deploy
+# Then put https://<app>.fly.dev into ios/Config/Local.xcconfig as SETECHO_API_BASE.
+app = "setecho-api"
+primary_region = "dfw"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

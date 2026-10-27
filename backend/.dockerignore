@@ -1,0 +1,11 @@
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+private
+clips
+tests
+scripts
+.env
+*.env

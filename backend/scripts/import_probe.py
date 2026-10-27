@@ -109,7 +109,7 @@ def main() -> None:
     if sheet:
         t0 = time.time()
         try:
-            program, raw, resp = importing.import_program(source=sheet)
+            program, raw, resp = importing.import_program(upload=importing.Upload.from_path(sheet))
         except importing.ImportValidationError as e:
             save_invalid(f"program_{sheet.stem}", sheet, e)
             raise SystemExit(1) from e
@@ -124,7 +124,7 @@ def main() -> None:
     if form:
         t0 = time.time()
         try:
-            template, raw, resp = importing.import_form(source=form)
+            template, raw, resp = importing.import_form(upload=importing.Upload.from_path(form))
         except importing.ImportValidationError as e:
             save_invalid(f"form_{form.stem}", form, e)
             raise SystemExit(1) from e
