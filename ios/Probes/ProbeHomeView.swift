@@ -23,6 +23,10 @@ struct ProbeHomeView: View {
                 ProbeRow(gate: "G6", title: "WhatsApp share", detail: "One image plus text: do both arrive together?") {
                     ShareProbeView()
                 }
+                CardDivider()
+                ProbeRow(gate: "G8", title: "Watch", detail: "Venu 4 sets and wrist counts, with each message's delay") {
+                    WatchProbeView()
+                }
             }
             SectionCard("Elsewhere") {
                 Text("G1 is a question for office hours. G4 (SAM), G5 (import) and the voice smoke run from backend/scripts on the Mac.")

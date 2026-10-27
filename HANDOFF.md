@@ -20,7 +20,7 @@ Setecho:
 1. **Imports the coach's material once:** the spreadsheet program and the check-in form.
 2. **Logs training hands-free, with or without the camera.** A Setecho app on the athlete's Garmin watch catches every set at every station from wrist motion, with nothing to set up. For the lifts the athlete wants measured or filmed, the phone goes on a tripod: it detects the set, counts the reps instantly, and SAM 3.1 then measures them from the set's video. A DJI wireless mic takes spoken corrections, and results are read aloud over the athlete's music. There's no mode to pick: Setecho uses whatever is there.
 3. **Takes the four check-in photos hands-free,** aligned to last week.
-4. **Fills half the check-in from data.** Weight (Withings), macros (MacroFactor), and steps and sleep (Garmin) all arrive through Apple Health. The rest is asked in a 2-minute voice wrap-up.
+4. **Fills half the check-in from data.** Weight (Withings), macros (MacroFactor), and steps and sleep (Garmin) all arrive through Apple Health. The rest is asked in a 2-minute voice wrap-up. On check-in morning it all runs as one hands-free conversation: Setecho asks for the weight, the photos and the rest of the coach's questions, and understands natural answers like "give me a couple of minutes".
 5. **Sends the check-in to WhatsApp** in the coach's exact format.
 6. **Turns the coach's reply into plan changes.** The athlete shares the coach's WhatsApp text or voice note into Setecho. Each change is listed next to the coach's exact words, and nothing changes until the athlete approves it. Optionally, the coach's own voice plays in the athlete's headphones before the exercise he talked about.
 
@@ -222,6 +222,7 @@ Base URL comes from `SETECHO_API_BASE` (`ios/Config/Local.xcconfig`). All bodies
 | `POST /photos/segment` | multipart: `image` (JPEG) | `{width, height, box: [x,y,w,h], maskPng: base64}` | SAM 3.1 image |
 | `POST /checkin/draft` | `{template, facts: WeekFacts, notes: [VoiceNote], training: TrainingSummary, lastCheckIn?: CheckInDraft, styleExamples: [String]}` | `CheckInDraft` | Spark tool calling, then a validator |
 | `POST /checkin/answer` | multipart: `audio` + `{fieldId, field: FieldSpec, styleExamples}` | `{transcript, answer: FieldAnswer}` | Transcribe, then Spark structured output |
+| `POST /checkin/turn` | multipart: `audio` (WAV) + `context` JSON `{template, step, askedFieldId, pending: [fieldId], answered: [FieldAnswer], styleExamples}` | `{transcript, intent, answers: [FieldAnswer], reply, confidence}` | Transcribe, then Spark structured output, then a validator |
 | `POST /checkin/render` | `{template, draft}` | `{text}`, the WhatsApp message | none (templating) |
 | `POST /coach/reply` | `{text, plan: PlanState}`, or multipart `audio` (a WhatsApp voice note: `.opus`/`.ogg`, `.m4a` or `.wav`) + `plan` JSON | `{transcript, changes: [PlanChange], unclear: [String], cues: [VoiceCue]}` | Transcribe (audio only, per segment), then Spark structured output, then a validator |
 
@@ -273,6 +274,18 @@ If `confidence` is under 0.7, or the intent is `unknown`, the app asks back ("Di
    - For text, the segments are its sentences.
    - Spark labels each segment with `exerciseId` (a per-request enum of the plan's exercise ids, plus `"none"`) and `isCue`. A cue is his instruction about how to do an exercise: tempo, form, setup, effort. A plan change is never a cue; it goes to `changes`.
    - Return one `VoiceCue` per cue segment with its `startSec`/`endSec`. The validator drops a cue whose `exerciseId` isn't in the plan.
+
+**`/checkin/turn`** lives in `backend/app/checkin_turn.py`. It handles one spoken turn of Check-in morning (§7).
+1. Transcribe the utterance (file mode).
+2. Spark structured output, with `fieldId` as a per-request enum of the template's fields, and `intent` one of `answer`, `correction`, `pause`, `resume`, `skip`, `goBack`, `repeat`, `forCoach`, `ready`, `chitchat`, `unclear`.
+3. One utterance can answer several fields ("180.8, and glucose was 91"). A `correction` names a field that's already answered.
+4. `forCoach` is a question meant for the coach ("should I bump my carbs?"). Once the athlete says yes, it's appended to "Additional notes or concerns" in their words.
+5. **The validator:**
+   - Every number in `answers` and in `reply` appears in the transcript, as digits or number words.
+   - Every `fieldId` exists.
+   - `reply` is 20 words or fewer and gives no advice (the prompt, plus a short blocklist check).
+   - A turn that fails any check becomes `unclear`, with the reply "Sorry, say that again?"
+6. The backend never chooses the next question; the phone does.
 
 ---
 
@@ -357,6 +370,7 @@ Prompt caching is automatic for repeated prefixes. Keep system prompts and schem
 - Add `NSHealthShareUsageDescription`: "Setecho reads your weight, nutrition, steps and sleep to fill in your coach's check-in."
 - Camera, microphone and photo strings already exist. Update the camera string to "Setecho films your sets and takes your check-in photos."
 - Background modes: `audio`, so the session keeps listening and speaking with the screen locked.
+- An App Shortcut (App Intents) for "Start my Setecho check-in" (§7, Check-in morning).
 - A share extension target, `SetechoShare`, and the app group `group.com.getsetecho.app` on both targets (§7, Coach reply).
 - Signing: the human sets `DEVELOPMENT_TEAM` in `Local.xcconfig`. HealthKit needs a real device for real data; the simulator only has sample data you add.
 
@@ -370,7 +384,7 @@ Prompt caching is automatic for repeated prefixes. Keep system prompts and schem
 - **Sleep:** per night, sum the asleep stages (`asleepCore`, `asleepDeep`, `asleepREM`, `asleepUnspecified`) for samples ending that morning.
 - **LISS:** Garmin workouts of walking, elliptical, stair climbing or cycling type, with their minutes.
 - Show which source app each value came from (`HKSource.name`) in `Provenance`.
-- **Weight fallback (P2):** Withings only writes to Apple Health when its app is opened. When the wrap-up starts or the check-in is drafted and there's no `bodyMass` sample since 4 AM that day, say and show "Open Withings once to sync today's weight". Offer an "Open Withings" link only if `canOpenURL` confirms a scheme for the Withings app; never guess one. Re-query when Setecho comes back to the foreground. The wrap-up carries on meanwhile. Once the direct connection is in (P6, Withings direct), it replaces this.
+- **Weight on check-in morning:** Withings only writes to Apple Health when its app is opened. So Check-in morning (below) asks for the weight, unless a `bodyMass` sample since 4 AM is already in Apple Health, or Withings direct (P6) has it.
 
 ### Deterministic check-in fields (computed in Swift, sent as `WeekFacts`, rendered by the backend)
 
@@ -478,6 +492,27 @@ His instructions about a specific exercise, played in his own voice before that 
 6. **Send:** `/checkin/render` → `UIActivityViewController` with `[collageImage, text]`. Gate G6 decides whether WhatsApp keeps both.
 7. **Fallback:** share only the image, put the text on `UIPasteboard`, and show the banner "Paste the check-in text under the photo." Mark the draft `sentAt` when the share completes.
 
+### Check-in morning (conversational, hands-free)
+The whole check-in as one conversation on check-in morning, in Setecho's own voice, with the coach's exact wording for his questions. **Never a synthetic copy of the coach's voice.**
+- **Start:** "Hey Siri, start my Setecho check-in" (an App Shortcut; the phrase must contain the app's name), the check-in-day notification, or Today's check-in card.
+- **Steps, fixed in code, in this order:**
+  1. **Weight:** "Morning. Step on the scale, and tell me when you're off."
+     - If today's weigh-in is already in, say it: "180.8, got it." It's in if Apple Health has it since 4 AM, or once Withings direct is built, from one fetch when the athlete says they're off.
+     - Otherwise ask, "What did it say?"
+  2. **Fasted glucose:** "Fasted glucose?"
+  3. **Photos:** "Set up your tripod for photos, and tell me when you're ready." The Photo session runs as it is, ending on the collage.
+  4. **The coach's questions:** every `.voice` or `.missing` field, in his order, with his label as the question and the measurements as one question. Drafted fields are read back for a yes: "Last refeed, Saturday the 24th?"
+  5. **Review:** "That's everything. Want me to read it back, or open it to send?" Then Review and send. Sending to WhatsApp is the one tap.
+- **Every utterance goes to `/checkin/turn`.** The phone applies the answers, speaks the reply, and picks the next question itself: the first pending field in the coach's order. Spark understands; code decides.
+- **Pause:** on `pause` ("give me a couple of minutes"), speak the reply ("No worries, just tell me whenever you're ready"), stop asking, and keep listening.
+  - Any speech resumes; an answer resumes and counts.
+  - After 10 minutes of silence, stop listening and send one notification: "Your check-in is waiting. Say 'I'm back' or open Setecho."
+- **Echo:** read every number back as it's stored ("Weight, 180.8"), with `VoiceEcho` on screen. "Undo" or a correction fixes it.
+- **Resume anywhere:** the draft is saved after every answer. Reopening picks up at the next pending step and field.
+- **Turn-taking:** listen only after Setecho finishes speaking, so it never hears itself. Interrupting mid-reply can come later.
+- **Voice:** `AVSpeechSynthesizer` with the best installed voice, premium first, then enhanced. Settings has a voice picker, and first run suggests downloading a premium voice in iOS's Spoken Content settings.
+- **Fallback:** the separate Photo session and Wrap-up screens stay. If Check-in morning isn't solid by Wednesday 9 PM, Thursday uses them.
+
 ### Coach reply
 - **The first `PlanState`** comes from the imports: the program, plus the macro targets and cardio protocol read out of the form's carried blocks (part of `/import/form`'s structured output), confirmed on the Form review screen.
 
@@ -535,6 +570,10 @@ Keep the prompts in `backend/app/prompts.py` and the schemas in `backend/app/sch
 
 > Turn the athlete's spoken answer to "{label}" into the text they'd type. Keep their words and tone; fix only filler and false starts. Extract the number for scale or measurement fields. "Twenty-four and three quarters" is 24.75.
 
+**Check-in turn** (`/checkin/turn`, structured output = `{intent, answers: [{fieldId, text, number?, measurements?}], reply, confidence}`, `fieldId` as a per-request enum):
+
+> You are the voice of a check-in app, talking with an athlete on check-in morning. You are not their coach: never give advice about training, food, weight, recovery or posing. The question just asked: "{label}". Fields still to answer: {pending fields with their labels}. From what the athlete said, return the intent, any answers (the field id plus the number or words they used), and a reply of one short, friendly, casual sentence. Use only numbers the athlete said. If they ask for advice, say it's one for their coach and offer to add it to their notes. If they need a minute, tell them to take their time. Never move to another question yourself.
+
 **Coach reply** (`/coach/reply`, structured output = `{changes: [...], unclear: [String]}`, with `path` as a per-request enum):
 
 > You read a strength coach's reply to his athlete's weekly check-in and list every change he makes to the athlete's plan. The plan's items are listed with a path, a label and the current value: {items}. For each change, pick the item's path, the operation, and the number he said, and copy his exact words into `quote`. List only changes he actually makes; a question, praise or "let's see how it goes" is not a change. If he changes something that isn't in the list, or you can't tell which item he means, put his sentence in `unclear`. Never work out a new value and never suggest one.
@@ -571,18 +610,18 @@ Each phase ends with its checks passing, a commit, and a TestFlight build the hu
 - [ ] `LoggedSet.repCount` with its migration; the measured-count rules and callouts; `SourceChip` on Session and History.
 - **Done when:** G7 passes on the human's clip, and a simulated session in `SessionEngineTests` logs a phone count, then applies a measured correction with undo.
 
-### P2 — Coach reply and voice cues (Wed Oct 28)
-This must ship to TestFlight by Wednesday evening: the coach's reply to Thursday's check-in is the first real test.
+### P2 — Check-in morning, coach reply and voice cues (Wed Oct 28 – Thu Oct 29)
+Order matters. **Check-in morning ships to TestFlight by Wednesday evening,** because Thursday morning is its first real use. The coach reply loop ships by Thursday evening, because his reply to that check-in is its first real test.
 - [ ] `PlanState` and its migration (§4). Every plan reader goes through `store.plan`.
 - [ ] `/coach/reply` with changes, unclear items and cues; the validator; prompts; tests on synthetic replies.
 - [ ] The Coach reply screen, the Today card, the MacroFactor reminder, and revert under History → Plan changes.
 - [ ] Getting replies in: paste and audio file import first, then the `SetechoShare` share extension.
 - [ ] Voice cues: cutting, review, playback rules, `replayCue`, and the Settings switch.
-- [ ] The weight fallback (§7, HealthKit), before Thursday's check-in.
-- **Done when:** two of his past replies (one text, one voice note) produce the right changes and cues, and a simulated session plays the cue before the right exercise and never during a set.
+- [ ] **First:** Check-in morning (§7) with `/checkin/turn`, the App Shortcut, pause and resume, and the voice picker.
+- **Done when:** two of his past replies (one text, one voice note) produce the right changes and cues, and a simulated session plays the cue before the right exercise and never during a set. A scripted run of Check-in morning, with a pause, a two-field answer, a correction and a question for the coach, finishes with every number taken from the transcript.
 
-### P3 — First real check-in (Wed Oct 28 evening – Thu Oct 29 morning)
-- **The human:** wrap-up from the Wednesday 7 PM reminder, photo session Thursday morning, review, and send. Screen-record review and send.
+### P3 — First real check-in (Thu Oct 29 morning)
+- **The human:** Thursday morning, say "Hey Siri, start my Setecho check-in" and go through it hands-free, then send. Screen-record the whole run, and film it with a second camera.
 - **The agent:** fixes only, from whatever broke.
 - **When the coach replies,** the human shares it in and screen-records the Coach reply screen.
 
@@ -649,7 +688,8 @@ In the order above. Specs:
   - `before` and `after` are computed by code for every `op`
   - a generated Opus file converts to 16 kHz mono 16-bit WAV (skipped if ffmpeg is missing)
   - cue segmentation merges and splits segments by the §5 rules, and a cue with an unknown `exerciseId` is dropped
-- **iOS:** `make ios-test`. Unit-test the adherence and day-type rules, PR detection, the set logging rules, undo, the collage layout math, the HealthKit aggregation, `RepCounter` on the shared series, the measured-count rules, each change kind's apply logic and plan revert, the `PlanState` and `repCount` migrations, the input rules in §7 (every start/end/reps precedence case), watch message decoding and clock conversion, and cue playback timing (Ready only, once per session, never during a set), all with synthetic samples.
+  - `/checkin/turn` handles a pause, a resume, a two-field answer, a correction and a question for the coach, and turns any number not in the transcript into `unclear`
+- **iOS:** `make ios-test`. Unit-test the adherence and day-type rules, PR detection, the set logging rules, undo, the collage layout math, the HealthKit aggregation, `RepCounter` on the shared series, the measured-count rules, each change kind's apply logic and plan revert, the `PlanState` and `repCount` migrations, the input rules in §7 (every start/end/reps precedence case), watch message decoding and clock conversion, cue playback timing (Ready only, once per session, never during a set), and Check-in morning's step order, pause and resume after a relaunch, all with synthetic samples.
 - **Never** hit the live API in tests.
 
 ## 11. Privacy and repo hygiene (the repo becomes public)
@@ -680,7 +720,7 @@ In the order above. Specs:
 | Question | Default |
 |---|---|
 | How the spreadsheet arrives | **Decided Oct 26: a Google Sheets link.** The backend fetches the sheet's CSV export (`/export?format=csv`); the sheet must be shared "anyone with the link". A `.csv`/`.xlsx` file, pasted text and a screenshot stay as fallbacks |
-| Check-in day | **Decided Oct 26: Thursday morning**; wrap-up reminder Wednesday 7 PM |
+| Check-in day | **Decided Oct 26: Thursday morning**; reminder Wednesday 7 PM: "Tomorrow's check-in: say 'Hey Siri, start my Setecho check-in' when you're up" |
 | G1 organizers | **Decided Oct 26: not a sports analyzer or coach.** Human confirms in writing on Oct 27 |
 | Gates G2–G6 | **Decided Oct 26: build on the plan's defaults** and test on the phone from TestFlight, not from the Mac. The probe screens live behind the More menu until the P7 freeze (Mon Nov 2) |
 | Collage layout | 2×2: front, right / back, left |
@@ -691,5 +731,6 @@ In the order above. Specs:
 | A change with no start date | Applies from the next session |
 | Reps in the log | You said, then Measured, then Phone, then Watch, then Plan (§7, Session inputs) |
 | Coach's voice in sessions | On; Settings switch, plus a checkbox per cue |
+| Check-in morning voice | The best installed iOS voice, premium first. Never the coach's |
 | Watch thresholds | `startStd` 120 mg, `endStd` 40 mg, sent from the phone; tune in P5 |
 | Tagline | Unchanged until the human decides |

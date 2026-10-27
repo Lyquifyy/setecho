@@ -41,3 +41,13 @@ Pass: the numbers match the source apps. Fallback: missing sleep or steps are as
 Pass: both arrive in one message. Fallback: image via share sheet, text pasted from the clipboard.
 
 Outputs you want to keep go in `ios/Probes/output/` (gitignored).
+
+**G8 Watch** (phone + Venu 4; added Oct 27)
+1. Build and sideload the watch app (`watch/README.md`), open it on the watch.
+2. Probes → Watch → **Connect**. Garmin Connect opens; pick the Venu 4; it returns to Setecho.
+3. Tap **Ping** (round trip shows), **Test buzz** (the watch vibrates), **Send target** (the watch shows 225 × 8).
+4. Do 3 sets each of bench press, rows and curls, hand-counting every set. Each set produces a
+   setStart and a setEnd message with the wrist count and its delay.
+
+Pass: every message arrives within 3 s, and the counts match your hand counts.
+Fallback (plan): camera and voice only; the watch moves to the stretch list.

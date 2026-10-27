@@ -1,4 +1,4 @@
-.PHONY: dev test lint smoke ios ios-test testflight
+.PHONY: dev test lint smoke ios ios-test testflight watch watch-sim
 
 SIM ?= iPhone 17 Pro
 DD := /tmp/setecho-derived-data
@@ -37,3 +37,18 @@ testflight: ## archive a Release build and upload it to TestFlight (Xcode signed
 		-exportOptionsPlist $(ARCHIVE_DIR)/ExportOptions.plist -exportPath $(ARCHIVE_DIR)/export \
 		-allowProvisioningUpdates
 	@echo "Uploaded build $(BUILD_NUMBER). It shows in TestFlight after Apple processes it (a few minutes)."
+
+# --- Garmin watch app (watch/README.md). Needs the Connect IQ SDK Manager and ~/.garmin/developer_key.der.
+CIQ_SDK := $(shell cat "$(HOME)/Library/Application Support/Garmin/ConnectIQ/current-sdk.cfg" 2>/dev/null)
+CIQ_DEVICE ?= venu4
+WATCH_KEY ?= $(HOME)/.garmin/developer_key.der
+
+watch:      ## build watch/bin/SetechoWatch.prg
+	@test -n "$(CIQ_SDK)" || { echo "Install the Connect IQ SDK with the SDK Manager first (watch/README.md)"; exit 1; }
+	@test -f "$(WATCH_KEY)" || { echo "No developer key at $(WATCH_KEY) (watch/README.md)"; exit 1; }
+	@ls "$(HOME)/Library/Application Support/Garmin/ConnectIQ/Devices" | grep -i venu4 || echo "No Venu 4 device files installed yet; check the ids in watch/manifest.xml"
+	cd watch && "$(CIQ_SDK)/bin/monkeyc" -f monkey.jungle -o bin/SetechoWatch.prg -d $(CIQ_DEVICE) -y "$(WATCH_KEY)" -w -l 1
+
+watch-sim:  ## run it in the Connect IQ simulator
+	"$(CIQ_SDK)/bin/connectiq" & sleep 4
+	"$(CIQ_SDK)/bin/monkeydo" watch/bin/SetechoWatch.prg $(CIQ_DEVICE)

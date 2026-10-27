@@ -64,6 +64,7 @@ final class ShareViewController: UIViewController {
 }
 
 private extension NSItemProvider {
+    @MainActor
     func loadFileURL(for type: String) async throws -> URL? {
         try await withCheckedThrowingContinuation { continuation in
             loadItem(forTypeIdentifier: type) { item, error in
@@ -80,6 +81,7 @@ private extension NSItemProvider {
         }
     }
 
+    @MainActor
     func loadText() async throws -> String? {
         try await withCheckedThrowingContinuation { continuation in
             loadItem(forTypeIdentifier: UTType.plainText.identifier) { item, error in

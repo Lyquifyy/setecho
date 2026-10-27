@@ -21,7 +21,7 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 7. **Every number uses tabular digits.** Loads are in pounds, formatted only through `Format`.
 8. **The wordmark is an image** (`Image("Lockup")` / `Image("Wordmark")`). Never type "Setecho" in a serif font.
 9. **One primary button per screen**, in the `FooterBar`.
-10. **Session, Photo session and Wrap-up are full-screen and hands-free.** No tab bar. No action may *require* a tap; every tap target has a voice equivalent. A session never requires the tripod: with the phone in a pocket, the watch and voice run it.
+10. **Session, Check-in morning, Photo session and Wrap-up are full-screen and hands-free.** No tab bar. No action may *require* a tap; every tap target has a voice equivalent. A session never requires the tripod: with the phone in a pocket, the watch and voice run it.
 11. **Every number shows where it came from.** A check-in answer filled from data carries a `SourceChip`. The model never produces a number; numbers come from Apple Health, the training log or what the athlete said. A logged rep count shows how it was counted: Plan, Watch, Phone, Measured or You said.
 12. **The athlete's words stay theirs.** Spoken answers are tidied, not rewritten. Casual stays casual.
 13. **Never coach.** No load suggestions framed as advice, no nutrition advice, no form judgments. The coach's plan is shown as the coach's plan.
@@ -81,11 +81,11 @@ Tabs: **Today / History / Check-in.** Settings, Connections and imports live in 
 ### Today (tab)
 - **Purpose:** the home base. What's planned today, and where the week's check-in stands.
 - **Today's session card:** the coach's day, e.g. "Upper A · Week 4", with each exercise as "4 × 8 · RPE 8", straight from the imported spreadsheet.
-- **This week's check-in card:** "11 of 22 ready", the due day, an "Open check-in" link. When the due day is close, a yellow "Wrap-up due" tag.
+- **This week's check-in card:** "11 of 22 ready", the due day, an "Open check-in" link. On check-in morning, a "Start check-in" link with a yellow "Due today" tag.
 - **Check-in photos card:** last taken, next due, a "Take photos" link that opens Photo session.
 - **Coach reply card,** only when one is waiting: "Coach replied · voice note 1:12", a "Review changes" link to Coach reply.
 - **MacroFactor reminder,** after a macro change is applied: "Update MacroFactor: training-day carbs 250 → 225 g", with a "Done" link. Setecho can't change MacroFactor itself.
-- **One yellow tag at a time on Today,** in this order: a coach reply to review, MacroFactor to update, the wrap-up due. The others show as secondary text.
+- **One yellow tag at a time on Today,** in this order: a coach reply to review, MacroFactor to update, the check-in due. The others show as secondary text.
 - **Footer:** "Start session". This is the only tap of a training day.
 
 ### Import (More menu, and first run)
@@ -127,8 +127,24 @@ Tabs: **Today / History / Check-in.** Settings, Connections and imports live in 
 - **Tapping a field** opens it to edit, with its source values listed.
 - **Footer:** "Review and send".
 
+### Check-in morning (full-screen, hands-free)
+- **Purpose:** the whole check-in as one conversation on check-in morning: weight, glucose, photos, the coach's questions, then review.
+- **Start:** "Hey Siri, start my Setecho check-in", the check-in-day notification, or Today's "Start check-in".
+- **Layout, top to bottom:**
+  - five step dots: Weight · Glucose · Photos · Questions · Review
+  - the current question in `.hudState`
+  - the athlete's last words and Setecho's reply, as two short lines (navy, then `textSecondary`)
+  - `ListeningIndicator`
+  - `VoiceEcho` for each stored answer: "Weight → 180.8 lb · You said"
+- **Paused:** "Take your time. Just talk when you're ready." The indicator stays on, dimmed.
+- **Photos step:** the Photo session, full-screen, then back here.
+- **It understands:** "give me a couple of minutes" · "180.8, and glucose was 91" · "wait, it was 180.6" · "should I bump my carbs?" (→ "That's one for your coach. Want me to add it to your notes?") · "skip" · "go back" · "say that again".
+- **Never:** advice, judgment, or a voice made to sound like the coach.
+- **Ends on** Review and send.
+
 ### Wrap-up (full-screen, hands-free)
 - **Purpose:** answer the fields data can't, by voice, in about 2 minutes.
+- **It's also the Questions step of Check-in morning.** On its own, it's for answering what's left later in the day.
 - **One question at a time,** in `.hudState`: "Hunger this week, 1 to 10?". Then `ListeningIndicator`, then the transcript, then auto-advance. Progress shows as "4 of 9", counting the measurements as one question.
 - **The three tape measurements are one question:** "Waist, bicep, thigh?"
 - **No weight yet today:** if this morning's weigh-in hasn't reached Apple Health, the wrap-up says "Open Withings once to sync today's weight" and carries on. If it still hasn't arrived by the last question, the wrap-up asks for it: "Today's weight?"
@@ -179,7 +195,7 @@ Tabs: **Today / History / Check-in.** Settings, Connections and imports live in 
 1. **Import once:** program and form.
 2. **Training day:** Today → Start session → hands-free Session → End session → Today.
 3. **Photo day:** Today → Take photos → Photo session → Collage review → Check-in.
-4. **Check-in day:** Check-in → Start wrap-up → Wrap-up → Review and send → WhatsApp.
+4. **Check-in day:** "Hey Siri, start my Setecho check-in" → Check-in morning (weight, glucose, photos, questions) → Review and send → WhatsApp. The Photo session and Wrap-up still work on their own.
 5. **Coach replies:** WhatsApp → Share → Setecho (or paste) → Coach reply → Apply → Today shows the updated plan. His cues play in the next sessions.
 6. **Setup:** Import → Connections (Apple Health, Garmin watch) → Today.
 

@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<!-- Setecho on the Venu 4 (HANDOFF.md §7, Garmin watch). Motion, haptics and messages to the phone only:
+     no network, no models. The application id is the same UUID the iOS WatchService uses
+     (ios/Setecho/Services/WatchService.swift, WatchApp.uuid). Device ids come from the SDK's
+     Devices folder; `make watch` checks them. -->
+<iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
+    <iq:application entry="SetechoApp" id="f3a350d69ca34eb090795767c594b75b" launcherIcon="@Drawables.LauncherIcon"
+        minSdkVersion="5.0.0" name="@Strings.AppName" type="watch-app" version="0.1.0">
+        <iq:products>
+            <iq:product id="venu4"/>
+            <iq:product id="venu4s"/>
+        </iq:products>
+        <iq:permissions>
+            <iq:uses-permission id="Sensor"/>
+            <iq:uses-permission id="Communications"/>
+            <iq:uses-permission id="Fit"/>
+        </iq:permissions>
+        <iq:languages>
+            <iq:language>eng</iq:language>
+        </iq:languages>
+        <iq:barrels/>
+    </iq:application>
+</iq:manifest>

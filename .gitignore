@@ -41,3 +41,6 @@ ios/Probes/output/
 # Coach voice notes and any audio outside the fixtures (HANDOFF.md §11)
 *.opus
 *.ogg
+
+# Compiled watch app and the simulator's output
+watch/bin/
