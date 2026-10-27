@@ -41,6 +41,22 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: Setecho
+  # Throwaway M0 gate probes (audio, Health, share). Shares the design system; ships nothing.
+  Probes:
+    type: application
+    platform: iOS
+    sources:
+      - Probes
+      - path: Setecho/DesignSystem
+      - path: Setecho/Assets.xcassets
+      - path: Setecho/Services/WAVFile.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.getsetecho.probes
+        INFOPLIST_FILE: Probes/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Probes/Probes.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 schemes:
   Setecho:
     build:
@@ -49,3 +65,7 @@ schemes:
         SetechoTests: [test]
     test:
       targets: [SetechoTests]
+  Probes:
+    build:
+      targets:
+        Probes: all
