@@ -37,5 +37,5 @@ Plan of record: "Setecho hackathon build plan" (Claude Docs), which holds the sc
 8. Commit small and often with clear messages; the commit history is part of the submission.
 9. Brand: cobalt #2541D8 for actions and data sources, navy #171D36 for text, yellow #F0CD50 only for the next thing waiting on the athlete, white cards on #EEF2F9. Use the SF Pro system font with tabular numbers, and the wordmark as an image. Full rules are in `DESIGN.md`.
 10. Setecho never coaches. There are no load, nutrition or form recommendations: the athlete's human coach does that. Setecho logs, photographs and fills in the coach's own check-in form.
-11. Apple Health is read-only, and only the types the check-in needs are requested: body mass, dietary energy, protein, carbohydrates, fat, steps, sleep and workouts.
+11. Apple Health is read-only, and only the types the check-in needs are requested: body mass, dietary energy, protein, carbohydrates, fat, steps, sleep and workouts. Weight can also come straight from Withings' API once it's connected (stretch); its tokens live in the Keychain and its secrets in Fly secrets, never in the repo.
 12. Nothing from the coach's reply changes the plan without the athlete's approval. Every change keeps his exact words, and `before`/`after` values are computed by code from the plan, never by the model.

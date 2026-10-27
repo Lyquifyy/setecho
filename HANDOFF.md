@@ -370,6 +370,7 @@ Prompt caching is automatic for repeated prefixes. Keep system prompts and schem
 - **Sleep:** per night, sum the asleep stages (`asleepCore`, `asleepDeep`, `asleepREM`, `asleepUnspecified`) for samples ending that morning.
 - **LISS:** Garmin workouts of walking, elliptical, stair climbing or cycling type, with their minutes.
 - Show which source app each value came from (`HKSource.name`) in `Provenance`.
+- **Weight fallback (P2):** Withings only writes to Apple Health when its app is opened. When the wrap-up starts or the check-in is drafted and there's no `bodyMass` sample since 4 AM that day, say and show "Open Withings once to sync today's weight". Offer an "Open Withings" link only if `canOpenURL` confirms a scheme for the Withings app; never guess one. Re-query when Setecho comes back to the foreground. The wrap-up carries on meanwhile. Once the direct connection is in (P6, Withings direct), it replaces this.
 
 ### Deterministic check-in fields (computed in Swift, sent as `WeekFacts`, rendered by the backend)
 
@@ -548,7 +549,7 @@ Keep the prompts in `backend/app/prompts.py` and the schemas in `backend/app/sch
 
 Each phase ends with its checks passing, a commit, and a TestFlight build the human can take to the gym. Report after each phase: what passed, what didn't, what you need from the human.
 
-**Stretch items** happen only when P1–P5 are green, in this order: WhatsApp history import, set clips turned into content, clips for your coach, bar speed. Posing practice is out of this build.
+**Stretch items** happen only when P1–P5 are green, in this order: Withings direct, WhatsApp history import, set clips turned into content, clips for your coach, bar speed. Posing practice is out of this build.
 
 ### Status (Oct 27 morning)
 - **Built Oct 26:** everything in §2. The backend probes for G4 (SAM photo), G5 (import) and the voice smoke ran live; their fixtures are in `backend/tests/fixtures/`.
@@ -577,6 +578,7 @@ This must ship to TestFlight by Wednesday evening: the coach's reply to Thursday
 - [ ] The Coach reply screen, the Today card, the MacroFactor reminder, and revert under History → Plan changes.
 - [ ] Getting replies in: paste and audio file import first, then the `SetechoShare` share extension.
 - [ ] Voice cues: cutting, review, playback rules, `replayCue`, and the Settings switch.
+- [ ] The weight fallback (§7, HealthKit), before Thursday's check-in.
 - **Done when:** two of his past replies (one text, one voice note) produce the right changes and cues, and a simulated session plays the cue before the right exercise and never during a set.
 
 ### P3 — First real check-in (Wed Oct 28 evening – Thu Oct 29 morning)
@@ -597,6 +599,20 @@ This must ship to TestFlight by Wednesday evening: the coach's reply to Thursday
 
 ### P6 — Stretch (Sat Oct 31 – Sun Nov 1), only if P1–P5 are green
 In the order above. Specs:
+- **Withings direct.** The athlete's scale is on Wi-Fi, so each weigh-in reaches Withings' servers within moments. Reading it from Withings' public API means the Withings app never has to be opened. About half a day.
+  - **Human:** registers a Public API app on Withings' developer dashboard (no contract), with the callback `https://setecho-api.fly.dev/withings/callback`, and sets `WITHINGS_CLIENT_ID` and `WITHINGS_CLIENT_SECRET` as Fly secrets. Never in the repo.
+  - **Sign-in:** the phone opens `https://account.withings.com/oauth2_user/authorize2` (scope `user.metrics`, a random `state`) in `ASWebAuthenticationSession`.
+    - `GET /withings/callback` only redirects to `setecho://withings?code=…&state=…`.
+    - The phone checks `state` and posts the code to `POST /withings/token` at once, because the code expires in 30 s.
+    - The backend exchanges it at `https://wbsapi.withings.net/v2/oauth2` (`action=requesttoken`) and returns `{accessToken, refreshToken, expiresAt}`.
+  - **Tokens:** the phone keeps them in the Keychain, so the backend stays stateless. The access token lasts 3 hours. `POST /withings/token` with `{refreshToken}` refreshes it. Withings rotates the refresh token, and the old one stops working 8 hours later, so save the new one every time.
+  - **Weights:** `POST /withings/weights` `{accessToken, lastUpdate}` calls `https://wbsapi.withings.net/measure` (`action=getmeas`, `meastypes=1`, `category=1`, `lastupdate`).
+    - Decode `value × 10^unit` kg, convert to lb, and return `[{at, lb}]`.
+    - Follow `more`/`offset` until `more` is 0.
+  - **When:** fetch when Setecho comes to the foreground and when the check-in is drafted, never more than once every 10 minutes (Withings' rule). No webhooks: they'd need a stateful backend and push, and the check-in only needs the weight when it's drafted.
+  - **HealthService:** weight comes from Withings direct when connected, else Apple Health, with provenance "Withings" vs "Withings via Apple Health". If both have the same weigh-in, keep the direct one.
+  - **Connections:** a Withings card (DESIGN.md).
+  - **Tests:** value/unit decoding, kg → lb, pagination, refresh rotation, and the fallback to Apple Health when the token is missing or refused.
 - **WhatsApp history import.** The athlete exports the coach chat in WhatsApp (Export Chat → Include Media) and shares the ZIP in.
   - Parse `_chat.txt` into messages: timestamp, sender, text, attachment. Handle both date formats (`[10/19/26, 7:42:11 AM]` and `[2026-10-19, 07:42:11]`), multi-line messages, and `<Media omitted>`.
   - Ask once which sender is the athlete and which is the coach.
@@ -644,7 +660,7 @@ In the order above. Specs:
   - API keys, `.env` files or `Local.xcconfig`
 - `.gitignore` already blocks clips, `.env` and `Local.xcconfig`. Add `*.wav`, `*.opus`, `*.ogg`, `*.m4a`, `*.jpg` outside `design/`, and `ios/Probes/output/`.
 - **Fixtures use synthetic values.** The form fixture keeps the coach's field labels, with placeholder numbers for macro targets and supplement doses.
-- Photos go to Meta only through `/photos/segment`, set clips only through `/sets/count` (downscaled, no audio), and the coach's voice notes only through `/coach/reply`. All Standard tier: gyms have bystanders. Cut cue clips of the coach's voice stay on the phone, under `media/cues/`.
+- Photos go to Meta only through `/photos/segment`, set clips only through `/sets/count` (downscaled, no audio), and the coach's voice notes only through `/coach/reply`. All Standard tier: gyms have bystanders. Cut cue clips of the coach's voice stay on the phone, under `media/cues/`. Withings tokens live in the Keychain, never on the backend or in the repo.
 
 ## 12. Things only the human can do
 - Put `MODEL_API_KEY` in `~/.zshrc`, claim the $150 credits, and set a spend limit.
@@ -657,6 +673,7 @@ In the order above. Specs:
 - Garmin setup (Wed Oct 28, about an hour): install the Connect IQ SDK Manager, the SDK and the Venu 4 device files; generate a developer key outside the repo; install OpenMTP if the watch mounts as MTP; sideload the G8 probe.
 - Ask the coach whether his voice can play in your sessions, and appear in the demo.
 - Bring two other coaches' check-in forms for G5.
+- For Withings direct (stretch): register the Withings developer app and set its two Fly secrets.
 - Do the physical tests: the gym sessions, photo rounds and WhatsApp send.
 
 ## 13. Defaults for open questions (change when the human answers)

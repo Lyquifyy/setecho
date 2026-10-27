@@ -131,6 +131,7 @@ Tabs: **Today / History / Check-in.** Settings, Connections and imports live in 
 - **Purpose:** answer the fields data can't, by voice, in about 2 minutes.
 - **One question at a time,** in `.hudState`: "Hunger this week, 1 to 10?". Then `ListeningIndicator`, then the transcript, then auto-advance. Progress shows as "4 of 9", counting the measurements as one question.
 - **The three tape measurements are one question:** "Waist, bicep, thigh?"
+- **No weight yet today:** if this morning's weigh-in hasn't reached Apple Health, the wrap-up says "Open Withings once to sync today's weight" and carries on. If it still hasn't arrived by the last question, the wrap-up asks for it: "Today's weight?"
 - **Voice:** "skip" · "go back" · "say that again".
 - **Ends on Review and send.**
 
@@ -154,6 +155,7 @@ Tabs: **Today / History / Check-in.** Settings, Connections and imports live in 
 - **Purpose:** the outside things Setecho reads from, in one place. Not a tab: it's visited at setup and rarely after.
 - **Apple Health card:** status, and the sources seen in the last 7 days (Withings, MacroFactor, Garmin), each a `SourceChip`.
 - **Garmin watch card:** "Connect" (opens the Garmin Connect app to pick the watch), then "Venu 4 · connected · last seen 2 min ago" and a "Test buzz" link. If the Setecho watch app isn't on the watch, one line says how to install it.
+- **Withings card** (stretch): "Connect Withings", then "Withings · connected · last weigh-in 7:02 AM". Until it's connected, weight comes through Apple Health.
 - **WhatsApp card** (stretch): "Import chat history", then the date of the last import and the message count.
 
 ### Watch (Setecho app on the Venu 4)
