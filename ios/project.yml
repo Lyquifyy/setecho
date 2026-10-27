@@ -52,8 +52,10 @@ targets:
         OTHER_LDFLAGS: "$(inherited) -ObjC"
         INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Setecho talks to your Garmin watch through Garmin Connect."
     dependencies:
-      - target: SetechoShare
-        embed: true
+      # The share extension needs the App Group registered on the team's App IDs, which only Xcode's
+      # Signing & Capabilities pane does. Until then it is built but not embedded (SetechoShare/README.md).
+      # - target: SetechoShare
+      #   embed: true
       - package: ConnectIQ
   # WhatsApp → Share → Setecho: hands the coach's text or voice note to the app through the app group.
   SetechoShare:
