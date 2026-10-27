@@ -1,0 +1,35 @@
+WEEKLY CHECK-IN (synthetic test form; placeholder targets and doses)
+
+Macro targets (until I change them):
+Training days: 2400 kcal / 200 P / 250 C / 65 F
+Rest days: 2100 kcal / 200 P / 175 C / 65 F
+
+Supplements:
+Creatine 5 g daily
+Vitamin D 2000 IU daily
+Fish oil 2 g daily
+
+Please answer every question:
+1. Weeks away from target date
+2. Accuracy on plan (%)
+3. Nutrition consistency
+4. Training consistency
+5. Current cardio protocol
+6. Notes on performance
+7. Date of last refeed or cheat meal
+8. Average daily steps
+9. Last check-in body weight
+10. Current body weight
+11. Notes on sleep
+12. Biggest win this week
+13. Energy levels (scale 1-10)
+14. Notes on recovery
+15. Notes on digestion
+16. Notes on appetite (scale 1-10)
+17. Notes on stress (scale 1-10)
+18. Waist measurement (inches)
+19. Bicep measurement, flexed (inches)
+20. Thigh measurement, flexed (inches)
+21. Fasted blood glucose
+22. Additional notes or concerns
+Check-in photos: front, right side arms up, back, left side arms up

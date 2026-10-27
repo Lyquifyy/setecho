@@ -24,3 +24,16 @@ xcuserdata/
 *.xcuserstate
 
 .DS_Store
+
+# Probe outputs and anything personal: photos, audio, real check-in data (HANDOFF.md §11)
+backend/private/
+ios/Probes/output/
+*.wav
+*.aiff
+*.m4a
+*.jpg
+*.jpeg
+*.png
+!design/**/*.png
+!design/**/*.jpg
+!ios/Setecho/Assets.xcassets/**/*.png

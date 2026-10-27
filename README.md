@@ -28,4 +28,19 @@ make ios                            # open in Xcode
 make ios-test                       # iOS unit tests
 ```
 
+## Gate probes (M0)
+
+The build started with six gates (HANDOFF.md §9). Each has a probe:
+
+```sh
+cd backend
+uv run python -m scripts.voice_probe clip.wav                         # Muse Voice Transcribe smoke
+uv run python -m scripts.sam_photo_probe front.jpg right.jpg back.jpg left.jpg   # G4: one person mask per photo
+uv run python -m scripts.import_probe program.xlsx form.txt            # G5: Program + CheckInTemplate from Spark
+```
+
+Probe output lands in `backend/private/` (gitignored). `--fixture` copies raw model output into
+`backend/tests/fixtures/`; use it only on synthetic inputs. G2 audio, G3 Apple Health and G6
+WhatsApp share run on the phone from the `Probes` scheme; see `ios/Probes/README.md`.
+
 `DESIGN.md` covers the design system and the screen specs. `AGENTS.md` has the repo rules.

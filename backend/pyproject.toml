@@ -8,10 +8,12 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.162.0",
+    "httpx>=0.28.1",
     "meta-sam-parser>=0.1.0",
     "numpy>=2.5.4",
     "openai>=3.38.0",
     "opencv-python-headless>=5.0.0.93",
+    "openpyxl>=3.1.5",
     "python-multipart>=0.0.32",
     "scipy>=1.18.1",
     "uvicorn[standard]>=0.54.0",
