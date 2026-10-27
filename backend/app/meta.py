@@ -187,6 +187,38 @@ def delete_file(file_id: str) -> None:
         logging.getLogger(__name__).warning("could not delete file %s from Meta: %s", file_id, e)
 
 
+async def segment_video_raw(file_id: str, prompt_text: str) -> str:
+    """Run SAM 3.1 on an uploaded clip and return its raw output text, unparsed.
+
+    The stream is drained as fast as it arrives (a 20 s set streams in about 12 s); the caller
+    reads the boxes with app.reps.parse_boxes. Parsing every mask with meta_sam_parser took
+    minutes on a small server and made it a slow consumer the stream gave up on.
+    """
+    stream = await aclient().responses.create(
+        model=SAM_MODEL,
+        input=[
+            {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": prompt_text},
+                    {"type": "input_video", "file_id": file_id},
+                ],
+            }
+        ],
+        stream=True,
+        metadata={"mask_encoding": "one_bit"},
+    )
+    parts: list[str] = []
+    async for event in stream:
+        kind = getattr(event, "type", "")
+        if kind == "response.output_text.delta":
+            parts.append(event.delta)
+        elif kind == "response.output_text.done" and not parts:
+            parts.append(event.text)
+    return "".join(parts)
+
+
 async def segment_video(file_id: str, prompt_text: str):
     """Run SAM 3.1 on an uploaded clip and return the parsed VideoSegmentationResult.
 

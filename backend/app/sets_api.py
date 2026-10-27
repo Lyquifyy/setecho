@@ -80,12 +80,12 @@ async def count_clip(data: bytes, context: CountContext) -> CountResponse:
         timings["upload"] = round(time.monotonic() - t1, 2)
     t2 = time.monotonic()
     try:
-        result = await meta.segment_video(file_id, prompt)
+        raw = await meta.segment_video_raw(file_id, prompt)
     finally:
         await run_in_threadpool(meta.delete_file, file_id)
     timings["segment"] = round(time.monotonic() - t2, 2)
     t3 = time.monotonic()
-    track = await run_in_threadpool(reps.centroid_track, result, times)
+    track = await run_in_threadpool(reps.track_from_raw, raw, times)
     counted = reps.count(track)
     timings["track"] = round(time.monotonic() - t3, 2)
     return CountResponse(

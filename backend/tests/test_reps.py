@@ -125,8 +125,7 @@ def _mask_record(object_id, frame_index, left, top, right, bottom):
     )
 
 
-def test_centroid_track_keeps_the_object_seen_on_most_frames_when_none_qualifies(monkeypatch):
-    monkeypatch.setattr("app.photos.mask_raster", lambda r: np.ones((r.mask.height, r.mask.width), np.uint8))
+def test_centroid_track_keeps_the_object_seen_on_most_frames_when_none_qualifies():
     times = [0.0, 0.1, 0.2, 0.3]
     records = [
         _mask_record("plate", 0, 10, 10, 30, 30),
@@ -145,9 +144,8 @@ def test_centroid_track_keeps_the_object_seen_on_most_frames_when_none_qualifies
     assert track.share == 0.75
 
 
-def test_centroid_track_picks_the_plate_that_moves_not_the_rack(monkeypatch):
+def test_centroid_track_picks_the_plate_that_moves_not_the_rack():
     """A gym has many plates in frame: the one on the bar travels, the racked ones sit still."""
-    monkeypatch.setattr("app.photos.mask_raster", lambda r: np.ones((r.mask.height, r.mask.width), np.uint8))
     n = 40
     times = [i / 10 for i in range(n)]
     records = []
@@ -163,23 +161,6 @@ def test_centroid_track_picks_the_plate_that_moves_not_the_rack(monkeypatch):
     assert abs(track.centroids[0][0] - 150) < 1e-6  # the bar's plate
     assert track.motion_range > 100
     assert reps.count(track).reps == 2
-
-
-def test_centroid_uses_the_raster_not_just_the_box(monkeypatch):
-    raster = np.zeros((4, 4), np.uint8)
-    raster[:, 3] = 1  # the mask hugs the right edge of its box
-    monkeypatch.setattr("app.photos.mask_raster", lambda r: raster)
-    rec = _mask_record("plate", 0, 0, 0, 4, 4)
-    x, y = reps._mask_centroid(rec)
-    assert x == pytest.approx(3.5) and y == pytest.approx(2.0)
-
-
-def test_centroid_falls_back_to_the_box_centre_on_a_bad_raster(monkeypatch):
-    def boom(r):
-        raise ValueError("bad raster")
-
-    monkeypatch.setattr("app.photos.mask_raster", boom)
-    assert reps._mask_centroid(_mask_record("p", 0, 0, 0, 10, 20)) == (5.0, 10.0)
 
 
 def test_equipment_prompts_and_inference():
@@ -223,3 +204,36 @@ def test_saved_g7_centroid_series_count_correctly(path):
     )
     result = reps.count(reps.Track(np.asarray(data["t"], float), centroids))
     assert result.reps == data["expectedReps"]
+
+
+def test_parse_boxes_reads_frames_and_objects_and_skips_masks():
+    raw = (
+        "<0f>0<|box;x1=10;y1=20;x2=30;y2=40;w=1280;h=720|><|mask;x=0;y=0;data=1,1,!!|>"
+        ",1<|box;x1=100;y1=100;x2=120;y2=120;w=1280;h=720|><|mask;x=0;y=0;data=!!|>"
+        "<1f>0<|box;x1=10;y1=25;x2=30;y2=45;w=1280;h=720|><|mask;x=0;y=0;data=!!|>"
+        "<3f>1<|box;x1=100;y1=100;x2=120;y2=120;w=1280;h=720|><|mask;x=0;y=0;data=!!|>"
+    )
+    boxes = reps.parse_boxes(raw)
+    assert boxes == {
+        "0": {0: (10.0, 20.0, 30.0, 40.0), 1: (10.0, 25.0, 30.0, 45.0)},
+        "1": {0: (100.0, 100.0, 120.0, 120.0), 3: (100.0, 100.0, 120.0, 120.0)},
+    }
+    track = reps.track_from_raw(raw, [0.0, 0.1, 0.2, 0.3])
+    assert track.objects == 2 and track.centroids[1].tolist() == [20.0, 35.0]
+    assert reps.parse_boxes("") == {} and reps.track_from_raw("", [0.0]).share == 0.0
+
+
+def test_parse_boxes_is_fast_enough_for_a_set():
+    import time
+
+    frame = "".join(
+        f",{o}<|box;x1={o * 50};y1=100;x2={o * 50 + 40};y2=140;w=1280;h=720|><|mask;x=0;y=0;data="
+        + "x" * 150
+        + "|>"
+        for o in range(15)
+    )
+    raw = "".join(f"<{i}f>" + frame[1:] for i in range(400))  # a 40 s set with 15 plates in frame
+    t0 = time.time()
+    boxes = reps.parse_boxes(raw)
+    assert len(boxes) == 15 and len(boxes["0"]) == 400
+    assert time.time() - t0 < 1.0

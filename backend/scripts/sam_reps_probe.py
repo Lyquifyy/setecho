@@ -39,14 +39,14 @@ async def run(args: argparse.Namespace) -> None:
     file_id = meta.upload_video(small)
     t1 = time.time()
     try:
-        result = await meta.segment_video(file_id, prompt)
+        raw = await meta.segment_video_raw(file_id, prompt)
     finally:
         meta.delete_file(file_id)
     t2 = time.time()
 
-    track = reps.centroid_track(result, times)
+    track = reps.track_from_raw(raw, times)
     counted = reps.count(track)
-    print(f"upload {t1 - t0:.1f}s, segment {t2 - t1:.1f}s, total {t2 - t0:.1f}s, outcome {result.outcome}")
+    print(f"upload {t1 - t0:.1f}s, segment {t2 - t1:.1f}s, total {t2 - t0:.1f}s, {len(raw)} chars")
     print(f"tracked {counted.tracked_frames}/{counted.frames} frames ({track.share:.0%})")
     print(f"reps: {counted.reps}  confidence: {counted.confidence}  trackFound: {counted.track_found}")
     print(f"rep times: {counted.rep_times}")
@@ -58,7 +58,7 @@ async def run(args: argparse.Namespace) -> None:
         _, d = reps.count_series(times, projected)
         print("d(t) 95th percentile:", round(float(np.percentile(d, 95)), 1), "px")
 
-    (PRIVATE / f"{name}.raw.txt").write_text(result.raw_output)
+    (PRIVATE / f"{name}.raw.txt").write_text(raw)
     (PRIVATE / f"{name}.json").write_text(
         json.dumps(
             {

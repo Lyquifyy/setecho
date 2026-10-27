@@ -18,7 +18,7 @@ the phone. Both run on the fixtures in tests/fixtures/reps/ and must agree.
 from __future__ import annotations
 
 import itertools
-import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -130,28 +130,47 @@ def infer_equipment(name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Step 1-2: SAM records -> centroid track
+# Step 1-2: SAM's video output -> centroid track
 # ---------------------------------------------------------------------------
 
+# SAM's raw video text: "<12f>" starts frame 12, then comma-separated "<id><|box;x1=..;y1=..;x2=..;
+# y2=..;w=..;h=..|><|mask;...|>" records. Only the boxes are read: a box centre is the centroid we
+# need, and skipping the masks makes parsing a 20 s set take milliseconds instead of minutes.
+# A record follows the frame marker's ">" or the previous record's ",".
+_RAW_TOKEN = re.compile(
+    r"<(\d+)f>|(?:^|(?<=[,>]))(\d+)<\|box;x1=(\d+);y1=(\d+);x2=(\d+);y2=(\d+);w=\d+;h=\d+\|>"
+)
 
-def _mask_centroid(record: Any) -> tuple[float, float]:
-    """The centroid of the mask raster in frame pixels; the box centre when the raster is empty."""
-    b = record.bounds
-    try:
-        from meta_sam_parser import InvalidSegmentationMaskError
+Boxes = dict[str, dict[int, tuple[float, float, float, float]]]  # object id -> frame -> x1, y1, x2, y2
 
-        from app.photos import mask_raster
 
-        raster = mask_raster(record)
-        ys, xs = np.nonzero(raster)
-        if len(xs):
-            sx = (b.right - b.left) / raster.shape[1] if raster.shape[1] else 1.0
-            sy = (b.bottom - b.top) / raster.shape[0] if raster.shape[0] else 1.0
-            return float(b.left + (xs.mean() + 0.5) * sx), float(b.top + (ys.mean() + 0.5) * sy)
-    except (ValueError, TypeError, AttributeError, InvalidSegmentationMaskError) as e:
-        # A malformed raster must not lose the whole set; the box still says where the object is.
-        logging.getLogger(__name__).debug("mask raster unreadable, using the box centre: %s", e)
-    return float((b.left + b.right) / 2), float((b.top + b.bottom) / 2)
+def parse_boxes(raw: str) -> Boxes:
+    boxes: Boxes = {}
+    frame = -1
+    for m in _RAW_TOKEN.finditer(raw):
+        if m.group(1) is not None:
+            frame = int(m.group(1))
+            continue
+        if frame < 0:
+            continue
+        boxes.setdefault(m.group(2), {})[frame] = (
+            float(m.group(3)),
+            float(m.group(4)),
+            float(m.group(5)),
+            float(m.group(6)),
+        )  # the last record of a frame wins
+    return boxes
+
+
+def boxes_from_records(result: Any) -> Boxes:
+    """The same shape from a parsed VideoSegmentationResult (tests, the offline inspector)."""
+    boxes: Boxes = {}
+    for rec in result.records:
+        if getattr(rec, "kind", None) != "mask" or rec.frame is None:
+            continue
+        b = rec.bounds
+        boxes.setdefault(rec.object_id, {})[rec.frame.frame_index] = (b.left, b.top, b.right, b.bottom)
+    return boxes
 
 
 # An object whose centroid jumps more than this many times its own size between two frames is a
@@ -159,14 +178,14 @@ def _mask_centroid(record: Any) -> tuple[float, float]:
 MAX_STEP_SIZES = 2.0
 
 
-def _object_track(frames: dict[int, Any], n: int) -> tuple[np.ndarray, float]:
-    """Centroids on every frame (NaN where unseen) and the object's median box size."""
+def _object_track(frames: dict[int, tuple[float, float, float, float]], n: int) -> tuple[np.ndarray, float]:
+    """Box centres on every frame (NaN where unseen) and the object's median box size."""
     centroids = np.full((n, 2), np.nan)
     sizes = []
-    for index, rec in frames.items():
-        centroids[index] = _mask_centroid(rec)
-        b = rec.bounds
-        sizes.append(max(b.right - b.left, b.bottom - b.top))
+    for index, (x1, y1, x2, y2) in frames.items():
+        if 0 <= index < n:
+            centroids[index] = ((x1 + x2) / 2, (y1 + y2) / 2)
+            sizes.append(max(x2 - x1, y2 - y1))
     return centroids, float(np.median(sizes)) if sizes else 0.0
 
 
@@ -178,25 +197,17 @@ def _max_step(centroids: np.ndarray) -> float:
     return float(np.max(np.linalg.norm(np.diff(pts, axis=0), axis=1)))
 
 
-def centroid_track(result: Any, frame_times: list[float]) -> Track:
+def track_from_boxes(boxes: Boxes, frame_times: list[float]) -> Track:
     """The plate that moves. A gym has many plates in frame, so among the objects tracked on at
     least MIN_TRACK_SHARE of the frames, keep the one whose centroid travels furthest along its
     main axis, after dropping tracks that hop between plates (a step over MAX_STEP_SIZES sizes).
     Falls back to the object seen on the most frames when nothing qualifies."""
-    per_object: dict[str, dict[int, Any]] = {}
-    for rec in result.records:
-        if getattr(rec, "kind", None) != "mask" or rec.frame is None:
-            continue
-        index = rec.frame.frame_index
-        if index < 0 or index >= len(frame_times):
-            continue
-        per_object.setdefault(rec.object_id, {})[index] = rec  # the last revision of a frame wins
     times = np.asarray(frame_times, dtype=float)
     n = len(frame_times)
-    if not per_object:
+    if not boxes:
         return Track(times, np.full((n, 2), np.nan))
     best: tuple[float, np.ndarray, float] | None = None
-    for frames in per_object.values():
+    for frames in boxes.values():
         if len(frames) < MIN_TRACK_SHARE * n:
             continue
         centroids, size = _object_track(frames, n)
@@ -206,9 +217,17 @@ def centroid_track(result: Any, frame_times: list[float]) -> Track:
         if best is None or motion > best[0]:
             best = (motion, centroids, size)
     if best is None:
-        centroids, size = _object_track(max(per_object.values(), key=len), n)
-        return Track(times, centroids, size, len(per_object))
-    return Track(times, best[1], best[2], len(per_object))
+        centroids, size = _object_track(max(boxes.values(), key=len), n)
+        return Track(times, centroids, size, len(boxes))
+    return Track(times, best[1], best[2], len(boxes))
+
+
+def track_from_raw(raw: str, frame_times: list[float]) -> Track:
+    return track_from_boxes(parse_boxes(raw), frame_times)
+
+
+def centroid_track(result: Any, frame_times: list[float]) -> Track:
+    return track_from_boxes(boxes_from_records(result), frame_times)
 
 
 # ---------------------------------------------------------------------------

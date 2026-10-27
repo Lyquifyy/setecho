@@ -2,9 +2,7 @@
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
-import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -27,25 +25,18 @@ def fake_sam(monkeypatch):
     monkeypatch.setattr(video, "frame_times", lambda path: [float(v) for v in series.t])
     monkeypatch.setattr(meta, "upload_video", lambda path: calls["uploaded"].append(path.name) or "file_1")
     monkeypatch.setattr(meta, "delete_file", lambda fid: calls["deleted"].append(fid))
-    monkeypatch.setattr("app.photos.mask_raster", lambda r: np.ones((r.mask.height, r.mask.width), np.uint8))
 
     async def segment(file_id, prompt):
         calls["prompts"].append(prompt)
-        records = []
+        frames = []
         for i, y in enumerate(series.y):
-            top = 400 - 500 * float(y)
-            records.append(
-                SimpleNamespace(
-                    kind="mask",
-                    object_id="plate",
-                    frame=SimpleNamespace(frame_index=i),
-                    bounds=SimpleNamespace(left=600, top=top, right=680, bottom=top + 80),
-                    mask=SimpleNamespace(width=80, height=80),
-                )
+            top = int(400 - 500 * float(y))
+            frames.append(
+                f"<{i}f>0<|box;x1=600;y1={top};x2=680;y2={top + 80};w=1280;h=720|><|mask;x=0;y=0;data=!!|>"
             )
-        return SimpleNamespace(records=records)
+        return "".join(frames)
 
-    monkeypatch.setattr(meta, "segment_video", segment)
+    monkeypatch.setattr(meta, "segment_video_raw", segment)
     return calls
 
 
@@ -103,7 +94,7 @@ def test_file_is_deleted_even_when_sam_fails(client, fake_sam, monkeypatch):
     async def boom(file_id, prompt):
         raise RuntimeError("sam down")
 
-    monkeypatch.setattr(meta, "segment_video", boom)
+    monkeypatch.setattr(meta, "segment_video_raw", boom)
     r = _post(client)
     assert r.status_code == 200 and r.json()["error"] == "count failed: RuntimeError"
     assert fake_sam["deleted"] == ["file_1"]
@@ -113,13 +104,13 @@ def test_slow_count_sends_heartbeats_before_the_json(client, fake_sam, monkeypat
     import asyncio
 
     monkeypatch.setattr(sets_api, "HEARTBEAT_SECONDS", 0.05)
-    original = meta.segment_video
+    original = meta.segment_video_raw
 
     async def slow(file_id, prompt):
         await asyncio.sleep(0.2)
         return await original(file_id, prompt)
 
-    monkeypatch.setattr(meta, "segment_video", slow)
+    monkeypatch.setattr(meta, "segment_video_raw", slow)
     r = _post(client)
     assert r.status_code == 200
     assert r.text.startswith("\n") and r.text.count("\n") >= 2
@@ -128,9 +119,9 @@ def test_slow_count_sends_heartbeats_before_the_json(client, fake_sam, monkeypat
 
 def test_no_track_gives_no_count(client, fake_sam, monkeypatch):
     async def nothing(file_id, prompt):
-        return SimpleNamespace(records=[])
+        return ""
 
-    monkeypatch.setattr(meta, "segment_video", nothing)
+    monkeypatch.setattr(meta, "segment_video_raw", nothing)
     r = _post(client)
     assert r.status_code == 200
     body = r.json()
