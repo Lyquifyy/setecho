@@ -12,11 +12,12 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from app import audio, importing, meta, photos_api, voice
+from app import audio, checkin_api, importing, meta, photos_api, voice
 from app.schemas import CheckInTemplate, Program, StrictModel
 
 app = FastAPI(title="Setecho API", version="0.2.0")
 app.include_router(photos_api.router)
+app.include_router(checkin_api.router)
 
 
 @app.exception_handler(importing.ImportError_)
