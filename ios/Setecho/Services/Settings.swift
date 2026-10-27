@@ -15,6 +15,8 @@ final class Settings {
     var trainingWeekdays: Set<Int> { didSet { defaults.set(Array(trainingWeekdays).sorted(), forKey: "trainingWeekdays") } }
     var collageLayout: PhotoAlign.CollageLayout { didSet { defaults.set(collageLayout.rawValue, forKey: "collageLayout") } }
     var useSevenDayAverageWeight: Bool { didSet { defaults.set(useSevenDayAverageWeight, forKey: "useSevenDayAverageWeight") } }
+    /// The coach's cues play before their exercise in a session. On by default (HANDOFF.md §13).
+    var coachVoiceInSessions: Bool { didSet { defaults.set(coachVoiceInSessions, forKey: "coachVoiceInSessions") } }
 
     private let defaults: UserDefaults
 
@@ -25,6 +27,7 @@ final class Settings {
         trainingWeekdays = Set(defaults.array(forKey: "trainingWeekdays") as? [Int] ?? [])
         collageLayout = PhotoAlign.CollageLayout(rawValue: defaults.string(forKey: "collageLayout") ?? "") ?? .grid2x2
         useSevenDayAverageWeight = defaults.bool(forKey: "useSevenDayAverageWeight")
+        coachVoiceInSessions = defaults.object(forKey: "coachVoiceInSessions") as? Bool ?? true
     }
 
     var showDateOrNil: String? { showDate.trimmingCharacters(in: .whitespaces).isEmpty ? nil : showDate }

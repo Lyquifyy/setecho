@@ -16,7 +16,8 @@ struct APIClient: Sendable {
         try await post("/import/program", parts: parts(for: source))
     }
 
-    func importForm(_ source: ImportSource) async throws -> CheckInTemplate {
+    /// The form, plus the macro targets and cardio protocol read from its blocks (the first PlanState).
+    func importForm(_ source: ImportSource) async throws -> FormImport {
         try await post("/import/form", parts: parts(for: source))
     }
 

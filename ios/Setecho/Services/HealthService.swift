@@ -57,6 +57,16 @@ final class HealthService {
         try await store.requestAuthorization(toShare: [], read: Self.readTypes)
     }
 
+    /// Whether a bodyMass sample exists since `hour` o'clock today (the weight fallback).
+    func hasWeighIn(sinceHour hour: Int, now: Date = .now) async -> Bool {
+        let since = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: now) ?? calendar.startOfDay(for: now)
+        let query = HKSampleQueryDescriptor(
+            predicates: [.quantitySample(type: HKQuantityType(.bodyMass), predicate: HKQuery.predicateForSamples(withStart: since, end: now))],
+            sortDescriptors: [], limit: 1
+        )
+        return ((try? await query.result(for: store))?.isEmpty == false)
+    }
+
     /// Readings for every day from `start` (midnight) up to `end`.
     func read(from start: Date, to end: Date) async throws -> Week {
         let startDay = calendar.startOfDay(for: start)

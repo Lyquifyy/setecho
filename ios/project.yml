@@ -43,6 +43,17 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Config/Setecho.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+  # WhatsApp → Share → Setecho: hands the coach's text or voice note to the app through the app group.
+  SetechoShare:
+    type: app-extension
+    platform: iOS
+    sources: [SetechoShare]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.getsetecho.app.share
+        INFOPLIST_FILE: SetechoShare/Info.plist
+        CODE_SIGN_ENTITLEMENTS: SetechoShare/SetechoShare.entitlements
+        SKIP_INSTALL: YES
   SetechoTests:
     type: bundle.unit-test
     platform: iOS

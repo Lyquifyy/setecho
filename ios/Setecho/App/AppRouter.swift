@@ -11,4 +11,7 @@ final class AppRouter {
     var tab: Tab = .today
     var showImport = false
     var showSettings = false
+    var showAddReply = false
+    /// The reply the Coach reply screen shows.
+    var openReply: CoachReply?
 }

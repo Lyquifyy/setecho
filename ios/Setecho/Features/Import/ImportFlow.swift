@@ -26,7 +26,7 @@ struct ImportFlow: View {
                         ImportInputView(model: formModel, step: 2, onDone: { path.append(.formReview) })
                     case .formReview:
                         FormReviewView(model: formModel) {
-                            if let template = formModel.template { store.saveTemplate(template) }
+                            if let form = formModel.formImport { store.saveTemplate(form.template, targets: form.targets, cardioProtocol: form.cardioProtocol) }
                             AppRouter.shared.showImport = false
                         }
                     }

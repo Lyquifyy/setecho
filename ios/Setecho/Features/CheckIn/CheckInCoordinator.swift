@@ -24,7 +24,8 @@ final class CheckInCoordinator {
         self.draft = Self.currentDraft(in: store, schedule: schedule)
     }
 
-    var template: CheckInTemplate? { store.template }
+    /// The form with the plan's carried blocks, so the coach's latest words go out each week.
+    var template: CheckInTemplate? { store.currentTemplate }
     var due: Date { schedule.nextDue(from: .now) }
     var week: (start: Date, end: Date) { schedule.week(endingBefore: due) }
 
@@ -80,26 +81,28 @@ final class CheckInCoordinator {
             let sessions = store.sessions
             let thisWeek = sessions.filter { $0.startedAt >= start && $0.startedAt < end && !$0.sets.isEmpty }
             let earlier = sessions.filter { $0.startedAt < start }
-            let targets = Self.targets(from: template)
+            let targets = store.plan?.targets ?? CheckInTemplate.parsedTargets(template)
             let facts = WeekFacts.build(
                 week: weekReadings, weekStart: start, weekEnd: end, targets: targets, sessions: sessions,
                 scheduledWeekdays: settings.trainingWeekdays, showDate: settings.showDateOrNil,
                 lastCheckInWeightLb: Self.lastWeight(in: store)
             )
             var withProtocol = facts
-            withProtocol.cardioProtocol = settings.cardioProtocol.isEmpty ? nil : settings.cardioProtocol
+            let cardio = store.plan?.cardioProtocol.isEmpty == false ? store.plan!.cardioProtocol : settings.cardioProtocol
+            withProtocol.cardioProtocol = cardio.isEmpty ? nil : cardio
             self.facts = withProtocol
+            if health.isAvailable { weightMissingToday = await !health.hasWeighIn(sinceHour: 4) }
 
             let prs = Adherence.personalRecords(thisWeek: thisWeek, earlier: earlier).map { set in
-                PersonalRecord(exercise: store.program?.exerciseName(id: set.exerciseId) ?? set.exerciseId, loadLb: set.loadLb, reps: set.reps)
+                PersonalRecord(exercise: store.currentProgram?.exerciseName(id: set.exerciseId) ?? set.exerciseId, loadLb: set.loadLb, reps: set.reps)
             }
-            let scheduled = settings.trainingWeekdays.isEmpty ? (store.program?.weeks.first?.days.count ?? thisWeek.count) : settings.trainingWeekdays.count
+            let scheduled = settings.trainingWeekdays.isEmpty ? (store.currentProgram?.weeks.first?.days.count ?? thisWeek.count) : settings.trainingWeekdays.count
             let training = TrainingSummary(
                 sessionsDone: thisWeek.filter(\.isComplete).count,
                 sessionsScheduled: max(scheduled, thisWeek.count),
                 setsLogged: thisWeek.flatMap(\.sets).count,
                 prs: prs,
-                exercises: Array(Set(thisWeek.flatMap(\.sets).compactMap { store.program?.exerciseName(id: $0.exerciseId) })).sorted()
+                exercises: Array(Set(thisWeek.flatMap(\.sets).compactMap { store.currentProgram?.exerciseName(id: $0.exerciseId) })).sorted()
             )
             let notes = thisWeek.flatMap(\.notes)
             let draftId = draft?.id ?? UUID()
@@ -157,23 +160,31 @@ final class CheckInCoordinator {
 
     // MARK: Helpers
 
-    /// Macro targets from the coach's carried "Nutrition" block, else zeros (every day then reads as off plan).
+    /// Kept as the seeding function only (HANDOFF.md §4, Migrations); the plan owns the targets after that.
     static func targets(from template: CheckInTemplate) -> MacroTargets {
-        let text = template.carriedBlocks.map(\.text).joined(separator: "\n")
-        func macros(after heading: String) -> Macros? {
-            guard let range = text.range(of: heading, options: .caseInsensitive) else { return nil }
-            let tail = text[range.upperBound...]
-            func value(_ label: String) -> Double? {
-                guard let r = tail.range(of: label, options: .caseInsensitive) else { return nil }
-                let rest = tail[r.upperBound...].prefix(30)
-                let digits = rest.drop { !$0.isNumber }.prefix { $0.isNumber || $0 == "." }
-                return Double(digits)
-            }
-            guard let kcal = value("Calories"), let p = value("Protein"), let c = value("Carb"), let f = value("Fat") else { return nil }
-            return Macros(kcal: kcal, proteinG: p, carbsG: c, fatG: f)
+        CheckInTemplate.parsedTargets(template)
+    }
+
+    // MARK: Weight fallback (HANDOFF.md §7, HealthKit)
+
+    /// No bodyMass sample since 4 AM today: Withings only writes to Apple Health when its app is opened.
+    private(set) var weightMissingToday = false
+    static let weightMissingMessage = "Open Withings once to sync today's weight"
+
+    /// Re-queried when the wrap-up starts and when Setecho comes back to the foreground.
+    func refreshWeightToday() async {
+        guard health.isAvailable else { weightMissingToday = false; return }
+        weightMissingToday = await !health.hasWeighIn(sinceHour: 4)
+        if !weightMissingToday, let draft, let template,
+           let field = template.fields.first(where: { $0.source.key == .currentWeight }),
+           draft.answers.first(where: { $0.fieldId == field.id })?.state != .confirmed {
+            await buildDraft()
         }
-        let zero = Macros(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0)
-        return MacroTargets(training: macros(after: "Training Days") ?? zero, rest: macros(after: "Non-Training Days") ?? macros(after: "Rest Days") ?? zero)
+    }
+
+    /// The last wrap-up question when the weigh-in never arrived: "Today's weight?"
+    var weightField: FieldSpec? {
+        template?.fields.first { $0.source.key == .currentWeight }
     }
 
     static func lastWeight(in store: Store) -> Double? {

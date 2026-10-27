@@ -71,6 +71,7 @@ final class WrapUpModel {
     private let api = APIClient()
     private var questions: [[FieldSpec]]
     private var busy = false
+    private var weightAsked = false
 
     init(coordinator: CheckInCoordinator) {
         self.coordinator = coordinator
@@ -84,8 +85,9 @@ final class WrapUpModel {
         return Self.question(for: questions[index])
     }
 
-    /// "Energy levels, 1 to 10?" or "Waist, bicep and thigh?"
+    /// "Energy levels, 1 to 10?" or "Waist, bicep and thigh?"; the weight fallback asks "Today's weight?"
     static func question(for group: [FieldSpec]) -> String {
+        if group.count == 1, group[0].source.key == .currentWeight { return "Today's weight?" }
         if group.count > 1 {
             let names = group.map { Self.shortName($0.label) }
             return names.dropLast().joined(separator: ", ") + " and \(names.last ?? "")?"
@@ -105,12 +107,30 @@ final class WrapUpModel {
     }
 
     func start() async {
-        guard !questions.isEmpty else { isDone = true; return }
+        await coordinator.refreshWeightToday()
+        if coordinator.weightMissingToday {
+            status = CheckInCoordinator.weightMissingMessage
+        }
+        guard !questions.isEmpty || coordinator.weightMissingToday else { isDone = true; return }
         _ = await audio.requestMicrophone()
         audio.configure()
         audio.onUtterance = { [weak self] utterance in Task { await self?.handle(utterance) } }
         audio.startListening()
+        if coordinator.weightMissingToday {
+            await audio.speak(CheckInCoordinator.weightMissingMessage + ". Carrying on.")
+        }
         await ask()
+    }
+
+    /// If the weigh-in still hasn't arrived by the last question, ask for it (DESIGN.md Wrap-up).
+    private func appendWeightQuestionIfStillMissing() async {
+        guard !weightAsked else { return }
+        weightAsked = true
+        await coordinator.refreshWeightToday()
+        guard coordinator.weightMissingToday, let field = coordinator.weightField,
+              !questions.contains(where: { $0.contains { $0.id == field.id } })
+        else { return }
+        questions.append([field])
     }
 
     func stop() {
@@ -119,6 +139,7 @@ final class WrapUpModel {
     }
 
     private func ask() async {
+        if !questions.indices.contains(index) { await appendWeightQuestionIfStillMissing() }
         guard questions.indices.contains(index) else {
             isDone = true
             await audio.speak("That's everything. Review and send is next.")

@@ -24,6 +24,16 @@ struct RootView: View {
         .sheet(isPresented: $router.showSettings) {
             SettingsView()
         }
+        .sheet(isPresented: $router.showAddReply) {
+            AddCoachReplyView().environment(store)
+        }
+        .sheet(item: $router.openReply) { reply in
+            CoachReplyView(reply: reply).environment(store)
+        }
+        .task { await ShareInbox.drain(into: store) }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            Task { await ShareInbox.drain(into: store) }
+        }
         .sheet(isPresented: Bindable(ProbesPresenter.shared).isShown) {
             NavigationStack { ProbeHomeView() }
                 .tint(Theme.cobalt)

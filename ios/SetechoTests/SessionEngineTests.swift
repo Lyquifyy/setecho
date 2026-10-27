@@ -263,3 +263,41 @@ private func measured(_ reps: Int?, confidence: Double) -> CountResponse {
     engine.attachClip(setId: id, file: "set-1.mov")
     #expect(engine.session.sets[0].clipFile == "set-1.mov")
 }
+
+// MARK: - Coach cues (HANDOFF.md §7, Coach voice cues)
+
+private func cue(_ exerciseId: String) -> VoiceCue {
+    VoiceCue(id: "cue-\(exerciseId)", replyId: UUID(), exerciseId: exerciseId, text: "Pause at the bottom.", audioFile: nil, startSec: nil, endSec: nil, approved: true, lastPlayedAt: nil)
+}
+
+@Test @MainActor func cuePlaysInReadyBeforeTheFirstSetOnceAndNeverDuringASet() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.cues = ["bench": cue("bench"), "row": cue("row")]
+    let due = engine.cueDue()
+    #expect(due?.exerciseId == "bench")
+    engine.cuePlayed(due!)
+    #expect(engine.cueDue() == nil)                       // once
+    engine.setStarted()
+    #expect(engine.cueDue() == nil)                       // never during a set
+    engine.setEnded(phone: nil)
+    engine.skipRest()
+    #expect(engine.cueDue() == nil)                       // bench already has a set logged
+    for _ in 0..<2 { engine.setStarted(); engine.setEnded(); engine.skipRest() }
+    #expect(engine.currentExercise?.id == "row" && engine.cueDue()?.exerciseId == "row")
+    engine.cuePlayed(engine.cueDue()!)
+    #expect(engine.lastEcho == "Coach · Barbell row")
+    // "Say that again" replays the last cue, but not mid-set.
+    #expect(engine.cueToReplay()?.exerciseId == "row")
+    #expect(engine.apply(intent(.replayCue)).echo == "Replaying the coach's cue")
+    engine.setStarted()
+    #expect(engine.cueToReplay() == nil)
+}
+
+@Test @MainActor func unapprovedCueNeverPlays() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    var c = cue("bench")
+    c.approved = false
+    engine.cues = ["bench": c]
+    #expect(engine.cueDue() == nil)
+    #expect(engine.apply(intent(.replayCue)).speech == "No cue to replay.")
+}

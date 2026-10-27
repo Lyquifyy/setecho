@@ -27,6 +27,7 @@ final class AudioService {
     private var drainTask: Task<Void, Never>?
     private var speechQueue: [String] = []
     private var speechContinuation: CheckedContinuation<Void, Never>?
+    private var cuePlayer: AVAudioPlayer?
 
     init() {
         synth.usesApplicationAudioSession = true
@@ -155,6 +156,34 @@ final class AudioService {
     private func speechFinished() {
         speechContinuation?.resume()
         speechContinuation = nil
+    }
+
+    /// Play one audio file (a coach cue) with the music ducked, then restore mixing. Serialized
+    /// with the callouts: returns when it has finished.
+    func play(file url: URL) async {
+        while isSpeaking { try? await Task.sleep(for: .milliseconds(100)) }
+        isSpeaking = true
+        defer { isSpeaking = false }
+        do {
+            try session.setCategory(.playAndRecord, mode: .default, options: [.duckOthers, .allowBluetoothA2DP])
+            try session.setActive(true)
+        } catch {
+            lastError = "Duck: \(error.localizedDescription)"
+        }
+        if let player = try? AVAudioPlayer(contentsOf: url) {
+            cuePlayer = player
+            player.play()
+            while player.isPlaying { try? await Task.sleep(for: .milliseconds(100)) }
+            cuePlayer = nil
+        } else {
+            lastError = "Couldn't play \(url.lastPathComponent)"
+        }
+        do {
+            try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetoothA2DP])
+            try session.setActive(true)
+        } catch {
+            lastError = "Restore: \(error.localizedDescription)"
+        }
     }
 
     func stopSpeaking() {

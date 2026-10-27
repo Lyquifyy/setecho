@@ -31,11 +31,14 @@ final class SessionCoordinator {
     /// Retry delays for a clip upload, about ten minutes in all (HANDOFF.md §7, Rep counting).
     static let uploadRetryDelays: [Double] = [10, 30, 60, 120, 180, 200]
 
-    init(day: ProgramDay, weekNumber: Int, store: Store, api: APIClient = APIClient()) {
+    init(day: ProgramDay, weekNumber: Int, store: Store, api: APIClient = APIClient(), settings: Settings = .shared) {
         self.engine = SessionEngine(day: day, weekNumber: weekNumber)
         self.store = store
         self.api = api
         self.detector = SetDetector(mediaDirectory: store.mediaDirectory, sessionId: engine.session.id)
+        if settings.coachVoiceInSessions {
+            engine.cues = Dictionary(store.cues.filter(\.approved).map { ($0.exerciseId, $0) }, uniquingKeysWith: { a, _ in a })
+        }
     }
 
     var state: SessionEngine.State { engine.state }
@@ -76,6 +79,26 @@ final class SessionCoordinator {
             detector.start()
         }
         await speak(intro)
+        await playCueIfDue()
+    }
+
+    /// The coach's cue for the current exercise, once, in Ready, before its first set (HANDOFF.md §7).
+    private func playCueIfDue() async {
+        guard let cue = engine.cueDue() else { return }
+        engine.cuePlayed(cue)
+        echo = "Coach · \(engine.currentExercise?.name ?? "")\n“\(cue.text)”"
+        await play(cue)
+    }
+
+    private func play(_ cue: VoiceCue) async {
+        if let file = cue.audioFile {
+            await audio.play(file: store.cuesDirectory.appendingPathComponent(file))
+        } else {
+            await speak("Coach says: \(cue.text)")
+        }
+        var played = cue
+        played.lastPlayedAt = .now
+        store.update(cue: played)
     }
 
     private var intro: String {
@@ -167,6 +190,7 @@ final class SessionCoordinator {
     private func afterStateChange() {
         if case .rest = engine.state { startRestTimer() }
         if engine.state == .ended { finish() }
+        if engine.state == .ready { Task { await playCueIfDue() } }
     }
 
     private func startRestTimer() {
@@ -177,7 +201,10 @@ final class SessionCoordinator {
                 guard let self else { return }
                 guard case .rest = self.engine.state else { return }
                 let outcome = self.engine.tickRest()
-                if outcome != .none { self.show(outcome) }
+                if outcome != .none {
+                    self.show(outcome)
+                    if self.engine.state == .ready { await self.playCueIfDue() }
+                }
             }
         }
     }
@@ -208,6 +235,9 @@ final class SessionCoordinator {
     private func apply(_ response: VoiceCommandResponse) {
         let wasRecording = engine.state == .recording
         let outcome = engine.apply(response)
+        if response.intent.intent == .replayCue, let cue = engine.cueToReplay() {
+            Task { await play(cue) }
+        }
         if wasRecording, engine.state != .recording, cameraOn {
             // "Done" by voice: close the clip the camera was filming for this set.
             if let start = currentSetStart, let setId = engine.lastLoggedSetId { setsAwaitingClips[start] = setId }

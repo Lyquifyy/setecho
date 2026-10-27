@@ -10,6 +10,25 @@ struct TodayView: View {
     var body: some View {
         ScreenScaffold {
             TitleBlock(eyebrow: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()), title: "Today")
+            if let reply = store.pendingReply {
+                // One yellow tag at a time on Today: a coach reply to review comes first.
+                SectionCard("Coach reply", accessory: { TargetTag(text: "Review") }) {
+                    Text(reply.summary(duration: reply.audioFile.flatMap { CoachReplyModel.duration(of: store.mediaDirectory.appendingPathComponent($0)) }))
+                        .font(.subheadline).foregroundStyle(Theme.navy)
+                    Text("\(reply.changes.count) change\(reply.changes.count == 1 ? "" : "s") to review").font(.subheadline).monospacedDigit().secondaryText()
+                    LinkButton(title: "Review changes") { AppRouter.shared.openReply = reply }
+                }
+            }
+            if !store.macroFactorReminders.isEmpty {
+                SectionCard("MacroFactor", accessory: { if store.pendingReply == nil { TargetTag(text: "Update") } }) {
+                    ForEach(Array(store.macroFactorReminders.enumerated()), id: \.offset) { index, line in
+                        if index > 0 { CardDivider() }
+                        Text(line).font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
+                    }
+                    Text("Setecho can't change MacroFactor itself.").font(.footnote).secondaryText()
+                    LinkButton(title: "Done", chevron: .none) { store.clearMacroFactorReminders() }
+                }
+            }
             if let next = store.nextDay {
                 SectionCard("Today's session", accessory: {
                     Text("\(next.day.name) · Week \(next.week.number)").font(.subheadline).monospacedDigit().secondaryText()
@@ -47,8 +66,13 @@ struct TodayView: View {
     private var checkInCard: some View {
         let due = schedule.nextDue(from: .now)
         let wrapUpDue = schedule.isWrapUpDue(on: .now)
-        return SectionCard("This week's check-in", accessory: { if wrapUpDue { TargetTag(text: "Wrap-up due") } }) {
-            if let template = store.template {
+        let yellowTaken = store.pendingReply != nil || !store.macroFactorReminders.isEmpty
+        return SectionCard("This week's check-in", accessory: {
+            if wrapUpDue {
+                if yellowTaken { Text("Wrap-up due").font(.subheadline.weight(.semibold)).secondaryText() } else { TargetTag(text: "Wrap-up due") }
+            }
+        }) {
+            if let template = store.currentTemplate {
                 HStack(alignment: .firstTextBaseline) {
                     MetricText(value: "0", unit: "of \(template.fields.count) ready")
                 }

@@ -13,7 +13,7 @@ struct SettingsView: View {
             LinkButton(title: "Done", chevron: .leading) { dismiss() }
             TitleBlock(title: "Settings", subtitle: "Only what the check-in can't read from Apple Health or the log.")
             SectionCard("Cardio protocol") {
-                Text("Your coach's words, e.g. \"25 min LISS × 2 on rest days\".").font(.subheadline).secondaryText()
+                Text("Your coach's words, e.g. \"25 min LISS × 2 on rest days\". A coach reply that changes cardio updates this.").font(.subheadline).secondaryText()
                 SettingsField(placeholder: "Assigned cardio", text: $settings.cardioProtocol)
             }
             SectionCard("Show date") {
@@ -35,6 +35,12 @@ struct SettingsView: View {
                         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous).strokeBorder(Theme.cobalt, lineWidth: 1))
                     }
                 }
+            }
+            SectionCard("Sessions") {
+                Toggle("Coach's voice in sessions", isOn: $settings.coachVoiceInSessions)
+                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+                Text("His cues from a reply play once before that exercise, never during a set. Each cue has its own checkbox on the Coach reply screen.")
+                    .font(.footnote).secondaryText()
             }
             SectionCard("Check-in") {
                 Toggle("Current weight is the 7-day average", isOn: $settings.useSevenDayAverageWeight)

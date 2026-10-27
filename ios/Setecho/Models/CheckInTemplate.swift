@@ -84,3 +84,25 @@ extension CheckInTemplate {
     var voiceFieldCount: Int { fields.filter { $0.source.type == .voice }.count }
     var dataFieldCount: Int { fields.filter { [.data, .drafted, .calculated].contains($0.source.type) }.count }
 }
+
+extension CheckInTemplate {
+    /// Macro targets read from the coach's carried "Nutrition" block, else zeros (every day then
+    /// reads as off plan). The seeding function for the first PlanState; after that the plan owns them.
+    static func parsedTargets(_ template: CheckInTemplate) -> MacroTargets {
+        let text = template.carriedBlocks.map(\.text).joined(separator: "\n")
+        func macros(after heading: String) -> Macros? {
+            guard let range = text.range(of: heading, options: .caseInsensitive) else { return nil }
+            let tail = text[range.upperBound...]
+            func value(_ label: String) -> Double? {
+                guard let r = tail.range(of: label, options: .caseInsensitive) else { return nil }
+                let rest = tail[r.upperBound...].prefix(30)
+                let digits = rest.drop { !$0.isNumber }.prefix { $0.isNumber || $0 == "." }
+                return Double(digits)
+            }
+            guard let kcal = value("Calories"), let p = value("Protein"), let c = value("Carb"), let f = value("Fat") else { return nil }
+            return Macros(kcal: kcal, proteinG: p, carbsG: c, fatG: f)
+        }
+        let zero = Macros(kcal: 0, proteinG: 0, carbsG: 0, fatG: 0)
+        return MacroTargets(training: macros(after: "Training Days") ?? zero, rest: macros(after: "Non-Training Days") ?? macros(after: "Rest Days") ?? zero)
+    }
+}

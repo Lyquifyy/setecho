@@ -4,7 +4,7 @@ import Foundation
 struct VoiceIntent: Codable, Equatable {
     enum Kind: String, Codable {
         case rpe, reps, setLoad, loadDelta, skipSet, nextExercise, note, undo, pause, resume
-        case endSession, starting, endSet, answer, unknown
+        case endSession, starting, endSet, replayCue, yes, no, answer, unknown
     }
 
     var intent: Kind

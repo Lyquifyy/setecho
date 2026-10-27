@@ -53,6 +53,9 @@ struct CheckInView: View {
         .task {
             if coordinator.draft == nil, coordinator.template != nil { await coordinator.buildDraft() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            Task { await coordinator.refreshWeightToday() }
+        }
         .sheet(item: $editing) { field in
             FieldEditSheet(field: field, coordinator: coordinator)
         }
@@ -73,6 +76,9 @@ struct CheckInView: View {
                 Spacer()
             }
             Text("\(coordinator.toAnswerCount) to answer out loud").font(.subheadline).monospacedDigit().secondaryText()
+            if coordinator.weightMissingToday {
+                Text(CheckInCoordinator.weightMissingMessage).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.navy)
+            }
             if coordinator.isDrafting {
                 HStack(spacing: Theme.Space.xs) {
                     ProgressView().tint(Theme.cobalt)

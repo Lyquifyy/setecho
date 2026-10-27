@@ -27,7 +27,8 @@ final class ImportModel {
     var isLoading = false
     var error: String?
     var program: Program?
-    var template: CheckInTemplate?
+    var formImport: FormImport?
+    var template: CheckInTemplate? { formImport?.template }
 
     private let api: APIClient
 
@@ -64,7 +65,7 @@ final class ImportModel {
         do {
             switch kind {
             case .program: program = try await api.importProgram(source)
-            case .form: template = try await api.importForm(source)
+            case .form: formImport = try await api.importForm(source)
             }
         } catch {
             self.error = error.localizedDescription
@@ -73,7 +74,7 @@ final class ImportModel {
 
     func reset() {
         program = nil
-        template = nil
+        formImport = nil
         error = nil
     }
 }

@@ -62,6 +62,10 @@ final class SessionEngine {
     private var recordingStartedAt: Date?
     private var stateBeforePause: State = .ready
     private var repsOverrideForCurrentSet: Int?
+    /// Approved coach cues by exercise id (HANDOFF.md §7, Coach voice cues).
+    var cues: [String: VoiceCue] = [:]
+    private(set) var playedCueExerciseIds: Set<String> = []
+    private(set) var lastCuePlayed: VoiceCue?
 
     init(day: ProgramDay, weekNumber: Int, defaultRestSeconds: Int = 150, now: Date = .now) {
         self.day = day
@@ -109,6 +113,29 @@ final class SessionEngine {
         case .paused: "paused"
         case .ended: "ended"
         }
+    }
+
+    // MARK: Coach cues
+
+    /// The cue to play now: the current exercise's, in Ready, before its first set of the session,
+    /// once. Never during a set. Nil when there is nothing to play.
+    func cueDue() -> VoiceCue? {
+        guard state == .ready, let ex = currentExercise, let cue = cues[ex.id], cue.approved,
+              !playedCueExerciseIds.contains(ex.id), !session.sets.contains(where: { $0.exerciseId == ex.id })
+        else { return nil }
+        return cue
+    }
+
+    func cuePlayed(_ cue: VoiceCue) {
+        playedCueExerciseIds.insert(cue.exerciseId)
+        lastCuePlayed = cue
+        lastEcho = "Coach · \(currentExercise?.name ?? "")"
+    }
+
+    /// "Say that again": the last cue, if any and not mid-set.
+    func cueToReplay() -> VoiceCue? {
+        guard state != .recording, let cue = lastCuePlayed else { return nil }
+        return cue
     }
 
     // MARK: Set detection events
@@ -376,7 +403,9 @@ final class SessionEngine {
             return outcome.echo == nil ? .none : outcome
         case .endSet:
             return setEnded(at: now)
-        case .answer, .unknown:
+        case .replayCue:
+            return cueToReplay() == nil ? say("No cue to replay.") : Outcome(echo: "Replaying the coach's cue")
+        case .yes, .no, .answer, .unknown:
             return .none
         }
     }

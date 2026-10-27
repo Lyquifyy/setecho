@@ -70,6 +70,30 @@ struct HistoryView: View {
                     }
                 }
             }
+            SectionCard("Plan changes") {
+                let applied = store.appliedReplies
+                if applied.isEmpty {
+                    Text("Applied coach replies appear here, with their changes.").font(.subheadline).secondaryText()
+                } else {
+                    ForEach(Array(applied.enumerated()), id: \.element.id) { index, reply in
+                        if index > 0 { CardDivider() }
+                        VStack(alignment: .leading, spacing: Theme.Space.xxs) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text("\(Format.shortDate(reply.receivedAt)) · plan v\(reply.appliedVersion ?? 0)")
+                                    .font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(Theme.navy)
+                                Spacer()
+                                if index == 0, store.plan?.replyId == reply.id {
+                                    LinkButton(title: "Revert", chevron: .none) { store.revertLatestPlan() }
+                                }
+                                LinkButton(title: "Open", chevron: .none) { AppRouter.shared.openReply = reply }
+                            }
+                            ForEach(reply.changes.filter(\.approved)) { change in
+                                Text("\(change.label): \(change.beforeAfterText)").font(.footnote).monospacedDigit().secondaryText()
+                            }
+                        }
+                    }
+                }
+            }
         }
         .sheet(item: $openCheckIn) { draft in
             SentCheckInView(draft: draft).environment(store)
@@ -98,7 +122,7 @@ struct SessionRow: View {
             HStack(alignment: .firstTextBaseline) {
                 let dm = Format.dayAndMonth(session.startedAt)
                 Text("\(dm.day) \(dm.month)").font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(Theme.navy)
-                Text(store.program?.day(id: session.programDayId)?.day.name ?? session.programDayId).font(.subheadline).secondaryText()
+                Text(store.currentProgram?.day(id: session.programDayId)?.day.name ?? session.programDayId).font(.subheadline).secondaryText()
                 Spacer()
                 Text("\(session.sets.count) sets").font(.subheadline).monospacedDigit().secondaryText()
             }
@@ -107,7 +131,7 @@ struct SessionRow: View {
                     if set.clipFile != nil {
                         PlayButton(accessibilityLabel: "Play set \(set.setIndex + 1)") {}
                     }
-                    Text(store.program?.exerciseName(id: set.exerciseId) ?? set.exerciseId).font(.footnote).foregroundStyle(Theme.navy)
+                    Text(store.currentProgram?.exerciseName(id: set.exerciseId) ?? set.exerciseId).font(.footnote).foregroundStyle(Theme.navy)
                     Spacer()
                     Text("\(Format.number(set.loadLb)) × \(set.reps)\(set.rpe.map { " · RPE \(Format.number($0))" } ?? "")")
                         .font(.footnote).monospacedDigit().secondaryText()
@@ -139,7 +163,7 @@ struct SentCheckInView: View {
             }
         }
         .task {
-            if let template = store.template {
+            if let template = store.currentTemplate {
                 text = try? await APIClient().checkInRender(template: template, draft: draft)
             }
         }
