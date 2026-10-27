@@ -70,9 +70,10 @@ final class Store {
     // MARK: Derived
 
     /// The next program day with no completed session, in program order. Nil without a program.
+    /// A session that ended with nothing logged (started by mistake) does not count as done.
     var nextDay: (week: ProgramWeek, day: ProgramDay)? {
         guard let program else { return nil }
-        let done = Set(sessions.filter(\.isComplete).map(\.programDayId))
+        let done = Set(sessions.filter { $0.isComplete && !$0.sets.isEmpty }.map(\.programDayId))
         return program.days.first { !done.contains($0.day.id) } ?? program.days.first
     }
 
