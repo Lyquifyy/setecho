@@ -41,6 +41,8 @@ Intent = Literal[
     "skipAddOn",
     "changeDay",
     "flagSet",
+    "acceptSuggestion",
+    "keepLoad",
     "unknown",
 ]
 INTENTS: tuple[str, ...] = Intent.__args__  # type: ignore[attr-defined]
@@ -84,7 +86,7 @@ SYSTEM_PROMPT = (
     '("that was my top set"). warmup: the last set was only a warm-up ("that was a warm-up"). addAddOn / '
     'skipAddOn: do or skip today\'s add-on block ("add abs", "skip abs"), with its name in `text`. changeDay: '
     'the athlete is doing another cycle day today ("I\'m doing Day 5 today"), with the day number in `number`. '
-    'flagSet: send the last set\'s video to the coach ("flag that", "send that one to coach"). unknown when '
+    'flagSet: send the last set\'s video to the coach ("flag that", "send that one to coach"). acceptSuggestion: take the next-set load the app just suggested ("go with it"). keepLoad: keep the current load instead ("keep it"). unknown when '
     "unsure.\n"
     "Numbers are pounds for loads and counts for reps. Never invent a number: `number` holds only a value "
     "the athlete said. Keep `text` in the athlete's own words. Set confidence honestly; under 0.7 the app "
@@ -234,6 +236,14 @@ _RULES: list[tuple[str, re.Pattern[str]]] = [
         re.compile(
             r"\b(flag (that|it|this)( one)?|send (that|this)( one)? to (the )?coach|flag for (the )?coach)\b"
         ),
+    ),
+    (
+        "acceptSuggestion",
+        re.compile(r"\b(go with it|go with that|let'?s do that|do that|take it|sounds good)\b"),
+    ),
+    (
+        "keepLoad",
+        re.compile(r"\b(keep it|keep the weight|keep this|stay (here|at this|the same)|leave it)\b"),
     ),
 ]
 _ADD_ON = re.compile(

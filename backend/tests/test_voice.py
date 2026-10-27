@@ -63,6 +63,9 @@ def test_parse_number(said, expected):
         ("Send that one to coach", "flagSet", None),
         ("I'm doing day 5 today", "changeDay", 5),
         ("Doing day five", "changeDay", 5),
+        ("Go with it", "acceptSuggestion", None),
+        ("Keep it", "keepLoad", None),
+        ("keep the weight", "keepLoad", None),
     ],
 )
 def test_rules_cover_the_plain_commands(transcript, intent, number):
