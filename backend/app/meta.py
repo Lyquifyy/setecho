@@ -44,9 +44,14 @@ def client() -> OpenAI:
     return OpenAI(base_url=BASE_URL, api_key=_key())
 
 
+# SAM on video can stay silent for minutes before the first event; the SDK's default 10-minute
+# read timeout cut long sets off mid-stream.
+VIDEO_TIMEOUT = httpx.Timeout(1800.0, connect=30.0)
+
+
 @lru_cache
 def aclient() -> AsyncOpenAI:
-    return AsyncOpenAI(base_url=BASE_URL, api_key=_key())
+    return AsyncOpenAI(base_url=BASE_URL, api_key=_key(), timeout=VIDEO_TIMEOUT)
 
 
 # ---------------------------------------------------------------------------
