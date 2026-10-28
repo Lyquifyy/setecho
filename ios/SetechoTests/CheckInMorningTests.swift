@@ -62,6 +62,13 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     #expect(CheckInMorningFlow.isNo("Nope") && !CheckInMorningFlow.isNo("no idea"))
 }
 
+@Test func theIntroductionNamesTheAthleteTheDayAndWhatIsComing() {
+    #expect(CheckInMorningFlow.intro(firstName: "Zander", dueDay: "Thursday", isDueMorning: true)
+            == "Morning, Zander. Your Thursday check-in: weight, glucose, four photos, then the coach's questions.")
+    #expect(CheckInMorningFlow.intro(firstName: " ", dueDay: "Thursday", isDueMorning: false)
+            == "Morning. A rehearsal of your Thursday check-in: weight, glucose, four photos, then the coach's questions.")
+}
+
 @Test @MainActor func aScriptedMorningSavesEveryAnswerAndPicksTheNextQuestionItself() async throws {
     let store = makeStore()
     store.saveTemplate(try template())
@@ -76,7 +83,8 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     let fresh = CheckInCoordinator(store: store)
     let m = CheckInMorningModel(coordinator: fresh, store: store, speak: { spoken.append($0) })
     await m.resume(opening: true)
-    #expect(m.step == .weight && spoken.last == "Morning. Step on the scale, and tell me when you're off.")
+    #expect(m.step == .weight && spoken.last == "Step on the scale, and tell me when you're off.")
+    #expect(spoken.dropLast().last?.hasPrefix("Morning") == true && spoken.dropLast().last?.contains("check-in") == true)
     // "Give me a couple of minutes": a pause keeps listening and asks nothing.
     await m.apply(turn(.pause, "give me a couple of minutes", reply: "No worries, just tell me whenever you're ready."))
     #expect(m.isPaused && m.isListening && spoken.last == "No worries, just tell me whenever you're ready.")

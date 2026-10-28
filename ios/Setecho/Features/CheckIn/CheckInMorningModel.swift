@@ -88,6 +88,15 @@ struct CheckInMorningFlow: Equatable {
     static let yesWords: Set<String> = ["yes", "yeah", "yep", "yup", "correct", "right", "sure", "that's right", "thats right", "confirm", "confirmed"]
     static let noWords: Set<String> = ["no", "nope", "nah", "wrong", "not quite", "no that's wrong"]
 
+    /// The opening line (Oct 27 rehearsal): who it is for, which check-in, and what is coming. Every
+    /// word is fixed or computed here; the name is the athlete's own first name from Settings.
+    static func intro(firstName: String, dueDay: String, isDueMorning: Bool) -> String {
+        let name = firstName.trimmingCharacters(in: .whitespaces)
+        let greeting = name.isEmpty ? "Morning." : "Morning, \(name)."
+        let which = isDueMorning ? "Your \(dueDay) check-in" : "A rehearsal of your \(dueDay) check-in"
+        return "\(greeting) \(which): weight, glucose, four photos, then the coach's questions."
+    }
+
     static func isYes(_ transcript: String) -> Bool { yesWords.contains(normalize(transcript)) }
     static func isNo(_ transcript: String) -> Bool { noWords.contains(normalize(transcript)) }
 
@@ -165,13 +174,13 @@ final class CheckInMorningModel {
 
     /// The coach's questions and the fixed lines, generated once and cached by a text hash.
     private func pregenerate() {
-        var lines = ["Morning. Step on the scale, and tell me when you're off.", "What did it say?", "Fasted glucose?",
+        var lines = ["Step on the scale, and tell me when you're off.", "What did it say?", "Fasted glucose?",
                      "Set up your tripod for photos, and tell me when you're ready.", "Got the photos.",
                      "That's everything. Want me to read it back, or open it to send?", "No worries, just tell me whenever you're ready.",
                      "Welcome back.", "Sorry, say that again?", "Skipped.", "Got it.", "Added to your notes.", "Okay, leaving it out.",
                      "Take your time.", "What should it say?"]
         lines += questionGroups.map { flow.prompt(for: $0, draft: draft) }
-        natural.pregenerate(lines)
+        natural.pregenerate([intro] + lines)
     }
 
     var stepIndex: Int { step.rawValue }
@@ -182,6 +191,14 @@ final class CheckInMorningModel {
     }
     var questionGroups: [[FieldSpec]] { flow.questionGroups(draft: draft) }
 
+    /// The introduction for this morning, from Settings and the schedule.
+    var intro: String {
+        let schedule = CheckInSchedule(plan: store.plan, lastSentAt: store.lastSentCheckIn?.sentAt)
+        let dueDay = schedule.nextDue(from: .now).formatted(.dateTime.weekday(.wide))
+        return CheckInMorningFlow.intro(firstName: Settings.shared.athleteFirstName, dueDay: dueDay,
+                                        isDueMorning: schedule.isCheckInMorning(on: .now))
+    }
+
     // MARK: Lifecycle
 
     func start() async {
@@ -190,7 +207,7 @@ final class CheckInMorningModel {
         await natural.prepare()
         pregenerate()
         // The first line is due in a moment: wait briefly for its cache so it does not race the live deadline.
-        await natural.warm(["Morning. Step on the scale, and tell me when you're off.", "Welcome back."])
+        await natural.warm([intro, "Step on the scale, and tell me when you're off.", "Welcome back."])
         if let filming {
             showSlate = true
             filming.slate()
@@ -203,6 +220,8 @@ final class CheckInMorningModel {
         audio.onSpeechStart = { [weak self] in self?.realtime.start() }
         audio.onLiveSamples = { [weak self] samples, rate in self?.realtime.send(samples, rate: rate) }
         audio.startListening()
+        // A beat for the session and the input engine to settle before the first line plays.
+        try? await Task.sleep(for: .milliseconds(250))
         await resume(opening: true)
     }
 
@@ -221,17 +240,18 @@ final class CheckInMorningModel {
         await coordinator.refreshWeightToday()
         step = flow.nextStep(draft: draft, photosTakenToday: photosTakenToday)
         questionIndex = 0
+        if opening { await say(intro) }
         switch step {
         case .weight:
             if !coordinator.weightMissingToday, let known = coordinator.weightTodayText {
                 // Today's weigh-in is already in Apple Health: say it and move on.
                 if let field = flow.weightField { coordinator.set(field.id, text: known, state: .filled) }
-                await say(opening ? "Morning. \(known), got it." : "\(known), got it.")
+                await say("\(known), got it.")
                 await resume()
                 return
             }
             awaitingWeightReading = false
-            await ask(opening ? "Morning. Step on the scale, and tell me when you're off." : "Step on the scale, and tell me when you're off.")
+            await ask("Step on the scale, and tell me when you're off.")
         case .glucose:
             await ask("Fasted glucose?")
         case .photos:

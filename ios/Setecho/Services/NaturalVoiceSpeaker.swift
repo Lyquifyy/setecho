@@ -95,8 +95,18 @@ final class NaturalVoiceSpeaker: Speaker {
         // asking for the same audio twice.
         if inFlight[text] != nil { await warm([text], within: .milliseconds(Self.fallbackMilliseconds)) }
         if let cached = cachedAudio(for: text) {
-            TurnTimings.shared.voiceLine(.cached)
-            await fallback.play(file: cached)
+            // Through the same engine as a live line: one playback path, one route.
+            await fallback.duck()
+            do {
+                try await pcmPlayer.play(file: cached)
+                await fallback.restore()
+                TurnTimings.shared.voiceLine(.cached)
+            } catch {
+                await fallback.restore()
+                lastFallbackReason = "cached: \(error.localizedDescription)"
+                TurnTimings.shared.voiceLine(.fallback(lastFallbackReason ?? ""))
+                await fallback.speak(text)
+            }
             return
         }
         // Live: PCM chunks play as they arrive; the first must land within 700 ms.
@@ -130,11 +140,45 @@ final class PCMStreamPlayer {
     private var played = 0
     private var ended = false
     private var waiter: CheckedContinuation<Void, Never>?
+    /// Cached MP3 lines play on their own node, connected in the file's format; the mixer converts.
+    private let fileNode = AVAudioPlayerNode()
+    private var fileFormat: AVAudioFormat?
+    private var fileWaiter: CheckedContinuation<Void, Never>?
 
     init(sampleRate: Double) {
         format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false)!
         engine.attach(node)
         engine.connect(node, to: engine.mainMixerNode, format: format)
+        engine.attach(fileNode)
+    }
+
+    /// Play one cached file to the end. A file that cannot be read throws; a playback that stalls
+    /// (a route change mid-line) returns after the file's length plus a second.
+    func play(file url: URL) async throws {
+        let file = try AVAudioFile(forReading: url)
+        if fileFormat != file.processingFormat {
+            engine.connect(fileNode, to: engine.mainMixerNode, format: file.processingFormat)
+            fileFormat = file.processingFormat
+        }
+        if !engine.isRunning { try engine.start() }
+        let seconds = Double(file.length) / file.processingFormat.sampleRate + 1
+        await withCheckedContinuation { continuation in
+            fileWaiter = continuation
+            fileNode.scheduleFile(file, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+                Task { @MainActor in self?.fileDone() }
+            }
+            fileNode.play()
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(seconds))
+                self?.fileDone()
+            }
+        }
+        fileNode.stop()
+    }
+
+    private func fileDone() {
+        fileWaiter?.resume()
+        fileWaiter = nil
     }
 
     func begin() {
@@ -184,6 +228,8 @@ final class PCMStreamPlayer {
         node.stop()
         waiter?.resume()
         waiter = nil
+        fileNode.stop()
+        fileDone()
     }
 }
 
