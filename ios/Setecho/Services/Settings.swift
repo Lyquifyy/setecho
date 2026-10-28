@@ -35,6 +35,14 @@ final class Settings {
     var ownWhatsAppNumber: String { didSet { defaults.set(ownWhatsAppNumber, forKey: "ownWhatsAppNumber") } }
     /// Filming mode (off): save every spoken line and utterance with one clock, plus captions.
     var filmingMode: Bool { didSet { defaults.set(filmingMode, forKey: "filmingMode") } }
+    /// iOS 26 high-quality AirPods recording (HANDOFF.md §9, block 1). Off: AirPods are output only,
+    /// over A2DP, and the DJI receiver or the iPhone mic records. A change clears an earlier fallback.
+    var useAirPodsMic: Bool {
+        didSet {
+            defaults.set(useAirPodsMic, forKey: "useAirPodsMic")
+            Task { @MainActor in AirPodsMic.shared.reset() }
+        }
+    }
     /// When the due-day notification fires ("06:30"); opening the app from it starts the morning flow.
     var checkInWakeTime: String { didSet { defaults.set(checkInWakeTime, forKey: "checkInWakeTime") } }
     /// The day (DayKey) Check-in morning last started itself, so it starts once per due day.
@@ -64,6 +72,7 @@ final class Settings {
         rehearsalMode = defaults.bool(forKey: "rehearsalMode")
         ownWhatsAppNumber = defaults.string(forKey: "ownWhatsAppNumber") ?? ""
         filmingMode = defaults.bool(forKey: "filmingMode")
+        useAirPodsMic = defaults.bool(forKey: "useAirPodsMic")
         checkInWakeTime = defaults.string(forKey: "checkInWakeTime") ?? "06:30"
         lastMorningAutoStart = defaults.string(forKey: "lastMorningAutoStart") ?? ""
     }

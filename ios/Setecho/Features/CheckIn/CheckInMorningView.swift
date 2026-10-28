@@ -44,6 +44,9 @@ struct CheckInMorningView: View {
             if let status = model.status {
                 Text(status).font(.hudLabel).secondaryText()
             }
+            if let notice = AirPodsMic.shared.notice {
+                Text(notice).font(.hudLabel).secondaryText().multilineTextAlignment(.center)
+            }
             Spacer(minLength: 0)
             if model.isDone {
                 Button("Open to send") { model.showReview = true }.buttonStyle(.setechoPrimary)

@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 
 struct ProbeHomeView: View {
@@ -114,7 +115,14 @@ private struct TurnTimingsCard: View {
             }
             CardDivider()
             LabeledRow("Audio route", route)
-            LinkButton(title: "Refresh route", chevron: .none) { route = AudioService().routeDescription }
+            LabeledRow("AirPods mic", AirPodsMic.shared.state)
+            if let notice = AirPodsMic.shared.notice { Text(notice).font(.footnote).secondaryText() }
+            HStack {
+                LinkButton(title: "Refresh route", chevron: .none) { route = AudioService().routeDescription }
+                Spacer()
+                InputPickerButton { route = AudioService().routeDescription }
+                    .frame(width: 120, height: 44)
+            }
         }
         .onAppear { route = AudioService().routeDescription }
     }
@@ -128,6 +136,44 @@ private struct TurnTimingsCard: View {
     private func seconds(_ value: Double?) -> String {
         guard let value else { return "—" }
         return String(format: "%.2f s", value)
+    }
+}
+#endif
+
+#if SETECHO_APP
+/// iOS 26's input picker (AVInputPickerInteraction) on a button: the session is set up for recording
+/// first, as the picker lists inputs only for a recording session.
+private struct InputPickerButton: UIViewRepresentable {
+    var onPicked: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onPicked: onPicked) }
+
+    func makeUIView(context: Context) -> UIButton {
+        let button = UIButton(type: .system)
+        button.setTitle("Pick input", for: .normal)
+        button.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
+        button.tintColor = UIColor(Theme.cobalt)
+        button.contentHorizontalAlignment = .trailing
+        let interaction = AVInputPickerInteraction()
+        interaction.delegate = context.coordinator
+        button.addInteraction(interaction)
+        button.addAction(UIAction { _ in
+            AudioService().configure()
+            interaction.present()
+        }, for: .touchUpInside)
+        button.accessibilityLabel = "Pick the audio input"
+        return button
+    }
+
+    func updateUIView(_ uiView: UIButton, context: Context) {}
+
+    @MainActor
+    final class Coordinator: NSObject, @preconcurrency AVInputPickerInteraction.Delegate {
+        let onPicked: () -> Void
+        init(onPicked: @escaping () -> Void) { self.onPicked = onPicked }
+        func inputPickerInteractionDidEndDismissing(_ inputPickerInteraction: AVInputPickerInteraction) {
+            onPicked()
+        }
     }
 }
 #endif

@@ -34,6 +34,7 @@ final class AudioService {
     private var detector: VoiceDetector?
     private var drainTask: Task<Void, Never>?
     private var speechQueue: [String] = []
+    @ObservationIgnored private var routeObserver: NSObjectProtocol?
     private var speechContinuation: CheckedContinuation<Void, Never>?
     private var cuePlayer: AVAudioPlayer?
 
@@ -41,6 +42,17 @@ final class AudioService {
         synth.usesApplicationAudioSession = true
         synth.delegate = speechDelegate
         speechDelegate.onFinish = { [weak self] in self?.speechFinished() }
+        // AirPods dropping to call quality, or the output vanishing, mid-run: check and fall back.
+        routeObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, AirPodsMic.shared.isActive, AirPodsMic.shared.check(self.session) else { return }
+                self.configure()
+            }
+        }
+    }
+
+    isolated deinit {
+        if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
     }
 
     // MARK: Session
@@ -48,11 +60,18 @@ final class AudioService {
     /// .playAndRecord with mixing, A2DP output, the USB (DJI) input preferred. Never HFP.
     func configure() {
         do {
-            try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetoothA2DP])
-            if let usb = session.availableInputs?.first(where: { $0.portType == .usbAudio }) {
+            try AirPodsMic.shared.apply(to: session, ducking: false)
+            // The DJI receiver when it's plugged in, unless he asked for the AirPods mic.
+            if !AirPodsMic.shared.isActive, let usb = session.availableInputs?.first(where: { $0.portType == .usbAudio }) {
                 try session.setPreferredInput(usb)
             }
             try session.setActive(true)
+            if AirPodsMic.shared.check(session) {
+                // Back to A2DP output and the DJI or iPhone mic, then on with the run.
+                try AirPodsMic.shared.apply(to: session, ducking: false)
+                if let usb = session.availableInputs?.first(where: { $0.portType == .usbAudio }) { try session.setPreferredInput(usb) }
+                try session.setActive(true)
+            }
             let inputs = session.currentRoute.inputs.map { "\($0.portName) · \($0.portType.rawValue)" }
             inputDescription = inputs.isEmpty ? "—" : inputs.joined(separator: ", ")
             lastError = nil
@@ -154,7 +173,7 @@ final class AudioService {
     private func speakNow(_ text: String) async {
         isSpeaking = true
         do {
-            try session.setCategory(.playAndRecord, mode: .default, options: [.duckOthers, .allowBluetoothA2DP])
+            try AirPodsMic.shared.apply(to: session, ducking: true)
             try session.setActive(true)
         } catch {
             lastError = "Duck: \(error.localizedDescription)"
@@ -167,7 +186,7 @@ final class AudioService {
             synth.speak(utterance)
         }
         do {
-            try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetoothA2DP])
+            try AirPodsMic.shared.apply(to: session, ducking: false)
             try session.setActive(true)
         } catch {
             lastError = "Restore: \(error.localizedDescription)"
@@ -213,7 +232,7 @@ final class AudioService {
         isSpeaking = true
         defer { isSpeaking = false }
         do {
-            try session.setCategory(.playAndRecord, mode: .default, options: [.duckOthers, .allowBluetoothA2DP])
+            try AirPodsMic.shared.apply(to: session, ducking: true)
             try session.setActive(true)
         } catch {
             lastError = "Duck: \(error.localizedDescription)"
@@ -227,7 +246,7 @@ final class AudioService {
             lastError = "Couldn't play \(url.lastPathComponent)"
         }
         do {
-            try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetoothA2DP])
+            try AirPodsMic.shared.apply(to: session, ducking: false)
             try session.setActive(true)
         } catch {
             lastError = "Restore: \(error.localizedDescription)"
@@ -244,7 +263,7 @@ final class AudioService {
         while isSpeaking { try? await Task.sleep(for: .milliseconds(50)) }
         isSpeaking = true
         do {
-            try session.setCategory(.playAndRecord, mode: .default, options: [.duckOthers, .allowBluetoothA2DP])
+            try AirPodsMic.shared.apply(to: session, ducking: true)
             try session.setActive(true)
         } catch {
             lastError = "Duck: \(error.localizedDescription)"
@@ -253,7 +272,7 @@ final class AudioService {
 
     func restore() async {
         do {
-            try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetoothA2DP])
+            try AirPodsMic.shared.apply(to: session, ducking: false)
             try session.setActive(true)
         } catch {
             lastError = "Restore: \(error.localizedDescription)"

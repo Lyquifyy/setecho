@@ -101,6 +101,11 @@ struct SettingsView: View {
                 Text("Your first name. Setecho uses it now and then.").font(.subheadline).secondaryText()
                 SettingsField(placeholder: "First name", text: $settings.athleteFirstName)
                 CardDivider()
+                Toggle("Use AirPods mic", isOn: $settings.useAirPodsMic)
+                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+                Text(AirPodsMic.shared.notice ?? "Off: AirPods only play, and the DJI receiver or the iPhone mic listens. On: AirPods record at full quality where iOS 26 supports it; if they can only do call quality, Setecho switches back by itself.")
+                    .font(.footnote).secondaryText()
+                CardDivider()
                 Text("The voice for sessions. In the check-in it only fills in when the natural voice is slow.").font(.subheadline).secondaryText()
                 Picker("Voice", selection: $settings.voiceIdentifier) {
                     Text("Best installed").tag("")
