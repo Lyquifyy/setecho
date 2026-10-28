@@ -1,0 +1,23 @@
+{
+  "scenario": "h_latest_ask_owns_yes",
+  "title": "A count confirm and a back-off suggestion both pending: yes answers the latest.",
+  "utterances": [
+    {
+      "say": "done, 9",
+      "state": "ready",
+      "via": "rules",
+      "intent": {
+        "intent": "endSet",
+        "number": 9
+      }
+    },
+    {
+      "say": "yes",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "yes"
+      }
+    }
+  ]
+}

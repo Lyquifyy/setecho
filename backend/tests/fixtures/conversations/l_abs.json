@@ -1,0 +1,59 @@
+{
+  "scenario": "l_abs",
+  "title": "Abs after the last lift: no warm-ups, leg raises by done, 12, cable crunch by done and fifteen, the plank starts itself.",
+  "utterances": [
+    {
+      "say": "done, 10",
+      "state": "ready",
+      "via": "rules",
+      "intent": {
+        "intent": "endSet",
+        "number": 10
+      }
+    },
+    {
+      "say": "done, 12",
+      "state": "ready",
+      "via": "rules",
+      "intent": {
+        "intent": "endSet",
+        "number": 12
+      }
+    },
+    {
+      "say": "done, 12",
+      "state": "ready",
+      "via": "rules",
+      "intent": {
+        "intent": "endSet",
+        "number": 12
+      }
+    },
+    {
+      "say": "done",
+      "state": "ready",
+      "via": "rules",
+      "intent": {
+        "intent": "endSet"
+      }
+    },
+    {
+      "say": "fifteen",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "answer",
+        "number": 15
+      }
+    },
+    {
+      "say": "done, 15",
+      "state": "ready",
+      "via": "rules",
+      "intent": {
+        "intent": "endSet",
+        "number": 15
+      }
+    }
+  ]
+}

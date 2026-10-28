@@ -1,0 +1,31 @@
+{
+  "scenario": "c_phone_in_pocket",
+  "title": "Phone in the pocket: starting, done asks How many?, ten logs it.",
+  "utterances": [
+    {
+      "say": "starting",
+      "state": "ready",
+      "via": "rules",
+      "intent": {
+        "intent": "starting"
+      }
+    },
+    {
+      "say": "done",
+      "state": "recording",
+      "via": "rules",
+      "intent": {
+        "intent": "endSet"
+      }
+    },
+    {
+      "say": "ten",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "answer",
+        "number": 10
+      }
+    }
+  ]
+}

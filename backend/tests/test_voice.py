@@ -3,6 +3,7 @@ must never pass through a number the athlete did not say, and the endpoint must 
 and classification together. No live calls."""
 
 import json
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -323,3 +324,35 @@ def test_voice_command_text_runs_the_same_rules():
     assert body["classifiedBy"] == "rules"
     empty = client.post("/voice/command/text", json={"transcript": "  ", "context": CONTEXT.model_dump()})
     assert empty.json()["intent"]["intent"] == "unknown"
+
+
+# The conversations ConversationTests (iOS) drive end to end: each line, in the state it is said
+# in, must be read as the fixture says, so the engine's tests and the real path can't drift apart.
+CONVERSATIONS = sorted((Path(__file__).parent / "fixtures" / "conversations").glob("*.json"))
+
+
+@pytest.mark.parametrize("path", CONVERSATIONS, ids=[p.stem for p in CONVERSATIONS])
+def test_conversation_fixtures(monkeypatch, path):
+    def no_spark(*a, **kw):
+        raise AssertionError("Spark called for a line the rules should read")
+
+    monkeypatch.setattr(meta, "spark_json", no_spark)
+    for line in json.loads(path.read_text())["utterances"]:
+        ctx = CONTEXT.model_copy(
+            update={
+                "state": line["state"],
+                "exercisesAhead": line.get("exercisesAhead", []),
+                "addOnNames": line.get("addOnNames", []),
+            }
+        )
+        if line["via"] == "spark":
+            assert voice.classify_by_rules(line["say"], ctx) is None, line["say"]
+            continue
+        result, by = voice.route(line["say"], ctx)
+        assert by == "rules", line["say"]
+        got = {k: getattr(result, k) for k in line["intent"]}
+        assert got == line["intent"], line["say"]
+
+
+def test_every_scenario_has_a_fixture():
+    assert {p.stem[0] for p in CONVERSATIONS} == set("abcdefghijkl")

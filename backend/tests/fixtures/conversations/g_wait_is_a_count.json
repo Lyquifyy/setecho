@@ -1,0 +1,24 @@
+{
+  "scenario": "g_wait_is_a_count",
+  "title": "wait, that was 9 after an 11 is a count, not a pause.",
+  "utterances": [
+    {
+      "say": "done, 11",
+      "state": "ready",
+      "via": "rules",
+      "intent": {
+        "intent": "endSet",
+        "number": 11
+      }
+    },
+    {
+      "say": "wait, that was 9",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "reps",
+        "number": 9
+      }
+    }
+  ]
+}

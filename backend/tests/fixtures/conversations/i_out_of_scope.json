@@ -1,0 +1,23 @@
+{
+  "scenario": "i_out_of_scope",
+  "title": "Advice is for the coach; a yes makes it a note.",
+  "utterances": [
+    {
+      "say": "should I go heavier next week?",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "question",
+        "topic": "outOfScope"
+      }
+    },
+    {
+      "say": "yeah",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "yes"
+      }
+    }
+  ]
+}

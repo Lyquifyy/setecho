@@ -1,0 +1,31 @@
+{
+  "scenario": "f_end_session_asks",
+  "title": "I'm done in rest asks first; no carries on.",
+  "utterances": [
+    {
+      "say": "done, 10",
+      "state": "ready",
+      "via": "rules",
+      "intent": {
+        "intent": "endSet",
+        "number": 10
+      }
+    },
+    {
+      "say": "I'm done",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "endSession"
+      }
+    },
+    {
+      "say": "no",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "no"
+      }
+    }
+  ]
+}

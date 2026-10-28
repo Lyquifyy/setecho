@@ -1,0 +1,30 @@
+{
+  "scenario": "e_chatter",
+  "title": "Chatter, exclamations and someone else's sentence: nothing is spoken.",
+  "utterances": [
+    {
+      "say": "let's go",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "chatter"
+      }
+    },
+    {
+      "say": "ugh, that was brutal",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "chatter"
+      }
+    },
+    {
+      "say": "did you see the game last night",
+      "state": "rest",
+      "via": "spark",
+      "intent": {
+        "intent": "chatter"
+      }
+    }
+  ]
+}

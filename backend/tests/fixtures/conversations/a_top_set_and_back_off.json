@@ -1,0 +1,31 @@
+{
+  "scenario": "a_top_set_and_back_off",
+  "title": "Smith close-grip, camera on: two warm-ups, the logbook line before the top set, SAM's line with the back-off ask, a question, then go with it.",
+  "utterances": [
+    {
+      "say": "top set",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "topSet"
+      }
+    },
+    {
+      "say": "what's the back-off?",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "question",
+        "topic": "load"
+      }
+    },
+    {
+      "say": "go with it",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "acceptSuggestion"
+      }
+    }
+  ]
+}

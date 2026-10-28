@@ -1,0 +1,33 @@
+{
+  "scenario": "b_pocket_set",
+  "title": "Pocket set: done, 12 logs a new set of flyes; a correction edits that set only.",
+  "utterances": [
+    {
+      "say": "done, 8",
+      "state": "ready",
+      "via": "rules",
+      "intent": {
+        "intent": "endSet",
+        "number": 8
+      }
+    },
+    {
+      "say": "done, 12",
+      "state": "ready",
+      "via": "rules",
+      "intent": {
+        "intent": "endSet",
+        "number": 12
+      }
+    },
+    {
+      "say": "actually that was 11",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "reps",
+        "number": 11
+      }
+    }
+  ]
+}

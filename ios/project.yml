@@ -82,6 +82,10 @@ targets:
       - path: ../backend/tests/fixtures/reps
         type: folder
         buildPhase: resources
+      # The between-set conversations shared with test_voice.py: each line and how the backend reads it.
+      - path: ../backend/tests/fixtures/conversations
+        type: folder
+        buildPhase: resources
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

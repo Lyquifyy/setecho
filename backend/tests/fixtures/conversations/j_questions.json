@@ -1,0 +1,33 @@
+{
+  "scenario": "j_questions",
+  "title": "Last time's numbers and the rest left, from the log.",
+  "utterances": [
+    {
+      "say": "what did I do last time?",
+      "state": "ready",
+      "via": "rules",
+      "intent": {
+        "intent": "question",
+        "topic": "lastTime"
+      }
+    },
+    {
+      "say": "done, 8",
+      "state": "ready",
+      "via": "rules",
+      "intent": {
+        "intent": "endSet",
+        "number": 8
+      }
+    },
+    {
+      "say": "how long left?",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "question",
+        "topic": "restLeft"
+      }
+    }
+  ]
+}
