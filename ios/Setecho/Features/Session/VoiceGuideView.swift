@@ -1,16 +1,18 @@
 import SwiftUI
 
-/// What you can say (DESIGN.md): every line a session understands, grouped by when you'd say it.
-/// From Today's session card, Settings → Sessions and the session intro. Out loud, the same help is
-/// "what can I say?" between sets.
+/// What you can say (DESIGN.md): every line a session understands, one tab per kind of session
+/// (Working out, Abs, Vacuums), grouped by when you'd say it. From Today's session card, Settings →
+/// Sessions and the session intro. Out loud, the same help is "what can I say?" between sets.
 struct VoiceGuideView: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var guide = VoiceGuide.guides.first?.title ?? ""
 
     var body: some View {
         ScreenScaffold(onClose: { dismiss() }) {
             TitleBlock(title: "What you can say",
                        subtitle: "Between sets, say it your way: these are examples, not passwords. Talk to anyone else freely; what isn't for Setecho is ignored.")
-            ForEach(VoiceGuide.sections, id: \.title) { section in
+            SegmentTabs(items: VoiceGuide.guides.map { .init(value: $0.title, title: $0.title) }, selection: $guide)
+            ForEach(VoiceGuide.guides.first { $0.title == guide }?.sections ?? [], id: \.title) { section in
                 SectionCard(section.title) {
                     Text(section.detail).font(.footnote).secondaryText()
                     ForEach(section.phrases, id: \.say) { phrase in

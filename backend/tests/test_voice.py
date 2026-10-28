@@ -359,10 +359,14 @@ def test_every_scenario_has_a_fixture():
     assert {p.stem[0] for p in CONVERSATIONS} == set("abcdefghijklm")
 
 
-# The phone's "What you can say" guide (VoiceGuideView): every example on it must do what it says.
+# The phone's "What you can say" guides (VoiceGuideView: Working out, Abs, Vacuums): every example
+# on them must do what it says.
 VOICE_GUIDE = Path(__file__).parents[2] / "ios" / "Setecho" / "Resources" / "VoiceGuide.json"
 GUIDE_LINES = [
-    line for section in json.loads(VOICE_GUIDE.read_text())["sections"] for line in section["phrases"]
+    line
+    for guide in json.loads(VOICE_GUIDE.read_text())["guides"]
+    for section in guide["sections"]
+    for line in section["phrases"]
 ]
 
 

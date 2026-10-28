@@ -14,16 +14,22 @@ enum VoiceGuide {
         var phrases: [Phrase]
     }
 
-    private struct File: Decodable {
+    /// One kind of session: Working out, Abs, Vacuums.
+    struct Guide: Decodable, Equatable {
+        var title: String
         var sections: [Section]
     }
 
-    static let sections: [Section] = {
+    private struct File: Decodable {
+        var guides: [Guide]
+    }
+
+    static let guides: [Guide] = {
         guard let url = Bundle.main.url(forResource: "VoiceGuide", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let file = try? JSONDecoder().decode(File.self, from: data)
         else { return [] }
-        return file.sections
+        return file.guides
     }()
 
     /// "What can I say?": the few lines that work right now, as a template. During a set only

@@ -365,6 +365,6 @@ private let vacuums = AddOn(id: "addon_vac", name: "Stomach Vacuums", exercises:
 }
 
 @Test func voiceGuideLoadsFromTheBundle() {
-    #expect(VoiceGuide.sections.count == 7)
-    #expect(VoiceGuide.sections.allSatisfy { !$0.phrases.isEmpty })
+    #expect(VoiceGuide.guides.map(\.title) == ["Working out", "Abs", "Vacuums"])
+    #expect(VoiceGuide.guides.allSatisfy { !$0.sections.isEmpty && $0.sections.allSatisfy { !$0.phrases.isEmpty } })
 }

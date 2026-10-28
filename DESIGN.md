@@ -150,7 +150,8 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 - **Then one card:** "Everything you can say" (the guide below) and "Practice first" (today's session as a rehearsal: typed lines, the real backend, nothing logged).
 
 ### What you can say (Today's session card, Settings → Sessions, the intro)
-- One `SectionCard` per moment: While you lift · Before a set · After a set · Ask · Change the plan · For your coach · Fix and control. Each line is the phrase in quotes, then what it does in `textSecondary`.
+- `SegmentTabs`, one guide per kind of session: **Working out** · **Abs** · **Vacuums**.
+- Under each, one `SectionCard` per moment. Working out: While you lift · Before a set · After a set · Ask · Change the plan · Machine taken · For your coach · Fix and control. Abs: Add or skip · Rep sets · Planks. Vacuums: Holds · Ask · Fix and finish. Each line is the phrase in quotes, then what it does in `textSecondary`.
 - The lines live in `ios/Setecho/Resources/VoiceGuide.json`; `test_voice.py` reads each one through the real rules in its state, so the guide can't list a phrase that doesn't work.
 
 ### Photo session (full-screen, hands-free)
