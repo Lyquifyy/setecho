@@ -6,6 +6,58 @@ import Foundation
 /// five for eight", "24 3/4" → "twenty four and three quarters", "6/10" → "six out of ten"), and a
 /// different wording when the same line would come twice in a row. Only the digits change; every other word is said as written.
 enum SpokenText {
+    // MARK: Clean for the ear
+
+    /// The written text, said the way a person reads it aloud (Oct 28: units, symbols and the form's
+    /// shorthand came out letter by letter or stumbled): "Avg 7.2 h/night" → "average 7.2 hours a
+    /// night", "100% (5 of 5 days on macros)" → "100%, 5 of 5 days on macros", "Bench 225×8" →
+    /// "Bench 225 for 8", "31 in" → "31 inches", "91 mg/dL" → "91", "1-10" → "1 to 10". Only what
+    /// is spoken changes; the check-in his coach reads keeps its own text.
+    static func clean(_ text: String) -> String {
+        var s = text
+        for (pattern, template) in cleanups {
+            s = s.replacingOccurrences(of: pattern, with: template, options: [.regularExpression, .caseInsensitive])
+        }
+        return s.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// In order: symbols and layout first, then units after a number, then the form's shorthand.
+    private static let cleanups: [(String, String)] = [
+        (#"\s*\n+\s*"#, ". "),                               // lines become sentences
+        (#"\s*[·•|]\s*"#, ", "),
+        (#"\s*—\s*"#, ", "),
+        (#"(\d)\s*[–-]\s*(\d)"#, "$1 to $2"),                 // 1-10, 20–25, 10/19/26–10/25/26
+        (#"(\d)\s*[×x]\s*(\d)"#, "$1 for $2"),                // 225×8
+        (#"\s*→\s*"#, " to "),
+        (#"\s*\(\s*"#, ", "),                                // asides read as a clause
+        (#"\s*\)"#, ""),
+        (#"\s*&\s*"#, " and "),
+        (#"\bw/\s*"#, "with "),
+        (#"\s*/\s*(night|day|week|session)\b"#, " a $1"),
+        (#"(\d)\s*h\b"#, "$1 hours"),
+        (#"(\d)\s*hrs?\b"#, "$1 hours"),
+        (#"(\d)\s*mins?\b"#, "$1 minutes"),
+        (#"(\d)\s*s\b(?!\w)"#, "$1 seconds"),
+        (#"(\d)\s*lbs?\b"#, "$1 pounds"),
+        (#"(\d)\s*kg\b"#, "$1 kilos"),
+        (#"(\d)\s*kcal\b"#, "$1 calories"),
+        (#"(\d)\s*g\b"#, "$1 grams"),
+        (#"(\d)\s*bpm\b"#, "$1 beats a minute"),
+        (#"(\d)\s*mg/dl\b"#, "$1"),
+        (#"(\d)\s*in\b(?=\s*(?:$|[,.;!?]))"#, "$1 inches"),   // "31 in", not "in the morning"
+        (#"~\s*(\d)"#, "about $1"),
+        (#"\bavg\b\.?"#, "average"),
+        (#"\bapprox\.?(?=\s)"#, "about"),
+        (#"\bvs\.?(?=\s)"#, "versus"),
+        (#"\be\.g\.,?"#, "for example"),
+        (#"\betc\.?"#, "and so on"),
+        (#",\s*,"#, ","),
+        (#"\s{2,}"#, " "),
+    ]
+
+    /// What the synthesizer is given: the cleaned text with every number as words.
+    static func spoken(_ text: String) -> String { words(clean(text)) }
+
     // MARK: Numbers as words
 
     private static let units = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven",
@@ -95,7 +147,9 @@ enum SpokenText {
             } else if let pct = group("pct") {
                 out += "\(number(String(pct.dropLast()))) percent"
             } else if let k = group("thousands") {
-                out += "\(number(String(k.dropLast()))) thousand"
+                // "9.4k" → "nine thousand four hundred": how people say a step count.
+                let value = (Double(k.dropLast()) ?? 0) * 1000
+                out += value < 1_000_000 ? integer(Int(value.rounded())) : "\(number(String(k.dropLast()))) thousand"
             } else if let date = group("date") {
                 let parts = date.split(separator: "/").compactMap { Int($0) }
                 out += (1...12).contains(parts[0]) && (1...31).contains(parts[1])
@@ -152,7 +206,7 @@ enum SpokenText {
         let rate = Int((ratePercent(tone.rate) * (1 + Double(v.rate) / 100)).rounded())
         let pitch = Int(((tone.pitch - 1) * 100).rounded()) + v.pitch
         var escaped = ""
-        for c in words(text) {
+        for c in spoken(text) {
             switch c {
             case "&": escaped += "&amp;"
             case "<": escaped += "&lt;"
@@ -171,7 +225,7 @@ enum SpokenText {
         if let ssml = AVSpeechUtterance(ssmlRepresentation: ssml(text, tone: tone)) {
             utterance = ssml
         } else {
-            utterance = AVSpeechUtterance(string: words(text))
+            utterance = AVSpeechUtterance(string: spoken(text))
             utterance.rate = Float(tone.rate)
             utterance.pitchMultiplier = Float(tone.pitch)
         }

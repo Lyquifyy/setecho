@@ -105,10 +105,13 @@ struct CheckInMorningFlow: Equatable {
 
     /// One data field read back, like the questions (Oct 28: all of them in one line was too much).
     /// The first opens the read-back: "Quick check on your data. Average daily steps came in at 9.4k. Sound right?"
-    static func readBackPrompt(_ field: FieldSpec, _ answer: FieldAnswer, first: Bool) -> String {
+    /// The tail changes line to line ("Sound right?", "Look right?", "That right?") so a run of them
+    /// doesn't sound stamped out.
+    static func readBackPrompt(_ field: FieldSpec, _ answer: FieldAnswer, index: Int, first: Bool) -> String {
         let label = WrapUpModel.spokenLabel(field).capitalizedFirst
         let verb = answer.text.first?.isNumber == true ? "came in at" : "is"
-        return (first ? "Quick check on your data. " : "") + "\(label) \(verb) \(answer.text). Sound right?"
+        let tails = ["Sound right?", "Look right?", "That right?"]
+        return (first ? "Quick check on your data. " : "") + "\(label) \(verb) \(answer.text). \(tails[index % tails.count])"
     }
 
     /// The notes field a question for the coach lands in ("Additional notes or concerns").
@@ -230,7 +233,7 @@ final class CheckInMorningModel {
         lines += questionGroups.map { flow.prompt(for: $0, draft: draft) }
         // The data read-back, each line as it will be said, so they play at once.
         lines += flow.readBackFields(draft: draft).enumerated().map { index, item in
-            CheckInMorningFlow.readBackPrompt(item.field, item.answer, first: index == 0)
+            CheckInMorningFlow.readBackPrompt(item.field, item.answer, index: index, first: index == 0)
         }
         voice.prerender([intro] + lines)
     }
@@ -352,7 +355,9 @@ final class CheckInMorningModel {
             if let id = dataQueue.first, let item = flow.readBackFields(draft: draft).first(where: { $0.field.id == id }) {
                 let first = !dataReadBackStarted
                 dataReadBackStarted = true
-                await ask(CheckInMorningFlow.readBackPrompt(item.field, item.answer, first: first))
+                // The same index as the pre-rendered line, so it plays from its file.
+                let index = flow.readBackFields(draft: draft).firstIndex { $0.field.id == id } ?? 0
+                await ask(CheckInMorningFlow.readBackPrompt(item.field, item.answer, index: index, first: first))
                 return
             }
             isDone = true

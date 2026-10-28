@@ -33,7 +33,7 @@ final class SystemSpeaker: Speaker {
     /// The file name covers the words, the voice, the rate and pitch and how lines are built: a change
     /// renders afresh. Warmth and clarity are applied as it plays, so they need no new file.
     static func key(for text: String, voice: String, tone: VoiceTone) -> String {
-        let seed = "prosody|\(voice)|\(tone.clamped.rate)|\(tone.clamped.pitch)|\(text)"
+        let seed = "prosody2|\(voice)|\(tone.clamped.rate)|\(tone.clamped.pitch)|\(text)"
         return SHA256.hash(data: Data(seed.utf8)).map { String(format: "%02x", $0) }.joined().prefix(24).description
     }
 

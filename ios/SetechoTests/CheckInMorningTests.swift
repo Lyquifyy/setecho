@@ -112,10 +112,11 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
                              answers: [fromData(steps.id, "9.4k"), fromData(training.id, "100%, 5 of 5 sessions")], photoSetId: nil, sentAt: nil)
     let items = flow.readBackFields(draft: draft)
     #expect(items.map(\.field.id) == flow.template.orderedFields.map(\.id).filter { $0 == steps.id || $0 == training.id })
-    let first = CheckInMorningFlow.readBackPrompt(items[0].field, items[0].answer, first: true)
-    let second = CheckInMorningFlow.readBackPrompt(items[1].field, items[1].answer, first: false)
+    let first = CheckInMorningFlow.readBackPrompt(items[0].field, items[0].answer, index: 0, first: true)
+    let second = CheckInMorningFlow.readBackPrompt(items[1].field, items[1].answer, index: 1, first: false)
     #expect(first == "Quick check on your data. Training consistency came in at 100%, 5 of 5 sessions. Sound right?")
-    #expect(second == "Average daily steps came in at 9.4k. Sound right?")
+    #expect(second == "Average daily steps came in at 9.4k. Look right?")   // a different tail each line
+    #expect(SpokenText.spoken(second) == "Average daily steps came in at nine thousand four hundred. Look right?")
     #expect([first, second].allSatisfy { line in items.filter { line.contains($0.answer.text) }.count == 1 })   // one field per line
 }
 

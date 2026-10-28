@@ -14,12 +14,30 @@ import Testing
     #expect(SpokenText.words("Waist 31, bicep 16, thigh 24 3/4") == "Waist thirty one, bicep sixteen, thigh twenty four and three quarters")
     #expect(SpokenText.words("6/10, energy was good") == "six out of ten, energy was good")
     #expect(SpokenText.words("100%, macros were hit") == "one hundred percent, macros were hit")
-    #expect(SpokenText.words("Steps: avg 10.2k") == "Steps: avg ten point two thousand")
+    #expect(SpokenText.words("Steps: avg 10.2k") == "Steps: avg ten thousand two hundred")
     #expect(SpokenText.words("Rest 2:30") == "Rest two thirty")
     #expect(SpokenText.words("1:05") == "one oh five" && SpokenText.words("2:00") == "two minutes")
     #expect(SpokenText.words("Glucose 91 mg/dL") == "Glucose ninety one mg/dL")
     #expect(SpokenText.words("Morning. Step on the scale.") == "Morning. Step on the scale.")
     #expect(SpokenText.words("Slowed 46 percent, that's failure. About 2 left.") == "Slowed forty six percent, that's failure. About two left.")
+}
+
+@Test func theWrittenTextIsCleanedForTheEar() {
+    // The values Apple Health and the log really produce (backend checkin.py).
+    #expect(SpokenText.spoken("Avg 7.2 h/night") == "average seven point two hours a night")
+    #expect(SpokenText.spoken("100% (5 of 5 days on macros, 4 of 5 sessions)") == "one hundred percent, five of five days on macros, four of five sessions")
+    #expect(SpokenText.spoken("100%, 5 of 5 sessions, PRs: Bench 225×8") == "one hundred percent, five of five sessions, PRs: Bench two twenty five for eight")
+    #expect(SpokenText.spoken("Waist 31 in, bicep 16 in") == "Waist thirty one inches, bicep sixteen inches")
+    #expect(SpokenText.spoken("Glucose 91 mg/dL") == "Glucose ninety one")
+    #expect(SpokenText.spoken("Energy, 1-10?") == "Energy, one to ten?")
+    #expect(SpokenText.spoken("10/19/26–10/25/26") == "October nineteenth to October twenty fifth")
+    #expect(SpokenText.spoken("2400 kcal · 180 g protein") == "two thousand four hundred calories, one eighty grams protein")
+    #expect(SpokenText.spoken("Rest 90 s, then 2 min LISS") == "Rest ninety seconds, then two minutes LISS")
+    #expect(SpokenText.spoken("185 lbs") == "one eighty five pounds")
+    // Words are left alone: "in" that isn't inches, letters that aren't units.
+    #expect(SpokenText.spoken("Step in when you're ready.") == "Step in when you're ready.")
+    #expect(SpokenText.spoken("Hold still, then 3 sets in the morning.") == "Hold still, then three sets in the morning.")
+    #expect(SpokenText.spoken("Line one\nLine two") == "Line one. Line two")
 }
 
 @Test func theRateSliderFollowsTheMeasuredCurve() {
@@ -44,7 +62,7 @@ import Testing
     let pitch = 5 + v.pitch
     #expect(ssml == "<speak><prosody rate=\"\(100 + v.rate)%\" pitch=\"\(pitch >= 0 ? "+" : "")\(pitch)%\">Apple Health has you at one eighty point eight. Should I use that?</prosody></speak>")
     #expect(!ssml.contains("break"))
-    #expect(SpokenText.ssml("Waist & hips <3", tone: tone).contains("Waist &amp; hips &lt;three"))
+    #expect(SpokenText.ssml("Waist & hips <3", tone: tone).contains("Waist and hips &lt;three")) // "&" is said; "<" is escaped
     let u = SpokenText.utterance(text, voice: nil, tone: tone)
     #expect(u.volume == 1 && u.preUtteranceDelay == 0 && u.postUtteranceDelay == 0)
 }
