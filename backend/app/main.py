@@ -25,7 +25,6 @@ from app import (
     photos_api,
     realtime,
     sets_api,
-    speak,
     spotter,
     voice,
 )
@@ -37,7 +36,6 @@ app.include_router(sets_api.router)
 app.include_router(checkin_api.router)
 app.include_router(checkin_turn.router)
 app.include_router(spotter.router)
-app.include_router(speak.router)
 app.include_router(realtime.router)
 
 
