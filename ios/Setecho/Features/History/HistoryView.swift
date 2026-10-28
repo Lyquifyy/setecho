@@ -72,7 +72,7 @@ struct HistoryView: View {
             }) {
                 let sets = store.photoSets.sorted { $0.takenAt > $1.takenAt }
                 if sets.isEmpty {
-                    Text("Collages build a timeline here.").font(.subheadline).secondaryText()
+                    Text("Each week's four photos line up here.").font(.subheadline).secondaryText()
                 } else if comparePhotos, sets.count >= 2 {
                     HStack(spacing: Theme.Space.xs) {
                         collageTile(sets[1])
@@ -118,12 +118,22 @@ struct HistoryView: View {
         }
     }
 
+    /// One week: the four photos as taken, in his order (no collage since Oct 27).
     private func collageTile(_ set: PhotoSet) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.xxs) {
-            if let data = try? Data(contentsOf: store.mediaDirectory.appendingPathComponent(set.collageFile)),
-               let image = UIImage(data: data) {
-                Image(uiImage: image).resizable().scaledToFit()
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
+            HStack(spacing: Theme.Space.xxs) {
+                ForEach(Pose.allCases, id: \.self) { pose in
+                    if let file = set.photo(for: pose)?.file,
+                       let image = UIImage(contentsOfFile: store.mediaDirectory.appendingPathComponent(file).path) {
+                        Color.clear
+                            .aspectRatio(3 / 4, contentMode: .fit)
+                            .overlay { Image(uiImage: image).resizable().scaledToFill() }
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
+                    } else {
+                        Theme.cameraFill.aspectRatio(3 / 4, contentMode: .fit)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
+                    }
+                }
             }
             Text(Format.shortDate(set.takenAt)).font(.caption.weight(.semibold)).foregroundStyle(Theme.navy)
         }

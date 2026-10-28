@@ -46,7 +46,7 @@ enum Reminders {
         let due = schedule.nextDue(from: now)
         guard let at = Calendar.current.date(bySettingHour: deadlineGuard.hour, minute: deadlineGuard.minute, second: 0, of: due), at > now else { return }
         let content = UNMutableNotificationContent()
-        content.title = "Check-in due at \(schedule.dueBy)"
+        content.title = "Check-in due at \(Format.clock(schedule.dueBy))"
         content.body = "Open Setecho to send what's ready. Anything missing can be typed."
         content.sound = .default
         let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: at)

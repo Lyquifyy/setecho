@@ -411,7 +411,7 @@ final class CheckInMorningModel {
             }
             await apply(response)
         } catch {
-            status = error.localizedDescription
+            status = error.userMessage
             isListening = true
         }
     }

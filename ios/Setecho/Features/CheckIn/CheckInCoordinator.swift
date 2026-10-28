@@ -131,7 +131,7 @@ final class CheckInCoordinator {
             draft = fresh
             store.upsert(checkIn: fresh)
         } catch {
-            self.error = error.localizedDescription
+            self.error = error.userMessage
         }
     }
 

@@ -207,7 +207,7 @@ final class WrapUpModel {
             await natural.speak(confirmation + next)
             await ask()
         } catch {
-            status = error.localizedDescription
+            status = error.userMessage
             isListening = true
         }
     }

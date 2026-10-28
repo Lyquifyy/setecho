@@ -88,7 +88,7 @@ final class CoachReplyModel {
             cues = cut
             // The new reply's cues replace the old ones once it is applied; until then they sit with the reply.
         } catch {
-            self.error = error.localizedDescription
+            self.error = error.userMessage
         }
     }
 

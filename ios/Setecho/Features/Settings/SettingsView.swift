@@ -6,21 +6,49 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var settings = Settings.shared
+    @State private var showDiagnostics = false
+
+    /// The show date is stored as "yyyy-mm-dd", empty when not in prep.
+    private var inPrep: Binding<Bool> {
+        Binding(get: { !settings.showDate.isEmpty },
+                set: { settings.showDate = $0 ? DayKey.string(Calendar.current.date(byAdding: .weekOfYear, value: 12, to: .now) ?? .now) : "" })
+    }
+
+    private var showDay: Binding<Date> {
+        Binding(get: { DayKey.date(settings.showDate) ?? .now }, set: { settings.showDate = DayKey.string($0) })
+    }
+
+    /// The reminder time is stored as "HH:mm".
+    private var wakeTime: Binding<Date> {
+        Binding(get: {
+            let parts = settings.checkInWakeTime.split(separator: ":").compactMap { Int($0) }
+            return Calendar.current.date(bySettingHour: parts.first ?? 6, minute: parts.count > 1 ? parts[1] : 30, second: 0, of: .now) ?? .now
+        }, set: { date in
+            let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+            settings.checkInWakeTime = String(format: "%02d:%02d", c.hour ?? 6, c.minute ?? 30)
+        })
+    }
 
     private let weekdays: [(Int, String)] = [(2, "Mon"), (3, "Tue"), (4, "Wed"), (5, "Thu"), (6, "Fri"), (7, "Sat"), (1, "Sun")]
 
     var body: some View {
         @Bindable var settings = settings
         ScreenScaffold {
-            LinkButton(title: "Done", chevron: .leading) { dismiss() }
+            LinkButton(title: "Done", chevron: .none) { dismiss() }
             TitleBlock(title: "Settings", subtitle: "Only what the check-in can't read from Apple Health or the log.")
             SectionCard("Cardio protocol") {
                 Text("Your coach's words, e.g. \"25 min LISS × 2 on rest days\". A coach reply that changes cardio updates this.").font(.subheadline).secondaryText()
                 SettingsField(placeholder: "Assigned cardio", text: $settings.cardioProtocol)
             }
             SectionCard("Show date") {
-                Text("yyyy-mm-dd. Leave empty when not in prep (the form says N/A).").font(.subheadline).secondaryText()
-                SettingsField(placeholder: "2027-01-23", text: $settings.showDate)
+                Toggle("In prep for a show", isOn: inPrep)
+                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+                if inPrep.wrappedValue {
+                    DatePicker("Show day", selection: showDay, in: Date.now..., displayedComponents: .date)
+                        .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+                } else {
+                    Text("Weeks out goes to the coach as N/A.").font(.footnote).secondaryText()
+                }
             }
             SectionCard("Training days") {
                 Text("Days the program schedules lifting. A day with a Setecho session always counts.").font(.subheadline).secondaryText()
@@ -38,10 +66,22 @@ struct SettingsView: View {
                     }
                 }
             }
+            SectionCard("Check-in") {
+                DatePicker("Check-in morning reminder", selection: wakeTime, displayedComponents: .hourAndMinute)
+                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+                Text("On the due morning the check-in opens by itself the first time you open Setecho.").font(.footnote).secondaryText()
+                CardDivider()
+                Toggle("Current weight is the 7-day average", isOn: $settings.useSevenDayAverageWeight)
+                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+                CardDivider()
+                Text("Your own WhatsApp number, digits only. A rehearsal sends to you, never to your coach.").font(.subheadline).secondaryText()
+                SettingsField(placeholder: "Your number", text: $settings.ownWhatsAppNumber)
+                    .keyboardType(.numberPad)
+            }
             SectionCard("Sessions") {
                 Toggle("Coach's voice in sessions", isOn: $settings.coachVoiceInSessions)
                     .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
-                Text("His cues from a reply play once before that exercise, never during a set. Each cue has its own checkbox on the Coach reply screen.")
+                Text("His cues from a reply play once before that exercise, never during a set.")
                     .font(.footnote).secondaryText()
                 CardDivider()
                 Toggle("Next-set suggestions", isOn: $settings.nextSetSuggestions)
@@ -50,34 +90,20 @@ struct SettingsView: View {
                     .font(.footnote).secondaryText()
             }
             SectionCard("What you can load") {
-                Text("The steps his rules round to: barbell and dumbbell plates, and your gym's machine stacks.").font(.subheadline).secondaryText()
+                Text("The steps his rules round to.").font(.subheadline).secondaryText()
                 StepField(label: "Barbell", value: $settings.barbellStepLb)
                 CardDivider()
                 StepField(label: "Dumbbells", value: $settings.dumbbellStepLb)
                 CardDivider()
                 StepField(label: "Machines", value: $settings.machineStepLb)
             }
-            SectionCard("Check-in morning") {
-                Text("On the due morning the check-in starts itself the first time you open Setecho, until the 8:40 guard. A notification at this time opens it; a Shortcuts automation at the same time (\"Start my Setecho check-in\", run immediately) makes it fully hands-free.")
-                    .font(.subheadline).secondaryText()
-                SettingsField(placeholder: "06:30", text: $settings.checkInWakeTime)
-            }
-            SectionCard("Rehearsal and filming") {
-                Text("Your own WhatsApp number, digits only, so a rehearsal can send to you and never to him.").font(.subheadline).secondaryText()
-                SettingsField(placeholder: "1316…", text: $settings.ownWhatsAppNumber)
-                CardDivider()
-                Toggle("Filming mode", isOn: $settings.filmingMode)
-                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
-                Text("Saves every line Setecho speaks and every answer as audio with one clock, plus captions, for the demo edit. Stays on the phone; export by AirDrop from History. No change to timing.")
-                    .font(.footnote).secondaryText()
-            }
             SectionCard("Voice") {
-                Text("Your first name, for the spotter to use sparingly. It goes only in the line request.").font(.subheadline).secondaryText()
+                Text("Your first name. Setecho uses it now and then.").font(.subheadline).secondaryText()
                 SettingsField(placeholder: "First name", text: $settings.athleteFirstName)
                 CardDivider()
-                Text("The voice for sessions, and the fallback when the natural voice is slow or unavailable in Check-in morning and the wrap-up. Never your coach's.").font(.subheadline).secondaryText()
+                Text("The voice for sessions. In the check-in it only fills in when the natural voice is slow.").font(.subheadline).secondaryText()
                 Picker("Voice", selection: $settings.voiceIdentifier) {
-                    Text("Best installed (premium first)").tag("")
+                    Text("Best installed").tag("")
                     ForEach(AudioService.availableVoices(), id: \.identifier) { voice in
                         Text("\(voice.name) · \(qualityName(voice.quality))").tag(voice.identifier)
                     }
@@ -85,20 +111,21 @@ struct SettingsView: View {
                 .pickerStyle(.menu)
                 .tint(Theme.cobalt)
                 if !AudioService.hasNaturalVoice {
-                    Text("No premium voice is installed. Download one in Settings → Accessibility → Spoken Content → Voices → English.")
+                    Text("For a better session voice, download a premium one in Settings → Accessibility → Spoken Content → Voices.")
                         .font(.footnote).secondaryText()
                 }
             }
-            SectionCard("Check-in") {
-                Toggle("Current weight is the 7-day average", isOn: $settings.useSevenDayAverageWeight)
+            SectionCard("Behind the scenes") {
+                Toggle("Filming mode", isOn: $settings.filmingMode)
                     .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+                Text("Records every spoken line and answer for the demo video. Stays on the phone; AirDrop it from History.")
+                    .font(.footnote).secondaryText()
                 CardDivider()
-                Picker("Collage layout", selection: $settings.collageLayout) {
-                    Text("2 × 2").tag(PhotoAlign.CollageLayout.grid2x2)
-                    Text("1 × 4").tag(PhotoAlign.CollageLayout.strip1x4)
-                }
-                .pickerStyle(.segmented)
+                LinkButton(title: "Diagnostics") { showDiagnostics = true }
             }
+        }
+        .sheet(isPresented: $showDiagnostics) {
+            NavigationStack { ProbeHomeView() }.tint(Theme.cobalt)
         }
     }
 }

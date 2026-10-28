@@ -297,7 +297,7 @@ final class SessionCoordinator {
             filming?.transcribed(response.transcript)
             apply(response)
         } catch {
-            show(.init(speech: nil, echo: "Couldn't hear the backend: \(error.localizedDescription)", askBack: nil))
+            show(.init(speech: nil, echo: error.userMessage, askBack: nil))
         }
     }
 

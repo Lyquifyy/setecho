@@ -79,16 +79,18 @@ struct CheckInView: View {
         SectionCard("This week", accessory: {
             if coordinator.schedule.isWrapUpDue(on: .now) { TargetTag(text: "Wrap-up due") }
         }) {
-            HStack(alignment: .firstTextBaseline) {
-                MetricText(value: "\(coordinator.readyCount)", unit: "of \(coordinator.fieldCount) ready")
-                Spacer()
-            }
-            Text("\(coordinator.toAnswerCount) to answer out loud").font(.subheadline).monospacedDigit().secondaryText()
-            if coordinator.weightMissingToday {
-                Text(CheckInCoordinator.weightMissingMessage).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.navy)
+            if coordinator.draft != nil {
+                HStack(alignment: .firstTextBaseline) {
+                    MetricText(value: "\(coordinator.readyCount)", unit: "of \(coordinator.fieldCount) ready")
+                    Spacer()
+                }
+                Text("\(coordinator.toAnswerCount) to answer out loud").font(.subheadline).monospacedDigit().secondaryText()
+                if coordinator.weightMissingToday {
+                    Text(CheckInCoordinator.weightMissingMessage).font(.subheadline).secondaryText()
+                }
             }
             if coordinator.isDrafting {
-                LoadingCard(title: "Filling the check-in", detail: "Apple Health, the training log, then Muse Spark for the notes.")
+                LoadingRow(title: "Filling the check-in", detail: "Reading Apple Health and your training log, then drafting the notes.")
             } else if let error = coordinator.error {
                 Text(error).font(.subheadline).foregroundStyle(Theme.navy)
                 LinkButton(title: "Try again", chevron: .none) { Task { await coordinator.buildDraft() } }

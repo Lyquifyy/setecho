@@ -42,7 +42,7 @@ struct TodayView: View {
                 }) {
                     Text("\(morning.addOn.name) · \(morning.addOn.exercises.map(\.summary).joined(separator: ", ")) · \(morning.done) of \(morning.addOn.perWeek) this week")
                         .font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
-                    Text(morning.addOn.quote).font(.footnote).secondaryText()
+                    Text(morning.addOn.quote.trimmingCharacters(in: CharacterSet(charactersIn: ": "))).font(.footnote).secondaryText()
                     LinkButton(title: "Start") { showMorning = true }
                 }
             }
@@ -143,20 +143,25 @@ struct TodayView: View {
             }
         }) {
             if let template = store.currentTemplate {
+                let ready = CheckInCoordinator.currentDraft(in: store, schedule: schedule)?.answers
+                    .filter { $0.state == .filled || $0.state == .confirmed }.count ?? 0
                 HStack(alignment: .firstTextBaseline) {
-                    MetricText(value: "0", unit: "of \(template.fields.count) ready")
+                    MetricText(value: "\(ready)", unit: "of \(template.fields.count) ready")
                 }
-                Text("Due \(due.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) morning, by \(schedule.dueBy)")
+                Text("Due \(due.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) morning, by \(Format.clock(schedule.dueBy))")
                     .font(.subheadline).monospacedDigit().secondaryText()
                 if morning {
                     LinkButton(title: "Start check-in") { AppRouter.shared.showCheckInMorning = true }
                     Text("Or say \"Hey Siri, start my Setecho check-in\"").font(.footnote).secondaryText()
                 } else {
-                    LinkButton(title: "Open check-in") { AppRouter.shared.tab = .checkIn }
-                    // The morning flow on any other day, for rehearsals: same screens, nothing sent to him.
-                    LinkButton(title: "Rehearse the morning", chevron: .none) {
-                        AppRouter.shared.morningFresh = true
-                        AppRouter.shared.showCheckInMorning = true
+                    HStack {
+                        LinkButton(title: "Open check-in") { AppRouter.shared.tab = .checkIn }
+                        Spacer()
+                        // The morning flow on any other day: same screens, nothing sent to him.
+                        LinkButton(title: "Rehearse", chevron: .none) {
+                            AppRouter.shared.morningFresh = true
+                            AppRouter.shared.showCheckInMorning = true
+                        }
                     }
                 }
             } else {

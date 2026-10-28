@@ -42,11 +42,11 @@ enum DataKey: String, Codable, CaseIterable {
     /// Where the number comes from, as shown on a SourceChip before any real sample exists.
     var sourceName: String {
         switch self {
-        case .weeksToShow: "Settings"
+        case .weeksToShow: "Show date"
         case .planAccuracy: "MacroFactor + training log"
         case .nutritionConsistency: "MacroFactor via Apple Health"
         case .trainingConsistency: "Training log"
-        case .cardioProtocol: "Settings + Garmin"
+        case .cardioProtocol: "Coach's plan"
         case .performanceNotes: "Training log"
         case .lastRefeedDate: "MacroFactor via Apple Health"
         case .avgDailySteps: "Garmin via Apple Health"

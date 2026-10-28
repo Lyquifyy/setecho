@@ -81,7 +81,7 @@ struct ReviewSendView: View {
         ScreenScaffold {
             LinkButton(title: "Back to check-in", chevron: .leading) { dismiss() }
             TitleBlock(title: "Review and send", subtitle: "Exactly what your coach receives, in his format.")
-            SectionCard("Rehearsal", accessory: { if settings.rehearsalMode { TargetTag(text: "On") } }) {
+            SectionCard("Rehearsal") {
                 Toggle("Send to my own chat, not his", isOn: Bindable(settings).rehearsalMode)
                     .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
                 Text(settings.rehearsalMode
@@ -113,7 +113,7 @@ struct ReviewSendView: View {
                     Text(error).font(.subheadline).foregroundStyle(Theme.navy)
                     LinkButton(title: "Try again", chevron: .none) { Task { await render() } }
                 } else {
-                    LoadingCard(title: "Writing the message", detail: "In his format and order.")
+                    LoadingRow(title: "Writing the message", detail: "In his format and order.")
                 }
                 CardDivider()
                 Text("Every number comes from Apple Health, the training log or what you said. Tap a field on the Check-in tab to see its source.")
@@ -284,7 +284,7 @@ struct ReviewSendView: View {
             messages = response.messages
             coordinator.setAdjustments(periodSessions.flatMap(\.suggestions).filter { $0.decision == .accepted }.map(\.id))
         } catch {
-            self.error = error.localizedDescription
+            self.error = error.userMessage
         }
     }
 

@@ -29,8 +29,7 @@ struct FieldRow: View {
                 if let answer, !answer.text.isEmpty {
                     Text(answer.text).font(.body).monospacedDigit().foregroundStyle(Theme.navy)
                 } else {
-                    Text(field.source.type == .photo ? "From the photo session" : "Not answered yet")
-                        .font(.body).secondaryText()
+                    Text(placeholder).font(.body).secondaryText()
                 }
                 HStack(spacing: Theme.Space.xs) {
                     if let source = answer?.provenance.first?.source ?? field.source.sourceName {
@@ -48,12 +47,29 @@ struct FieldRow: View {
         .contentShape(Rectangle())
     }
 
+    /// A field filled from data is asked only when the data has nothing (an empty answer exists).
+    private var asked: Bool {
+        switch field.source.type {
+        case .voice: true
+        case .photo: false
+        case .data, .calculated, .drafted: answer?.state == .missing
+        }
+    }
+
+    private var placeholder: String {
+        switch field.source.type {
+        case .photo: "From the photo session"
+        case .voice: "Not answered yet"
+        case .data, .calculated, .drafted: answer == nil ? "Fills in from your data" : "No data this week"
+        }
+    }
+
     @ViewBuilder private var stateTag: some View {
         switch answer?.state {
         case .drafted:
             TargetTag(text: "Confirm")
         case .missing, nil:
-            if field.source.type != .photo {
+            if asked {
                 Text("Ask in wrap-up").font(.caption.weight(.semibold)).secondaryText()
             }
         case .filled, .confirmed:

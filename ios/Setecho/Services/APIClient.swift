@@ -120,3 +120,27 @@ private extension Data {
         append(Data(string.utf8))
     }
 }
+
+extension Error {
+    /// What the screen says when a call fails (Oct 28 polish: "A TLS error caused the secure
+    /// connection to fail" meant nothing). A refused request keeps the server's words, which name the field.
+    var userMessage: String {
+        if let url = self as? URLError {
+            switch url.code {
+            case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
+                return "You're offline. Setecho will try again when you're connected."
+            case .timedOut:
+                return "Setecho's server took too long to answer. Try again."
+            case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasUnknownRoot,
+                 .serverCertificateNotYetValid, .serverCertificateHasBadDate, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+                return "Couldn't reach Setecho's server. This Wi-Fi may be blocking it; try cellular."
+            case .cancelled:
+                return "Cancelled."
+            default:
+                return "Couldn't reach Setecho's server. Try again."
+            }
+        }
+        if let api = self as? APIError, api.status >= 500 { return "Setecho's server had a problem. Try again in a moment." }
+        return localizedDescription
+    }
+}

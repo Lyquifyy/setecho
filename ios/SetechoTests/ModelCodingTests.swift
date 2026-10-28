@@ -31,7 +31,7 @@ private func fixture(_ name: String) throws -> Data {
     let first = template.orderedFields[0]
     #expect(first.id == "weeks_away_from_target_date")
     #expect(first.source == FieldSource(type: .calculated, key: .weeksToShow))
-    #expect(first.source.howAnswered == "Data" && first.source.sourceName == "Settings")
+    #expect(first.source.howAnswered == "Data" && first.source.sourceName == "Show date")
     #expect(template.carriedBlocks.map(\.title) == ["Macro targets (until I change them):", "Supplements:"])
     #expect(template.voiceFieldCount == 11 && template.dataFieldCount == 11)
 }

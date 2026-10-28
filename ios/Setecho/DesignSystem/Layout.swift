@@ -2,6 +2,9 @@ import SwiftUI
 
 /// Compact brand header at the top of every screen: logo + serif wordmark lockup, and a More menu.
 struct BrandHeader: View {
+    /// A sheet or full-screen cover has its own way out; the More menu belongs to the tabs.
+    @Environment(\.isPresented) private var isPresented
+
     var body: some View {
         HStack {
             Image("Lockup")
@@ -13,16 +16,20 @@ struct BrandHeader: View {
                 .accessibilityLabel("Setecho")
                 .accessibilityAddTraits(.isHeader)
             Spacer()
-            Menu {
-                Button("Import program and form", systemImage: "doc.text.viewfinder") {
-                    AppRouter.shared.showImport = true
-                }
-                Button("Add coach reply", systemImage: "text.bubble") { AppRouter.shared.showAddReply = true }
-                Button("Settings", systemImage: "gearshape") { AppRouter.shared.showSettings = true }
-                Divider()
-                // Temporary until M6: the M0 gate probes, testable from TestFlight.
-                Button("Gate probes", systemImage: "stethoscope") { ProbesPresenter.shared.isShown = true }
-            } label: {
+            if !isPresented { moreMenu }
+        }
+        // Room under the header before the screen's title, so the lockup never sits on the content.
+        .padding(.bottom, Theme.Space.xs)
+    }
+
+    private var moreMenu: some View {
+        Menu {
+            Button("Import program and form", systemImage: "doc.text.viewfinder") {
+                AppRouter.shared.showImport = true
+            }
+            Button("Add coach reply", systemImage: "text.bubble") { AppRouter.shared.showAddReply = true }
+            Button("Settings", systemImage: "gearshape") { AppRouter.shared.showSettings = true }
+        } label: {
                 Image(systemName: "ellipsis")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(Theme.navy)
@@ -30,11 +37,8 @@ struct BrandHeader: View {
                     .background(Theme.surface, in: Circle())
                     .overlay(Circle().strokeBorder(Theme.border, lineWidth: 1))
                     .frame(width: 44, height: 44)
-            }
-            .accessibilityLabel("More")
         }
-        // Room under the header before the screen's title, so the lockup never sits on the content.
-        .padding(.bottom, Theme.Space.xs)
+        .accessibilityLabel("More")
     }
 }
 
@@ -102,6 +106,10 @@ struct ScreenScaffold<Content: View, Footer: View>: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .background(Theme.page.ignoresSafeArea())
+        // The page color under the status bar, so cards never scroll beneath the clock.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Color.clear.frame(height: 0).background(Theme.page.ignoresSafeArea(edges: .top))
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if hasFooter { FooterBar { footer } }
         }

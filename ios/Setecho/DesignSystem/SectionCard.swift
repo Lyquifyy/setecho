@@ -88,17 +88,25 @@ struct LoadingCard: View {
     var detail: String?
 
     var body: some View {
-        SectionCard {
-            HStack(spacing: Theme.Space.m) {
-                ProgressView().tint(Theme.cobalt).controlSize(.large)
-                VStack(alignment: .leading, spacing: Theme.Space.xxs) {
-                    Text(title).font(.body.weight(.semibold)).foregroundStyle(Theme.navy)
-                    if let detail { Text(detail).font(.subheadline).secondaryText() }
-                }
-                Spacer()
+        SectionCard { LoadingRow(title: title, detail: detail) }
+    }
+}
+
+/// The same line inside a card that already exists: cards never nest (DESIGN.md rule 5).
+struct LoadingRow: View {
+    let title: String
+    var detail: String?
+
+    var body: some View {
+        HStack(spacing: Theme.Space.m) {
+            ProgressView().tint(Theme.cobalt).controlSize(.large)
+            VStack(alignment: .leading, spacing: Theme.Space.xxs) {
+                Text(title).font(.body.weight(.semibold)).foregroundStyle(Theme.navy)
+                if let detail { Text(detail).font(.subheadline).secondaryText() }
             }
-            .frame(minHeight: 56)
+            Spacer()
         }
+        .frame(minHeight: 56)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title). \(detail ?? "")")
     }

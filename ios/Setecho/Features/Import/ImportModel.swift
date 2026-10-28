@@ -78,7 +78,7 @@ final class ImportModel {
                 rules = try await api.importRules(text: pasted)
             }
         } catch {
-            self.error = error.localizedDescription
+            self.error = error.userMessage
         }
     }
 

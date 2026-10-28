@@ -2,6 +2,15 @@ import Foundation
 
 /// The only place numbers become strings. Loads are in pounds.
 enum Format {
+    /// "09:00" (as the schedule stores it) -> "9:00 AM", in the phone's own clock style.
+    static func clock(_ hhmm: String) -> String {
+        let parts = hhmm.split(separator: ":").compactMap { Int($0) }
+        guard let hour = parts.first,
+              let date = Calendar.current.date(bySettingHour: hour, minute: parts.count > 1 ? parts[1] : 0, second: 0, of: .now)
+        else { return hhmm }
+        return date.formatted(date: .omitted, time: .shortened)
+    }
+
     /// 220 -> "220", 222.5 -> "222.5"
     static func number(_ value: Double) -> String {
         value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
