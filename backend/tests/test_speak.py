@@ -11,23 +11,31 @@ def test_unconfigured_means_no_provider_and_a_422(monkeypatch):
     for key in ("VOICE_PROVIDER", "ELEVENLABS_API_KEY", "CARTESIA_API_KEY"):
         monkeypatch.delenv(key, raising=False)
     client = TestClient(app)
-    assert client.get("/voice/speak/status").json() == {
-        "provider": None,
-        "configured": False,
-        "format": "audio/mpeg",
-    }
+    status = client.get("/voice/speak/status").json()
+    assert (
+        status["provider"] is None and status["configured"] is False and status["liveFormat"] == "audio/pcm"
+    )
     r = client.post("/voice/speak", json={"text": "Morning. Step on the scale."})
     assert r.status_code == 422 and "no natural voice" in r.json()["error"]
     monkeypatch.setenv("VOICE_PROVIDER", "elevenlabs")  # named but no key: still unconfigured
     assert speak.provider() is None
+    monkeypatch.delenv("VOICE_PROVIDER")
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "k")  # the key alone picks ElevenLabs
+    assert speak.provider() == "elevenlabs"
 
 
 def test_each_provider_gets_only_the_text(monkeypatch):
     monkeypatch.setenv("VOICE_PROVIDER", "elevenlabs")
     monkeypatch.setenv("ELEVENLABS_API_KEY", "k")
-    url, headers, body = speak.request_for("elevenlabs", "Fasted glucose?")
-    assert "text-to-speech" in url and headers["xi-api-key"] == "k" and body["text"] == "Fasted glucose?"
-    assert body["model_id"] == "eleven_flash_v2_5" and set(body) == {"text", "model_id", "voice_settings"}
+    monkeypatch.setenv("ELEVENLABS_MODEL", "eleven_flash_v2_5")
+    monkeypatch.setenv("ELEVENLABS_VOICE_ID", "voice123")
+    url, headers, body = speak.request_for("elevenlabs", "Weight 180.8, got it.")
+    assert "text-to-speech/voice123/stream?output_format=pcm_24000" in url and headers["xi-api-key"] == "k"
+    assert body["text"] == "Weight one eighty point eight, got it."  # numbers as words before the text leaves
+    assert body["model_id"] == "eleven_flash_v2_5" and body["language_code"] == "en"
+    assert body["voice_settings"] == {"stability": 0.5, "similarity_boost": 0.75, "speed": 0.95}
+    url, _, _ = speak.request_for("elevenlabs", "Fasted glucose?", "cache")
+    assert url.endswith("output_format=mp3_44100_128")
     monkeypatch.setenv("VOICE_PROVIDER", "cartesia")
     monkeypatch.setenv("CARTESIA_API_KEY", "c")
     assert speak.provider() == "cartesia"
@@ -54,3 +62,4 @@ def test_text_is_capped_and_never_empty(monkeypatch):
     client = TestClient(app)
     assert client.post("/voice/speak", json={"text": "   "}).status_code == 422
     assert client.post("/voice/speak", json={"text": "x" * 401}).status_code == 422
+    assert client.post("/voice/speak", json={"text": "hi", "mode": "ogg"}).status_code == 422

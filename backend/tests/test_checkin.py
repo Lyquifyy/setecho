@@ -333,3 +333,11 @@ def test_current_goals_is_drafted_from_the_last_check_in():
         and a.provenance[0].source == "Last check-in"
     )
     assert by_id(checkin.build_draft(request(), agent=lambda r, f: {}))[goal.id].state == "missing"
+
+
+def test_the_questionnaire_heading_opens_the_second_message():
+    draft = checkin.build_draft(request(), agent=lambda req, fields: {})
+    with_heading = TEMPLATE.model_copy(update={"questionnaireHeading": "Overview:"})
+    plan, form = checkin.render_messages(with_heading, draft)
+    assert form.startswith("Overview:\nWeeks away from target date") and "Overview:" not in plan
+    assert not checkin.render_messages(TEMPLATE, draft)[1].startswith("Overview:")

@@ -278,6 +278,10 @@ class CheckInTemplateOut(StrictModel):
     cardioProtocol: str | None = Field(
         default=None, description="The assigned cardio protocol as written in the form, else null"
     )
+    questionnaireHeading: str | None = Field(
+        default=None,
+        description='A heading line the coach puts before the questions, verbatim ("Overview:"), else null',
+    )
 
 
 class FieldSpec(FieldSpecOut):
@@ -288,6 +292,7 @@ class FieldSpec(FieldSpecOut):
 class CheckInTemplate(StrictModel):
     fields: list[FieldSpec]
     carriedBlocks: list[CarriedBlock]
+    questionnaireHeading: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -502,7 +507,8 @@ def to_template(out: CheckInTemplateOut) -> CheckInTemplate:
         for i, f in enumerate(out.fields)
     ]
     blocks = [CarriedBlock(title=block_title(b), text=b.text) for b in out.carriedBlocks]
-    return CheckInTemplate(fields=fields, carriedBlocks=blocks)
+    heading = (out.questionnaireHeading or "").strip() or None
+    return CheckInTemplate(fields=fields, carriedBlocks=blocks, questionnaireHeading=heading)
 
 
 # ---------------------------------------------------------------------------

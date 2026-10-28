@@ -70,7 +70,8 @@ IMPORT_FORM = (
     "the fields.\n\n"
     "Also copy the macro targets (training and rest day kcal, protein, carbs, fat) and the cardio "
     "protocol out of those blocks into `targets` and `cardioProtocol`; if a number isn't clearly "
-    "written there, leave it null."
+    'written there, leave it null. A heading the coach puts right before the questions ("Overview:") '
+    "goes in `questionnaireHeading`, verbatim; null when there is none."
 )
 
 COACH_REPLY = (

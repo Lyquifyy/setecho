@@ -596,6 +596,8 @@ def render_messages(
             plan.append(f"{title}\n\n{text}" if title else text)
         plan.append("")
     form: list[str] = []
+    if template.questionnaireHeading:
+        form.append(template.questionnaireHeading)  # his "Overview:" line, before the questions
     for field in sorted(template.fields, key=lambda f: f.order):
         if field.source.type == "photo":
             continue
