@@ -1,10 +1,11 @@
 import Foundation
 import Observation
 
-/// Wires the session together: the engine decides, the audio service listens and speaks, the set
-/// detector watches the bar and counts, the backend reads commands and measures reps from the
-/// clip (SAM is the count of record; the phone's count is the silent fallback), the store keeps
-/// the result.
+/// Wires the session together: the engine decides, the conversation hears and answers (in order,
+/// none dropped, the realtime stream's words when it has them), the audio service listens and
+/// speaks, the set detector watches the bar and counts, the backend reads commands and measures
+/// reps from the clip (SAM is the count of record; the phone's count is the silent fallback), the
+/// store keeps the result.
 @MainActor
 @Observable
 final class SessionCoordinator {
@@ -13,9 +14,12 @@ final class SessionCoordinator {
     /// The one voice (HANDOFF.md §7): callouts are built from the moment, so they are spoken live.
     @ObservationIgnored private let voice: SystemSpeaker
     let detector: SetDetector
-    private(set) var echo: String?
-    private(set) var askBack: String?
-    private(set) var isUploading = false
+    let conversation: SessionConversation
+    var echo: String? { conversation.echo }
+    var heard: String? { conversation.heard }
+    var askBack: String? { conversation.askBack }
+    /// The rest-time line being spoken, as text on the HUD (DESIGN.md Session, Rest).
+    var spokenLine: String? { conversation.spokenLine }
     private(set) var permissionsDenied = false
     private(set) var started = false
     private(set) var didSave = false
@@ -26,10 +30,13 @@ final class SessionCoordinator {
 
     private let api: APIClient
     private let store: Store
-    /// One tick a second: the rest countdown, and the 60 s fallback when SAM is late (HANDOFF.md §7).
+    /// One tick a second: the rest countdown, lead-ins and holds, and the 60 s fallback when SAM is late (HANDOFF.md §7).
     private var clockTask: Task<Void, Never>?
-    private var echoTask: Task<Void, Never>?
     private var cameraOn = false
+    /// Rehearsal (Developer → Session rehearsal): no camera, typed lines through the real backend.
+    let rehearsal: Bool
+    /// The realtime stream of the utterance being heard now; a new one opens for each utterance.
+    private var stream: RealtimeTranscriber?
     /// The set the camera is filming, by its real start on the capture clock.
     private var currentSetStart: Double?
     /// Logged sets waiting for their clips, keyed by the set's capture-clock start.
@@ -40,7 +47,8 @@ final class SessionCoordinator {
 
     /// The day's session with the add-ons joining it today, or a morning session of one add-on
     /// (day nil). The engine gets his confirmed warm-up rule and the add-ons "add abs" can bring in.
-    init(day: ProgramDay?, addOns: [AddOn] = [], weekNumber: Int, store: Store, api: APIClient = APIClient(), settings: Settings = .shared) {
+    init(day: ProgramDay?, addOns: [AddOn] = [], weekNumber: Int, store: Store, api: APIClient = APIClient(), settings: Settings = .shared,
+         rehearsal: Bool = false) {
         let plan = store.plan
         self.engine = SessionEngine(day: day, addOns: addOns,
                                     availableAddOns: plan?.program.addOns.filter { $0.timing == .withSession } ?? [],
@@ -48,13 +56,37 @@ final class SessionCoordinator {
                                     rules: plan?.rules ?? [], roleTargets: plan?.roleTargets ?? [], restRules: plan?.restRules ?? [],
                                     loadSteps: settings.loadSteps, lastSets: store.lastSets, nextSessionLoads: store.nextSessionLoads,
                                     suggestionsEnabled: settings.nextSetSuggestions, calibration: store.calibration,
-                                    athleteName: settings.athleteFirstName.isEmpty ? nil : settings.athleteFirstName)
+                                    athleteName: settings.athleteFirstName.isEmpty ? nil : settings.athleteFirstName,
+                                    autoHolds: settings.autoStartHolds)
         self.store = store
         self.api = api
+        self.rehearsal = rehearsal
+        self.conversation = SessionConversation(engine: engine)
         self.voice = SystemSpeaker(audio: audio, cacheDirectory: store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
         self.detector = SetDetector(mediaDirectory: store.mediaDirectory, sessionId: engine.session.id)
         if settings.coachVoiceInSessions {
             engine.cues = Dictionary(store.cues.filter(\.approved).map { ($0.exerciseId, $0) }, uniquingKeysWith: { a, _ in a })
+        }
+        wireConversation()
+    }
+
+    private func wireConversation() {
+        conversation.classify = { [api] heard, context in
+            if let words = heard.transcript, !words.isEmpty { return try await api.voiceCommand(transcript: words, context: context) }
+            guard let wav = heard.wav else { return VoiceCommandResponse(transcript: "", intent: VoiceIntent(intent: .unknown, confidence: 0)) }
+            return try await api.voiceCommand(wav: wav, context: context)
+        }
+        conversation.speak = { [weak self] line in await self?.speak(line) }
+        conversation.chime = { [weak self] in self?.audio.playTurnEndSound() }
+        conversation.cameraSet = { [weak self] in
+            // "Done" on a set the camera is filming keeps its count and its clip for SAM.
+            guard let self, self.cameraOn, let start = self.currentSetStart, let t = self.detector.lastFrameTime else { return nil }
+            return (self.detector.phoneCount(from: start, to: t), true)
+        }
+        conversation.applied = { [weak self] response, wasRecording in self?.afterVoice(response, wasRecording: wasRecording) }
+        conversation.record = { [weak self] record in
+            guard let self else { return }
+            SessionDebug.append(record, sessionId: self.engine.session.id, in: self.store.mediaDirectory)
         }
     }
 
@@ -70,6 +102,7 @@ final class SessionCoordinator {
         case .saved: .saved
         case .rest(let remaining): .rest(remaining: remaining)
         case .hold(let remaining): .hold(remaining: remaining)
+        case .leadIn: .ready
         case .listening: .listening
         case .paused: .paused
         case .ended: .ended
@@ -81,7 +114,9 @@ final class SessionCoordinator {
     func start() async {
         guard !started else { return }
         let mic = await audio.requestMicrophone()
-        let camera = await SetDetector.requestCamera()
+        // A morning of holds never starts the camera: it can't start or end a hold (no 6 AM permission prompt).
+        let wantsCamera = !rehearsal && !engine.isAllTimed
+        let camera = wantsCamera ? await SetDetector.requestCamera() : false
         guard mic else {
             permissionsDenied = true
             return
@@ -96,10 +131,17 @@ final class SessionCoordinator {
             Task { try? await Task.sleep(for: .milliseconds(300)); showSlate = false }
         }
         audio.configure()
+        audio.detectorConfig = { VoiceDetector.Config.session(sampleRate: $0) }
+        audio.onSpeechStart = { [weak self] in
+            let stream = RealtimeTranscriber()
+            stream.start()
+            self?.stream = stream
+        }
+        audio.onLiveSamples = { [weak self] samples, rate in self?.stream?.send(samples, rate: rate) }
         audio.onUtterance = { [weak self] utterance in
             Task { await self?.handle(utterance) }
         }
-        audio.startListening()
+        if !rehearsal { audio.startListening() }
         startClock()
         if camera {
             cameraOn = true
@@ -108,15 +150,16 @@ final class SessionCoordinator {
             detector.onClipsReady = { [weak self] clips in self?.clipsReady(clips) }
             detector.start()
         }
-        await speak(intro)
+        conversation.say(engine.intro)
         await playCueIfDue()
+        conversation.show(engine.beginLeadInIfDue())
     }
 
     /// The coach's cue for the current exercise, once, in Ready, before its first set (HANDOFF.md §7).
     private func playCueIfDue() async {
         guard let cue = engine.cueDue() else { return }
         engine.cuePlayed(cue)
-        echo = "Coach · \(engine.currentExercise?.name ?? "")\n“\(cue.text)”"
+        conversation.show(.init(echo: "Coach · \(engine.currentExercise?.name ?? "")\n“\(cue.text)”"))
         await play(cue)
     }
 
@@ -131,16 +174,6 @@ final class SessionCoordinator {
         store.update(cue: played)
     }
 
-    private var intro: String {
-        guard let ex = engine.currentExercise else { return "Nothing planned for today." }
-        if engine.currentSetIsTimed { return "\(engine.title). \(ex.name), \(engine.targetRepsText). Say go." }
-        var line = "\(engine.title). \(ex.name), \(Callout.target(load: engine.targetLoadLb, reps: engine.targetRepsText))."
-        if let logbook = engine.logbookLine(for: ex) { line += " \(logbook)" }
-        line += engine.warmupMode ? " Warm-ups first." : " Lift when ready, or say starting."
-        if engine.needsLoad { line += " Weight for the top set?" }
-        return line
-    }
-
     /// The long-press End session, or "end session" by voice.
     func end() {
         engine.endSession()
@@ -153,6 +186,8 @@ final class SessionCoordinator {
         clockTask?.cancel()
         detector.stop()
         audio.stopListening()
+        stream?.cancel()
+        stream = nil
         for file in countFilesHeld.values { try? FileManager.default.removeItem(at: store.mediaDirectory.appendingPathComponent(file)) }
         countFilesHeld.removeAll()
         save()
@@ -160,6 +195,8 @@ final class SessionCoordinator {
 
     private func save() {
         store.upsert(session: engine.session)
+        for entry in engine.logbookEntries.dropFirst(savedLogbookEntries) { store.addLogbook(entry) }
+        savedLogbookEntries = engine.logbookEntries.count
         for sample in engine.calibrationSamples.dropFirst(savedCalibrationSamples) {
             store.addCalibration(exerciseId: sample.exerciseId, velocityLossPct: sample.velocityLossPct, rpe: sample.rpe)
         }
@@ -167,18 +204,20 @@ final class SessionCoordinator {
     }
 
     private var savedCalibrationSamples = 0
+    private var savedLogbookEntries = 0
 
     // MARK: Set detection
 
     private func cameraSetStarted(at start: Double) {
-        // A timed set is a countdown, never a camera set (HANDOFF.md §7, Timed sets).
-        guard !engine.currentSetIsTimed else { return }
+        // A timed set is a countdown, and an add-on set goes by voice: never a camera set (HANDOFF.md §7).
+        guard !engine.currentSetIsVoiceOnly else { return }
         currentSetStart = start
         detector.restPause = engine.currentSetIsRestPause
         show(engine.setStarted())
     }
 
     private func cameraSetEnded(at end: Double) {
+        guard currentSetStart != nil || engine.state == .recording else { return }
         let start = currentSetStart
         currentSetStart = nil
         detector.restPause = false
@@ -272,112 +311,83 @@ final class SessionCoordinator {
         if engine.state == .ready { Task { await playCueIfDue() } }
     }
 
-    /// The session clock: every second, the rest countdown ticks, and a set SAM has not answered
-    /// within 60 s gets the phone's count spoken.
+    /// The session clock: every second, the rest countdown, a lead-in's count, a hold's countdown
+    /// (from the wall clock), and the phone's count for a set SAM has not answered within 60 s.
     private func startClock() {
         clockTask?.cancel()
         clockTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 guard let self, !self.didSave else { return }
-                let rest = self.engine.tickRest()
-                if rest != .none {
-                    self.show(rest)
-                    if self.engine.state == .ready { await self.playCueIfDue() }
-                }
-                let hold = self.engine.tickHold(at: .now)
-                if hold != .none {
-                    self.show(hold)
-                    self.afterStateChange()
-                }
-                let fallback = self.engine.tick(now: .now)
-                if fallback != .none { self.show(fallback) }
+                let before = self.engine.state
+                self.engine.cameraOnDuty = self.cameraOn && self.detector.isOnDuty
+                self.conversation.tick()
+                if self.engine.state != before { self.afterStateChange() }
             }
         }
     }
 
     // MARK: Voice
 
+    /// One utterance from the mic: never dropped, queued behind any still being handled. A sound
+    /// under a fifth of a second is a clank; one that ran to the 10 s limit was noise, and the floor
+    /// is learned again.
     private func handle(_ utterance: VoiceDetector.Utterance) async {
-        // Listen only in Ready and Rest (HANDOFF.md §7): gym noise during a set never becomes a command.
-        guard engine.state.isListeningAllowed, !isUploading else { return }
-        let pcm = Resample.toInt16Mono(utterance.samples, from: utterance.sampleRate, to: 16_000)
-        guard pcm.count > 16_000 / 4 else { return } // under a quarter second: a clank, not a word
-        filming?.heard(pcm16: pcm, sampleRate: 16_000)
-        let wav = WAVFile.data(pcm16: pcm, sampleRate: 16_000)
-        isUploading = true
-        defer { isUploading = false }
-        do {
-            let response = try await api.voiceCommand(wav: wav, context: engine.context)
-            filming?.transcribed(response.transcript)
-            apply(response)
-        } catch {
-            show(.init(speech: nil, echo: error.userMessage, askBack: nil))
+        let stream = self.stream
+        self.stream = nil
+        let endedAt = Date.now
+        if utterance.hitMax || utterance.seconds < 0.2 {
+            stream?.cancel()
+            if utterance.hitMax { audio.recalibrate() }
+            SessionDebug.append(.init(at: endedAt, seconds: utterance.seconds, state: engine.context.state,
+                                      error: utterance.hitMax ? "too long (noise)" : "too short"),
+                                sessionId: engine.session.id, in: store.mediaDirectory)
+            return
         }
+        let pcm = Resample.toInt16Mono(utterance.samples, from: utterance.sampleRate, to: 16_000)
+        filming?.heard(pcm16: pcm, sampleRate: 16_000)
+        var heard = SessionConversation.Heard(transcript: nil, wav: WAVFile.data(pcm16: pcm, sampleRate: 16_000),
+                                              seconds: utterance.seconds, speechEndedAt: endedAt)
+        if let stream {
+            let words: @MainActor () async -> String? = { await stream.end() }
+            heard.words = words
+        }
+        engine.cameraOnDuty = cameraOn && detector.isOnDuty
+        await conversation.hear(heard)
     }
 
-    /// A tap-free fallback for testing: apply a typed command as if transcribed.
-    func simulate(_ response: VoiceCommandResponse) {
-        apply(response)
+    /// Developer → Session rehearsal: a typed line through the real backend, as if it was heard.
+    func rehearse(_ line: String) async {
+        engine.cameraOnDuty = false
+        await conversation.hear(.init(transcript: line, wav: nil, seconds: 0, speechEndedAt: .now))
     }
 
-    private func apply(_ response: VoiceCommandResponse) {
-        let wasRecording = engine.state == .recording
-        let outcome = engine.apply(response)
+    /// The coordinator's side of a command: a spoken "done" closes the camera's clip, "say that
+    /// again" replays the cue, "that was my top set" uploads the held clip, the session ends or
+    /// moves on.
+    private func afterVoice(_ response: VoiceCommandResponse, wasRecording: Bool) {
+        filming?.transcribed(response.transcript)
         if response.intent.intent == .replayCue, let cue = engine.cueToReplay() {
             Task { await play(cue) }
         }
         if wasRecording, engine.state != .recording, cameraOn {
-            // "Done" by voice: close the clip the camera was filming for this set.
             if let start = currentSetStart, let setId = engine.lastLoggedSetId { setsAwaitingClips[start] = setId }
             currentSetStart = nil
             detector.restPause = false
             detector.endSetByVoice()
         }
         if response.intent.intent == .topSet { uploadReclassified() }
-        show(outcome)
         afterStateChange()
     }
 
     // MARK: Output
 
     private func show(_ outcome: SessionEngine.Outcome) {
-        if let text = outcome.echo {
-            echo = text
-            echoTask?.cancel()
-            echoTask = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(6))
-                if !Task.isCancelled { self?.echo = nil }
-            }
-        }
-        if outcome.askBack != nil || outcome.echo != nil { askBack = outcome.askBack }
-        if let speech = outcome.speech {
-            Task { await speak(speech, facts: outcome.spotterFacts, replaceable: outcome.spotterReplaceable) }
-        }
+        conversation.show(outcome)
     }
 
-    /// A rest-time line goes through /spotter/line first (HANDOFF.md §7, The spotter voice): the
-    /// model's line replaces the templated facts when the validator passed it, within a few seconds;
-    /// otherwise the template is spoken. The next target and the suggestion's ask are always spoken.
-    private func speak(_ text: String, facts: SpotterFacts?, replaceable: String?) async {
-        guard let facts, let replaceable, !replaceable.isEmpty, text.contains(replaceable) else {
-            await speak(text)
-            return
-        }
-        let request = SpotterLineRequest(moment: "restAfterSet", facts: facts, recent: engine.recentLines,
-                                         styleHints: [engine.athleteName.map { "first name: \($0)" } ?? "no name", "casual"])
-        if let line = try? await api.spotterLine(request), line.ok, !line.text.isEmpty {
-            spokenLine = line.text
-            await speak(text.replacingOccurrences(of: replaceable, with: line.text))
-        } else {
-            spokenLine = replaceable
-            await speak(text)
-        }
-    }
-
-    /// The rest-time line being spoken, as text on the HUD (DESIGN.md Session, Rest).
-    private(set) var spokenLine: String?
-
+    /// Every line is a template with the engine's numbers, said the moment it's ready (rest lines
+    /// no longer wait on /spotter/line: HANDOFF.md §7, The spotter voice).
     private func speak(_ text: String) async {
         filming?.spoke(text, voice: AudioService.preferredVoice())
         await voice.speak(text)

@@ -19,6 +19,8 @@ final class Store {
     private(set) var macroFactorReminders: [String] = []
     /// The athlete's own effort map, per exercise, from his spoken RPEs (HANDOFF.md §7, Calibration).
     private(set) var calibration = Effort.Calibration()
+    /// Last time's top sets from his paper logbook, for lifts not yet logged in the app.
+    private(set) var logbook: [LogbookEntry] = []
     private(set) var loadError: String?
 
     let root: URL
@@ -76,10 +78,26 @@ final class Store {
         write(calibration, "calibration.json")
     }
 
-    /// Last time's set for each exercise and role ("exerciseId|role"), from the log: the starting
-    /// load on a sheet that gives none, and the logbook line (HANDOFF.md §7).
+    /// One entry per exercise and role: a newer one replaces it.
+    func addLogbook(_ entry: LogbookEntry) {
+        logbook.removeAll { $0.exerciseId == entry.exerciseId && $0.role == entry.role }
+        logbook.append(entry)
+        write(logbook, "logbook.json")
+    }
+
+    func removeLogbook(exerciseId: String, role: SetRole?) {
+        logbook.removeAll { $0.exerciseId == exerciseId && $0.role == role }
+        write(logbook, "logbook.json")
+    }
+
+    /// Last time's set for each exercise and role ("exerciseId|role"): his paper logbook, beneath
+    /// the app's log, so any set logged in the app wins. The starting load on a sheet that gives
+    /// none, and the logbook line (HANDOFF.md §7).
     var lastSets: [String: LastSet] {
         var sets: [String: LastSet] = [:]
+        for entry in logbook.sorted(by: { $0.date < $1.date }) {
+            sets["\(entry.exerciseId)|\(entry.role?.rawValue ?? "")"] = LastSet(loadLb: entry.loadLb, reps: entry.reps)
+        }
         for session in sessions.sorted(by: { $0.startedAt < $1.startedAt }) {
             for set in session.workingSets where set.loadLb > 0 {
                 sets["\(set.exerciseId)|\(set.role?.rawValue ?? "")"] = LastSet(loadLb: set.loadLb, reps: set.reps)
@@ -316,6 +334,7 @@ final class Store {
         cues = read("cues.json") ?? []
         macroFactorReminders = read("reminders.json") ?? []
         calibration = read("calibration.json") ?? Effort.Calibration()
+        logbook = read("logbook.json") ?? []
         try? FileManager.default.createDirectory(at: cuesDirectory, withIntermediateDirectories: true)
         // Migration: the first launch after plans arrived seeds version 1 from what the phone already has.
         if plans.isEmpty, let program {

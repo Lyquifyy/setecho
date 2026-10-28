@@ -44,11 +44,12 @@ enum Callout {
         case .sameExercise(let load, let reps):
             return "Next, \(target(load: load, reps: reps))."
         case .nextExercise(let name, let load, let reps, let section, let warmups, let timed, let logbook, let askLoad):
-            var line = section.map { "Next, \($0). \(name), " } ?? "Next exercise, \(name), "
+            // An add-on of one exercise with its own name says it once.
+            var line = section.map { $0.lowercased() == name.lowercased() ? "Next, \(name): " : "Next, \($0). \(name), " } ?? "Next exercise, \(name), "
             line += timed ? "\(reps). Say go." : "\(target(load: load, reps: reps))."
             if let logbook { line += " \(logbook)" }
             if warmups { line += " Warm-ups first." }
-            if askLoad { line += " Weight for the \(reps.contains("total") ? "set" : "top set")?" }
+            if let askLoad { line += " \(askLoad)" }
             return line
         }
     }
@@ -127,8 +128,9 @@ enum Callout {
 
     enum NextSet: Equatable {
         case sameExercise(loadLb: Double?, reps: String)
+        /// `timed` adds "Say go." (holds that wait for him); `askLoad` is the weight question, if any.
         case nextExercise(name: String, loadLb: Double?, reps: String, section: String? = nil, warmups: Bool = false, timed: Bool = false,
-                          logbook: String? = nil, askLoad: Bool = false)
+                          logbook: String? = nil, askLoad: String? = nil)
     }
 
     static func target(load: Double?, reps: String) -> String {
@@ -143,6 +145,11 @@ enum Callout {
         if minutes == 0 { return "\(word(seconds)) seconds" }
         if rest == 0 { return minutes == 1 ? "one minute" : "\(word(minutes)) minutes" }
         return "\(word(minutes)) \(rest < 10 ? "oh \(word(rest))" : word(rest))"
+    }
+
+    /// A hold's length as said before it: "twenty seconds", "sixty seconds", "five minutes".
+    static func holdLength(_ seconds: Int) -> String {
+        seconds < 100 ? "\(word(seconds)) seconds" : spoken(seconds: seconds)
     }
 
     /// Number words 0–99, so the synthesizer never reads "2:30" as a time of day.
@@ -167,7 +174,4 @@ enum Callout {
         "Load \(Format.number(load))."
     }
 
-    static func askBack(_ transcript: String) -> String {
-        "Did you say \(transcript)?"
-    }
 }

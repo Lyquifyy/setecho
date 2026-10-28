@@ -33,7 +33,7 @@ struct SessionView: View {
             Spacer(minLength: 0)
 
             if let exercise = engine.currentExercise {
-                Text([engine.currentEntry?.section, exercise.name].compactMap { $0 }.joined(separator: " · ")).font(.hudLabel).secondaryText()
+                Text(Self.nameLine(section: engine.currentEntry?.section, name: exercise.name)).font(.hudLabel).secondaryText()
                 Text(targetText(engine))
                     .font(.hudTarget)
                     .foregroundStyle(Theme.navy)
@@ -71,6 +71,9 @@ struct SessionView: View {
 
             if let echo = coordinator.echo {
                 VoiceEcho(text: echo)
+            } else if let heard = coordinator.heard {
+                // Chatter: shown, never answered.
+                Text(heard).font(.hudLabel).secondaryText().lineLimit(2)
             }
             if let ask = coordinator.askBack {
                 Text(ask).font(.hudLabel).foregroundStyle(Theme.navy)
@@ -95,6 +98,9 @@ struct SessionView: View {
         .background(Theme.page.ignoresSafeArea())
         .overlay { if coordinator.showSlate { Color.white.ignoresSafeArea() } } // the filming slate
         .task { await coordinator.start() }
+        // A tripod rest is 3–4 minutes: the screen must not lock and stop the camera, and the countdown stays in view.
+        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
         .onChange(of: engine.state) { _, state in
             if state == .ended {
                 Task {
@@ -143,6 +149,7 @@ struct SessionView: View {
 
     private func targetText(_ engine: SessionEngine) -> String {
         if case .hold(let remaining) = engine.state { return Format.duration(TimeInterval(remaining)) }
+        if case .leadIn(let remaining) = engine.state { return "\(remaining)" }
         if engine.currentSetIsTimed { return engine.targetRepsText }
         if let load = engine.targetLoadLb { return "\(Format.number(load)) × \(engine.targetRepsText)" }
         return "× \(engine.targetRepsText)"
@@ -157,8 +164,10 @@ struct SessionView: View {
             s = "Last: \(name), \(Format.duration(TimeInterval(seconds)))"
         } else if set.repCount.isCounting {
             s = "Last: \(name), \(Format.load(set.loadLb))"
-        } else {
+        } else if set.loadLb > 0 {
             s = "Last: \(name), \(Format.number(set.loadLb)) × \(set.reps)"
+        } else {
+            s = "Last: \(name), \(set.reps) reps"
         }
         if let rpe = set.rpe { s += " · RPE \(Format.number(rpe))" }
         return s
@@ -179,6 +188,12 @@ struct SessionView: View {
         let nextIndex = engine.exerciseIndex + 1
         guard engine.exercises.indices.contains(nextIndex) else { return "Up next: last set of the session" }
         let next = engine.exercises[nextIndex]
-        return "Up next: \([next.section, next.exercise.name].compactMap { $0 }.joined(separator: " · "))"
+        return "Up next: \(Self.nameLine(section: next.section, name: next.exercise.name))"
+    }
+
+    /// "Abs · Plank", but "Stomach Vacuums" once when the add-on and its exercise share the name.
+    static func nameLine(section: String?, name: String) -> String {
+        guard let section, !SessionEngine.sameName(section, name) else { return name }
+        return "\(section) · \(name)"
     }
 }

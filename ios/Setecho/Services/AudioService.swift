@@ -28,6 +28,8 @@ final class AudioService {
     /// and every chunk captured while the athlete keeps talking.
     var onSpeechStart: (() -> Void)?
     var onLiveSamples: (([Float], Double) -> Void)?
+    /// The detector's settings for this run; nil is the check-in's (sessions use `.session`).
+    var detectorConfig: ((Double) -> VoiceDetector.Config)?
     /// The last second of audio, so the stream can start before the onset was detected.
     private var recent: [Float] = []
     private var wasSpeaking = false
@@ -110,7 +112,7 @@ final class AudioService {
             return
         }
         self.engine = engine
-        detector = VoiceDetector(config: .init(sampleRate: format.sampleRate))
+        detector = VoiceDetector(config: detectorConfig?(format.sampleRate) ?? .init(sampleRate: format.sampleRate))
         isListening = true
         drainTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -118,6 +120,11 @@ final class AudioService {
                 self?.drain()
             }
         }
+    }
+
+    /// Forget the noise floor and learn it again (after a long noise passed for speech).
+    func recalibrate() {
+        detector?.recalibrate()
     }
 
     func stopListening() {

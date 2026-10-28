@@ -3,7 +3,8 @@ import Foundation
 /// One session's tuning record (HANDOFF.md §7, Set detection; §9 P5). Beside the session's media:
 /// the detector's series (`SetDetector`) and every /sets/count answer with its latency. Settings →
 /// Developer → Session data bundles both with the logged session and its plan day into one JSON file for
-/// `backend/private/sessions/`. Numbers only: no video, audio or words.
+/// `backend/private/sessions/` (gitignored), with every utterance heard: its transcript, intent and
+/// latencies, so the session VAD and the classifier are tuned from a real gym. No video or audio.
 enum SessionDebug {
     /// One /sets/count attempt for a set: SAM's answer, or why there was none.
     struct CountAttempt: Codable, Equatable {
@@ -16,7 +17,34 @@ enum SessionDebug {
         var error: String?
     }
 
+    /// One utterance heard in a session: when, how long, what it was read as, what was said back,
+    /// and the seconds from the end of speech to the intent and to the first audio.
+    struct UtteranceRecord: Codable, Equatable {
+        var at: Date
+        var seconds: Double
+        var state: String
+        var transcript: String?
+        var intent: String?
+        var number: Double?
+        var classifiedBy: String?
+        /// Seconds from the end of speech to the transcript (realtime stream or file mode).
+        var toTranscript: Double?
+        var toIntent: Double?
+        var toFirstAudio: Double?
+        var spoken: String?
+        /// Why it went no further: "too short", "too long (noise)", or the request's error.
+        var error: String?
+    }
+
     static func detectorFile(sessionId: UUID) -> String { "wrist-\(sessionId.uuidString.prefix(8)).json" }
+    static func utterancesFile(sessionId: UUID) -> String { "utterances-\(sessionId.uuidString.prefix(8)).json" }
+
+    static func append(_ utterance: UtteranceRecord, sessionId: UUID, in directory: URL) {
+        let url = directory.appendingPathComponent(utterancesFile(sessionId: sessionId))
+        var all = (try? Data(contentsOf: url)).flatMap { try? JSONCoding.decoder.decode([UtteranceRecord].self, from: $0) } ?? []
+        all.append(utterance)
+        if let data = try? JSONCoding.encoder.encode(all) { try? data.write(to: url) }
+    }
     static func countsFile(sessionId: UUID) -> String { "counts-\(sessionId.uuidString.prefix(8)).json" }
 
     static func append(_ attempt: CountAttempt, sessionId: UUID, in directory: URL) {
@@ -42,6 +70,7 @@ enum SessionDebug {
             "addOns": object(try? JSONCoding.encoder.encode(session.addOnIds.compactMap { store.currentProgram?.addOn(id: $0) })),
             "detector": object(try? Data(contentsOf: directory.appendingPathComponent(detectorFile(sessionId: session.id)))),
             "counts": object(try? Data(contentsOf: directory.appendingPathComponent(countsFile(sessionId: session.id)))),
+            "utterances": object(try? Data(contentsOf: directory.appendingPathComponent(utterancesFile(sessionId: session.id)))),
         ]
         let data = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
         let date = session.startedAt.formatted(.iso8601.year().month().day())

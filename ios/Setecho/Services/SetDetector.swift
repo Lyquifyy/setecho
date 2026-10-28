@@ -24,6 +24,8 @@ final class SetDetector: NSObject {
     private(set) var lastWristY: Double?
     private(set) var framesSeen = 0
     private(set) var lastError: String?
+    /// The latest frame's capture-clock time: the end of a set ended by voice.
+    var lastFrameTime: Double? { lastFrameT }
 
     /// The set's real start (capture-clock seconds).
     var onSetStart: ((Double) -> Void)?

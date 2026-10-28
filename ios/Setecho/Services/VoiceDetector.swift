@@ -17,12 +17,20 @@ final class VoiceDetector {
         var maxUtteranceSeconds = 25.0
         /// A floor this quiet means the mic is dead or muted; the threshold still needs a sane minimum.
         var minimumThresholdDB = -45.0
+
+        /// Sessions (HANDOFF.md §7, The between-set conversation): commands are short, so 0.8 s of
+        /// quiet ends one and a 0.2 s onset hears a one-word "go"; 10 s of sound is a noise, not a command.
+        static func session(sampleRate: Double) -> Config {
+            Config(sampleRate: sampleRate, onsetMs: 200, hangoverMs: 800, maxUtteranceSeconds: 10)
+        }
     }
 
     struct Utterance: Equatable {
         var samples: [Float]
         var sampleRate: Double
         var peakDB: Double
+        /// It ran to the maximum length: in a session, a noise to discard (and the floor re-learned).
+        var hitMax = false
         var seconds: Double { Double(samples.count) / sampleRate }
     }
 
@@ -113,7 +121,7 @@ final class VoiceDetector {
                 quietBlocks += 1
             }
             if quietBlocks >= hangoverBlocks || current.count >= maxSamples {
-                let u = Utterance(samples: current, sampleRate: config.sampleRate, peakDB: currentPeakDB)
+                let u = Utterance(samples: current, sampleRate: config.sampleRate, peakDB: currentPeakDB, hitMax: current.count >= maxSamples)
                 reset()
                 return u
             }

@@ -14,9 +14,12 @@ struct Session: Codable, Equatable, Identifiable {
     var addOnIds: [String]
     /// Every suggestion his rules made this session, and what the athlete decided (HANDOFF.md §4).
     var suggestions: [LoadSuggestion]
+    /// What was done differently from the plan in the gym (a swap for a taken machine, a skipped
+    /// exercise), in his words. The plan itself never changes; the coach sees each one.
+    var deviations: [PlanDeviation]
 
     init(id: UUID, programDayId: String?, startedAt: Date, endedAt: Date?, sets: [LoggedSet], notes: [VoiceNote], addOnIds: [String] = [],
-         suggestions: [LoadSuggestion] = []) {
+         suggestions: [LoadSuggestion] = [], deviations: [PlanDeviation] = []) {
         self.id = id
         self.programDayId = programDayId
         self.startedAt = startedAt
@@ -25,9 +28,10 @@ struct Session: Codable, Equatable, Identifiable {
         self.notes = notes
         self.addOnIds = addOnIds
         self.suggestions = suggestions
+        self.deviations = deviations
     }
 
-    private enum CodingKeys: String, CodingKey { case id, programDayId, startedAt, endedAt, sets, notes, addOnIds, suggestions }
+    private enum CodingKeys: String, CodingKey { case id, programDayId, startedAt, endedAt, sets, notes, addOnIds, suggestions, deviations }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -39,7 +43,33 @@ struct Session: Codable, Equatable, Identifiable {
         notes = try c.decodeIfPresent([VoiceNote].self, forKey: .notes) ?? []
         addOnIds = try c.decodeIfPresent([String].self, forKey: .addOnIds) ?? []
         suggestions = try c.decodeIfPresent([LoadSuggestion].self, forKey: .suggestions) ?? []
+        deviations = try c.decodeIfPresent([PlanDeviation].self, forKey: .deviations) ?? []
     }
+}
+
+/// One change from the plan made in the gym (HANDOFF.md §7, Machine taken): "doing dumbbells
+/// instead" on incline press, or flyes skipped today. Confirmed aloud with "Noted for Thursday."
+struct PlanDeviation: Codable, Equatable, Identifiable {
+    enum Kind: String, Codable { case swap, skip }
+    var id: UUID
+    var at: Date
+    var kind: Kind
+    var exerciseId: String
+    var exerciseName: String
+    /// What he did instead, in his words.
+    var doneAs: String?
+    var transcript: String
+}
+
+/// Last time's top set from his paper logbook (HANDOFF.md §7, The logbook line): typed on Today or
+/// History, or said ("last time I did 145 for 9"). A set logged in the app wins over it.
+struct LogbookEntry: Codable, Equatable, Identifiable {
+    var id: UUID
+    var exerciseId: String
+    var role: SetRole?
+    var loadLb: Double
+    var reps: Int
+    var date: Date
 }
 
 /// A next-set (or next-session) load his rule suggested, and the athlete's decision (HANDOFF.md §4).
@@ -84,10 +114,12 @@ struct LoggedSet: Codable, Equatable, Identifiable {
     var clipFile: String?
     /// Audit trail for spoken corrections: "that was 7 reps".
     var edits: [SetEdit]
+    /// The variant actually done when the planned one was swapped ("incline dumbbell press").
+    var doneAs: String?
 
     init(id: UUID, exerciseId: String, setIndex: Int, loadLb: Double, reps: Int, rpe: Double?, seconds: Int? = nil,
          role: SetRole? = nil, flaggedForCoach: Bool = false, repCount: RepCount = RepCount(source: .plan),
-         startedAt: Date, endedAt: Date, clipFile: String?, edits: [SetEdit]) {
+         startedAt: Date, endedAt: Date, clipFile: String?, edits: [SetEdit], doneAs: String? = nil) {
         self.id = id
         self.exerciseId = exerciseId
         self.setIndex = setIndex
@@ -102,10 +134,11 @@ struct LoggedSet: Codable, Equatable, Identifiable {
         self.endedAt = endedAt
         self.clipFile = clipFile
         self.edits = edits
+        self.doneAs = doneAs
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, exerciseId, setIndex, loadLb, reps, rpe, seconds, role, flaggedForCoach, repCount, startedAt, endedAt, clipFile, edits
+        case id, exerciseId, setIndex, loadLb, reps, rpe, seconds, role, flaggedForCoach, repCount, startedAt, endedAt, clipFile, edits, doneAs
     }
 
     /// A warm-up never counts anywhere (HANDOFF.md §7, Warm-up sets).
@@ -128,6 +161,7 @@ struct LoggedSet: Codable, Equatable, Identifiable {
         endedAt = try c.decode(Date.self, forKey: .endedAt)
         clipFile = try c.decodeIfPresent(String.self, forKey: .clipFile)
         edits = try c.decodeIfPresent([SetEdit].self, forKey: .edits) ?? []
+        doneAs = try c.decodeIfPresent(String.self, forKey: .doneAs)
     }
 }
 

@@ -45,6 +45,7 @@ enum SpokenText {
         (#"(\d)\s*bpm\b"#, "$1 beats a minute"),
         (#"(\d)\s*mg/dl\b"#, "$1"),
         (#"(\d)\s*in\b(?=\s*(?:$|[,.;!?]))"#, "$1 inches"),   // "31 in", not "in the morning"
+        (#"([A-Za-z]{2,})\s*/\s*([A-Za-z]{2,})"#, "$1 or $2"),   // "Hanging/Lying Leg Raises"
         (#"~\s*(\d)"#, "about $1"),
         (#"\bavg\b\.?"#, "average"),
         (#"\bapprox\.?(?=\s)"#, "about"),
