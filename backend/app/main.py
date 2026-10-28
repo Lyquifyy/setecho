@@ -7,7 +7,7 @@ model output does not validate. It never guesses.
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -86,6 +86,12 @@ class VoiceCommandResponse(StrictModel):
     transcript: str
     intent: voice.VoiceIntent
     sessionId: str | None
+    classifiedBy: Literal["rules", "spark", "none"] = "none"
+
+
+class VoiceTextRequest(StrictModel):
+    transcript: str
+    context: voice.SessionContext
 
 
 @app.exception_handler(meta.TranscribeError)
@@ -111,12 +117,25 @@ async def voice_command(
     except ValueError as e:
         raise importing.ImportError_(str(e)) from e
     result = meta.transcribe_wav(data)
-    transcript = (result.get("transcript") or "").strip()
+    response = await _classify((result.get("transcript") or "").strip(), ctx)
+    response.sessionId = result.get("sessionId")
+    return response
+
+
+@app.post("/voice/command/text", response_model=VoiceCommandResponse)
+async def voice_command_text(req: VoiceTextRequest) -> VoiceCommandResponse:
+    """An utterance the realtime stream already transcribed + session context -> VoiceIntent. The
+    same rules then Spark as /voice/command, with no audio and no Transcribe call."""
+    return await _classify(req.transcript.strip(), req.context)
+
+
+async def _classify(transcript: str, ctx: voice.SessionContext) -> VoiceCommandResponse:
+    """An empty transcript is `unknown`, never acted on."""
     if not transcript:
-        intent = voice.VoiceIntent(intent="unknown", number=None, text=None, fieldId=None, confidence=0.0)
-    else:
-        intent = voice.classify(transcript, ctx)
-    return VoiceCommandResponse(transcript=transcript, intent=intent, sessionId=result.get("sessionId"))
+        unknown = voice.intent("unknown", confidence=0.0)
+        return VoiceCommandResponse(transcript="", intent=unknown, sessionId=None, classifiedBy="none")
+    intent, by = await run_in_threadpool(voice.route, transcript, ctx)
+    return VoiceCommandResponse(transcript=transcript, intent=intent, sessionId=None, classifiedBy=by)
 
 
 @app.post("/import/form", response_model=FormImport)

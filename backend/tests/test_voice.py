@@ -52,6 +52,9 @@ def test_parse_number(said, expected):
         ("I'm done", "endSession", None),
         ("Starting", "starting", None),
         ("Here we go", "starting", None),
+        ("Go", "starting", None),
+        ("Ready", "starting", None),
+        ("start", "starting", None),
         ("Done", "endSet", None),
         ("That's the set", "endSet", None),
         ("Setecho, undo", "undo", None),
@@ -77,12 +80,139 @@ def test_rules_cover_the_plain_commands(transcript, intent, number):
 
 
 def test_add_on_commands_carry_the_block_name():
-    add = voice.classify_by_rules("Add abs")
-    assert add is not None and add.intent == "addAddOn" and add.text == "abs"
-    skip = voice.classify_by_rules("skip abs today")
-    assert skip is not None and skip.intent == "skipAddOn" and skip.text == "abs"
-    assert voice.classify_by_rules("skip it").intent == "skipSet"  # "skip it" is the set, not a block
-    assert voice.classify_by_rules("add 5").intent == "loadDelta"
+    ctx = CONTEXT.model_copy(update={"addOnNames": ["Abs"]})
+    add = voice.classify_by_rules("Add abs", ctx)
+    assert add is not None and add.intent == "addAddOn" and add.text == "Abs"
+    skip = voice.classify_by_rules("skip abs today", ctx)
+    assert skip is not None and skip.intent == "skipAddOn" and skip.text == "Abs"
+    assert voice.classify_by_rules("skip it", ctx).intent == "skipSet"  # "skip it" is the set, not a block
+    assert voice.classify_by_rules("add 5", ctx).intent == "loadDelta"
+
+
+def test_add_on_rules_match_only_the_sessions_names():
+    ctx = CONTEXT.model_copy(update={"addOnNames": ["Abs"], "exercisesAhead": ["Cable incline flyes"]})
+    assert voice.classify_by_rules("no problem", ctx).intent == "chatter"
+    assert voice.classify_by_rules("do the flyes", ctx) is None  # not an add-on: Spark reads it
+    skip = voice.classify_by_rules("skip the flyes", ctx)
+    assert skip.intent == "skipExercise" and skip.text == "Cable incline flyes"
+    assert voice.classify_by_rules("add abs") is None  # no add-ons in the context, no add-on rule
+
+
+# HANDOFF.md §7, The between-set conversation: each row was a misfire on 651b877.
+@pytest.mark.parametrize(
+    ("transcript", "state", "intent", "number"),
+    [
+        ("that was 8", "rest", "reps", 8),
+        ("that's 8", "rest", "reps", 8),
+        ("that was 12", "rest", "reps", 12),
+        ("done, 12", "ready", "endSet", 12),
+        ("twelve", "ready", "answer", 12),
+        ("I'm done", "recording", "endSet", None),
+        ("I'm done with this set", "rest", "endSet", None),
+        ("I'm done", "rest", "endSession", None),
+        ("what's my next set", "rest", "question", None),
+        ("wait, that was 9", "rest", "reps", 9),
+        ("no problem", "rest", "chatter", None),
+        ("hold on let me grab water", "rest", "pause", None),
+        ("felt like a nine", "rest", "rpe", 9),
+        ("That was an 8.", "rest", "rpe", 8),
+        ("eight out of ten", "rest", "rpe", 8),
+        ("did 12", "ready", "reps", 12),
+        ("got 12", "ready", "reps", 12),
+        ("12 reps", "ready", "reps", 12),
+        ("actually that was 11", "rest", "reps", 11),
+        ("let's go", "rest", "chatter", None),
+        ("ugh, that was brutal", "rest", "chatter", None),
+    ],
+)
+def test_between_set_phrases(transcript, state, intent, number):
+    result = voice.classify_by_rules(transcript, CONTEXT.model_copy(update={"state": state}))
+    assert result is not None, transcript
+    assert (result.intent, result.number) == (intent, number)
+
+
+@pytest.mark.parametrize(
+    "transcript", ["I can't do that", "take it easy", "don't keep it", "I don't want to go with it"]
+)
+def test_accept_and_keep_never_fire_on_a_negation_or_a_long_sentence(transcript):
+    result = voice.classify_by_rules(transcript, CONTEXT)
+    assert result is None or result.intent not in ("acceptSuggestion", "keepLoad"), transcript
+
+
+@pytest.mark.parametrize(
+    ("transcript", "topic"),
+    [
+        ("what's next", "next"), ("what's after this", "next"), ("what's my next set", "next"),
+        ("how long left", "restLeft"), ("how much rest", "restLeft"),
+        ("what did I get", "lastSet"), ("how many was that", "lastSet"),
+        ("what did I do last time", "lastTime"),
+        ("what weight", "load"), ("what's the back-off", "load"),
+        ("how many sets left", "setsLeft"), ("was that failure", "effort"),
+        ("what did he say about these", "coachNotes"), ("what's the tempo", "coachNotes"),
+        ("should I go heavier next week?", "outOfScope"), ("how's my form", "outOfScope"),
+        ("what should I eat", "outOfScope"),
+    ],
+)  # fmt: skip
+def test_questions_carry_their_topic(transcript, topic):
+    result = voice.classify_by_rules(transcript, CONTEXT)
+    assert result is not None and result.intent == "question" and result.topic == topic
+
+
+@pytest.mark.parametrize(
+    ("transcript", "intent", "number", "text"),
+    [
+        ("the first one", "choose", 1, None), ("go with the first one", "choose", 1, None),
+        ("the other one", "choose", 2, None), ("I'll wait", "choose", None, "wait"),
+        ("the incline bench is taken", "equipmentTaken", None, "incline bench"),
+        ("someone's on the Smith", "equipmentTaken", None, "smith"),
+        ("is there another machine I can use?", "equipmentTaken", None, None),
+        ("can I swap this?", "equipmentTaken", None, None),
+        ("doing dumbbells instead", "swapTo", None, "dumbbells"),
+        ("it's free", "equipmentFree", None, None), ("bench is open", "equipmentFree", None, None),
+        ("that's it for today", "endSession", None, None),
+    ],
+)  # fmt: skip
+def test_choices_machines_and_the_end(transcript, intent, number, text):
+    result = voice.classify_by_rules(transcript, CONTEXT)
+    assert result is not None, transcript
+    assert (result.intent, result.number, result.text) == (intent, number, text)
+
+
+def test_logbook_and_named_sets_carry_both_numbers():
+    logbook = voice.classify_by_rules("last time I did 145 for 9", CONTEXT)
+    assert (logbook.intent, logbook.number, logbook.reps) == ("logbook", 145, 9)
+    named = voice.classify_by_rules("set 3 of incline was 7", CONTEXT)
+    assert (named.intent, named.number, named.setNumber, named.text) == ("reps", 7, 3, "incline")
+
+
+@pytest.mark.parametrize(
+    ("transcript", "intent"),
+    [("done", "endSet"), ("done, 12", "endSet"), ("that was 8", "reps"), ("top set", "topSet"),
+     ("ten", "chatter"), ("let's go", "chatter"), ("end session", "chatter"), ("what's next", "chatter"),
+     ("my shoulder hurts", "chatter")],
+)  # fmt: skip
+def test_during_a_set_only_set_commands_count_and_spark_is_never_called(monkeypatch, transcript, intent):
+    def no_spark(*a, **kw):
+        raise AssertionError("Spark called during a set")
+
+    monkeypatch.setattr(meta, "spark_json", no_spark)
+    result, by = voice.route(transcript, CONTEXT.model_copy(update={"state": "recording"}))
+    assert result.intent == intent and by == "rules"
+
+
+def test_spark_gets_the_open_ask_and_no_token_cap(monkeypatch):
+    seen = {}
+
+    def fake(system, user, name, schema, **kw):
+        seen.update(user=user, kw=kw)
+        return ({"intent": "chatter", "number": None, "text": None, "fieldId": None, "confidence": 0.9}, None)
+
+    monkeypatch.setattr(meta, "spark_json", fake)
+    ctx = CONTEXT.model_copy(update={"pendingAsk": "Back-off at 145?", "lastSpoken": "Top set: 9 reps."})
+    result, by = voice.route("did you see the game last night", ctx)
+    assert result.intent == "chatter" and by == "spark"
+    assert "Back-off at 145?" in seen["user"] and "Top set: 9 reps." in seen["user"]
+    assert "max_tokens" not in seen["kw"]
 
 
 def test_rules_keep_note_text_verbatim():
@@ -182,3 +312,14 @@ def test_empty_transcript_is_unknown(monkeypatch):
     )
     assert r.status_code == 200
     assert r.json()["intent"]["intent"] == "unknown"
+
+
+def test_voice_command_text_runs_the_same_rules():
+    client = TestClient(app)
+    r = client.post("/voice/command/text", json={"transcript": "done, 12", "context": CONTEXT.model_dump()})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["intent"]["intent"] == "endSet" and body["intent"]["number"] == 12
+    assert body["classifiedBy"] == "rules"
+    empty = client.post("/voice/command/text", json={"transcript": "  ", "context": CONTEXT.model_dump()})
+    assert empty.json()["intent"]["intent"] == "unknown"
