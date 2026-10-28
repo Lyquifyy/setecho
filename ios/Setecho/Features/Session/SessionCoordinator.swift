@@ -194,6 +194,7 @@ final class SessionCoordinator {
     }
 
     private func save() {
+        guard !rehearsal else { return } // a rehearsal never reaches the log or the check-in
         store.upsert(session: engine.session)
         for entry in engine.logbookEntries.dropFirst(savedLogbookEntries) { store.addLogbook(entry) }
         savedLogbookEntries = engine.logbookEntries.count

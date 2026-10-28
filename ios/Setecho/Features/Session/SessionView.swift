@@ -7,12 +7,15 @@ struct SessionView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var coordinator: SessionCoordinator
     @State private var endProgress = false
+    @State private var typed = ""
     private let store: Store
 
     /// The day's session with the add-ons joining it, or a morning session of one add-on (day nil).
-    init(day: ProgramDay?, addOns: [AddOn] = [], weekNumber: Int, store: Store) {
+    /// A rehearsal (Developer → Session rehearsal) has no camera and no mic: lines are typed and go
+    /// through the real backend, and nothing is saved to the log.
+    init(day: ProgramDay?, addOns: [AddOn] = [], weekNumber: Int, store: Store, rehearsal: Bool = false) {
         self.store = store
-        _coordinator = State(initialValue: SessionCoordinator(day: day, addOns: addOns, weekNumber: weekNumber, store: store))
+        _coordinator = State(initialValue: SessionCoordinator(day: day, addOns: addOns, weekNumber: weekNumber, store: store, rehearsal: rehearsal))
     }
 
     var body: some View {
@@ -91,6 +94,15 @@ struct SessionView: View {
                 Text("Microphone access is needed for a hands-free session.").font(.hudLabel).foregroundStyle(Theme.navy)
             }
 
+            if coordinator.rehearsal {
+                HStack(spacing: Theme.Space.s) {
+                    SettingsField(placeholder: "Say something, e.g. done, 12", text: $typed)
+                        .submitLabel(.send)
+                        .onSubmit(sendTyped)
+                    LinkButton(title: "Say", chevron: .none, action: sendTyped)
+                }
+            }
+
             endButton
         }
         .padding(Theme.gutter)
@@ -146,6 +158,13 @@ struct SessionView: View {
     }
 
     private var engine: SessionEngine { coordinator.engine }
+
+    private func sendTyped() {
+        let line = typed.trimmingCharacters(in: .whitespaces)
+        guard !line.isEmpty else { return }
+        typed = ""
+        Task { await coordinator.rehearse(line) }
+    }
 
     private func targetText(_ engine: SessionEngine) -> String {
         if case .hold(let remaining) = engine.state { return Format.duration(TimeInterval(remaining)) }

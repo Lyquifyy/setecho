@@ -8,6 +8,7 @@ struct DeveloperView: View {
     @State private var settings = Settings.shared
     @State private var exportFile: FileExport?
     @State private var exportError: String?
+    @State private var rehearsingSession = false
 
     var body: some View {
         @Bindable var settings = settings
@@ -28,6 +29,10 @@ struct DeveloperView: View {
                 CardDivider()
                 LinkButton(title: "Rehearse check-in morning") { AppRouter.shared.rehearseCheckInMorning() }
                 Text("The whole morning flow on any day: spoken answers start over, nothing is sent.").font(.footnote).secondaryText()
+                CardDivider()
+                LinkButton(title: "Rehearse a session") { rehearsingSession = true }
+                Text("Today's session with the camera and mic off: type what you'd say between sets, and it goes through the real backend and speaks back. Nothing is logged.")
+                    .font(.footnote).secondaryText()
             }
 
             SectionCard("Filming") {
@@ -85,6 +90,11 @@ struct DeveloperView: View {
                 Text("With developer tools on, the Check-in tab also shows Facts: the raw numbers the draft was built from.")
                     .font(.footnote).secondaryText()
             }
+        }
+        .fullScreenCover(isPresented: $rehearsingSession) {
+            let today = store.todayDay
+            SessionView(day: today?.day, addOns: today.map { store.addOnsDue(on: $0.day.id).map(\.addOn) } ?? [],
+                        weekNumber: today?.week.number ?? 1, store: store, rehearsal: true)
         }
         .sheet(item: $exportFile) { file in
             ShareSheet(image: nil, text: nil, files: [file.url]) { _ in }

@@ -9,6 +9,12 @@ struct HistoryView: View {
 
     private var weekStart: Date { CheckInSchedule().week(endingBefore: CheckInSchedule().nextDue(from: .now)).start }
 
+    /// Every lift of the cycle the logbook line applies to, once each, in the program's order.
+    static func logbookLifts(_ program: Program?) -> [PlannedExercise] {
+        var seen = Set<String>()
+        return (program?.cycleDays ?? []).flatMap(\.exercises).filter { LastTimeRow.applies(to: $0) && seen.insert($0.id).inserted }
+    }
+
     var body: some View {
         let sessions = store.sessions.filter { !$0.sets.isEmpty }.sorted { $0.startedAt > $1.startedAt }
         let thisWeek = sessions.filter { $0.startedAt >= weekStart }
@@ -32,6 +38,17 @@ struct HistoryView: View {
                     ForEach(Array(previous.prefix(20).enumerated()), id: \.element.id) { index, session in
                         if index > 0 { CardDivider() }
                         SessionRow(session: session)
+                    }
+                }
+            }
+            let lifts = Self.logbookLifts(store.currentProgram)
+            if !lifts.isEmpty {
+                SectionCard("Last time") {
+                    Text("Each lift's last top set, from the log or your paper logbook. Said before the top set.").font(.footnote).secondaryText()
+                    ForEach(lifts) { exercise in
+                        CardDivider()
+                        Text(exercise.name).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.navy)
+                        LastTimeRow(exercise: exercise)
                     }
                 }
             }

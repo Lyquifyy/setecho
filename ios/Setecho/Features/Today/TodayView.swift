@@ -62,6 +62,7 @@ struct TodayView: View {
                         ForEach(Array(next.day.exercises.enumerated()), id: \.element.id) { index, exercise in
                             if index > 0 { CardDivider() }
                             ExerciseRow(exercise: exercise)
+                            if LastTimeRow.applies(to: exercise) { LastTimeRow(exercise: exercise) }
                         }
                         ForEach(addOnsDue, id: \.addOn.id) { due in
                             CardDivider()

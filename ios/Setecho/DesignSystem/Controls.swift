@@ -37,6 +37,54 @@ struct OutlineButtonStyle: ButtonStyle {
     }
 }
 
+/// The in-card action: a cobalt-tint button with an optional icon ("Open check-in", "Take photos").
+/// Use it where a card offers something to do, so the action reads as a button rather than a line of text.
+struct TonalButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    var fullWidth = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline.weight(.semibold))
+            .labelStyle(.titleAndIcon)
+            .foregroundStyle(Theme.cobalt)
+            .lineLimit(1)
+            .padding(.horizontal, Theme.Space.s)
+            .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: 44)
+            .background(
+                configuration.isPressed ? Theme.cobaltPressedTint : Theme.cobaltTint,
+                in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+            )
+            .opacity(isEnabled ? 1 : 0.45)
+            .contentShape(Rectangle())
+    }
+}
+
+extension ButtonStyle where Self == TonalButtonStyle {
+    static var setechoTonal: TonalButtonStyle { TonalButtonStyle() }
+    static var setechoTonalWide: TonalButtonStyle { TonalButtonStyle(fullWidth: true) }
+}
+
+/// A 44 pt round icon button for secondary card actions ("Refresh"). Always pass an accessibility label.
+struct IconButton: View {
+    let systemImage: String
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.cobalt)
+                .frame(width: 44, height: 44)
+                .background(Theme.cobaltTint, in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+    }
+}
+
 extension ButtonStyle where Self == PrimaryButtonStyle {
     static var setechoPrimary: PrimaryButtonStyle { PrimaryButtonStyle() }
 }
