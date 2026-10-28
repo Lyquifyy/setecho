@@ -8,6 +8,8 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var settings = Settings.shared
     @State private var personalVoiceNote: String?
+    @State private var showGuide = false
+    @State private var showIntro = false
 
     /// The show date is stored as "yyyy-mm-dd", empty when not in prep.
     private var inPrep: Binding<Bool> {
@@ -104,6 +106,10 @@ struct SettingsView: View {
                 CardDivider()
                 SettingToggle("Use AirPods mic", isOn: $settings.useAirPodsMic)
                 Note(AirPodsMic.shared.notice ?? "On: AirPods listen as well as play, at full quality where iOS supports it, or Setecho switches back by itself. Off: the DJI receiver or the iPhone mic listens.")
+                CardDivider()
+                LinkButton(title: "How a session works") { showIntro = true }
+                LinkButton(title: "What you can say") { showGuide = true }
+                Note("Between sets, \u{201C}what can I say?\u{201D} tells you what works right then.")
             }
 
             SectionCard("Voice") {
@@ -162,6 +168,8 @@ struct SettingsView: View {
                 }
             }
         }
+        .sheet(isPresented: $showGuide) { VoiceGuideView() }
+        .sheet(isPresented: $showIntro) { SessionIntroView() }
     }
 
     /// One part of the current voice's tone, saved per voice as it moves.

@@ -1,0 +1,86 @@
+{
+  "note": "What you can say in a session (VoiceGuideView). Every line is read by backend/tests/test_voice.py through the real rules, in its state, and must come back as its intent: nothing here can stop working unnoticed.",
+  "sections": [
+    {
+      "title": "While you lift",
+      "detail": "Only these count during a set. Everything else is ignored, so talk, grunt or sing along.",
+      "phrases": [
+        { "say": "done", "does": "Ends the set. The camera counts it.", "state": "recording", "intent": "endSet" },
+        { "say": "done, 8", "does": "Ends the set with 8 reps.", "state": "recording", "intent": "endSet" },
+        { "say": "top set", "does": "Marks this set as your top set.", "state": "recording", "intent": "topSet" }
+      ]
+    },
+    {
+      "title": "Before a set",
+      "detail": "With the phone on the tripod, just lift: the camera starts the set.",
+      "phrases": [
+        { "say": "starting", "does": "Starts a set when the camera can't see you.", "state": "ready", "intent": "starting" },
+        { "say": "top set", "does": "The next set is your top set.", "state": "ready", "intent": "topSet" },
+        { "say": "drop to 215", "does": "Sets the weight.", "state": "ready", "intent": "setLoad" },
+        { "say": "add 5", "does": "Adds 5 lb.", "state": "ready", "intent": "loadDelta" },
+        { "say": "last time I did 145 for 9", "does": "Saves last time's top set from your logbook.", "state": "ready", "intent": "logbook" },
+        { "say": "I'm doing Day 5 today", "does": "Switches to another day of the cycle.", "state": "ready", "intent": "changeDay" }
+      ]
+    },
+    {
+      "title": "After a set",
+      "detail": "The count shows on screen with where it came from. Fix it if it's wrong.",
+      "phrases": [
+        { "say": "that was 7", "does": "Fixes the count on the last set.", "state": "rest", "intent": "reps" },
+        { "say": "set 3 of incline was 7", "does": "Fixes a set you name.", "state": "rest", "intent": "reps" },
+        { "say": "felt like a 9", "does": "Rates the last set.", "state": "rest", "intent": "rpe" },
+        { "say": "that was a warm-up", "does": "Moves the last set to warm-ups.", "state": "rest", "intent": "warmup" },
+        { "say": "flag that", "does": "Sends the last set's video to your coach.", "state": "rest", "intent": "flagSet" }
+      ]
+    },
+    {
+      "title": "Ask",
+      "detail": "Every answer comes from your plan and your log.",
+      "phrases": [
+        { "say": "what's next?", "does": "The next set and its weight.", "state": "rest", "intent": "question", "topic": "next" },
+        { "say": "how long left?", "does": "The rest time left.", "state": "rest", "intent": "question", "topic": "restLeft" },
+        { "say": "how many sets left?", "does": "Sets left on this exercise, and what comes after.", "state": "rest", "intent": "question", "topic": "setsLeft" },
+        { "say": "what did I get?", "does": "The last set's count, and how it was counted.", "state": "rest", "intent": "question", "topic": "lastSet" },
+        { "say": "what did I do last time?", "does": "Last time's top set.", "state": "ready", "intent": "question", "topic": "lastTime" },
+        { "say": "what weight?", "does": "The weight for the next set.", "state": "rest", "intent": "question", "topic": "load" },
+        { "say": "was that failure?", "does": "How close the last set was to failure, when it was measured.", "state": "rest", "intent": "question", "topic": "effort" },
+        { "say": "what did my coach say?", "does": "Your coach's note on this exercise.", "state": "rest", "intent": "question", "topic": "coachNotes" },
+        { "say": "what can I say?", "does": "The options that work right now.", "state": "rest", "intent": "question", "topic": "help" }
+      ]
+    },
+    {
+      "title": "Change the plan",
+      "detail": "Every change reaches your coach in the check-in.",
+      "phrases": [
+        { "say": "go with it", "does": "Takes the weight your coach's rule suggests.", "state": "rest", "intent": "acceptSuggestion" },
+        { "say": "keep it", "does": "Keeps the weight you're on.", "state": "rest", "intent": "keepLoad" },
+        { "say": "skip this set", "does": "Skips the next set.", "state": "rest", "intent": "skipSet" },
+        { "say": "next exercise", "does": "Moves on, and asks about any sets left.", "state": "rest", "intent": "nextExercise" },
+        { "say": "skip the flyes", "does": "Skips an exercise still ahead today.", "state": "rest", "intent": "skipExercise", "exercisesAhead": ["Cable incline flyes"] },
+        { "say": "add abs", "does": "Adds one of today's add-ons.", "state": "rest", "intent": "addAddOn", "addOnNames": ["Abs"] },
+        { "say": "the bench is taken", "does": "Keeps the rest running while you decide.", "state": "rest", "intent": "equipmentTaken" },
+        { "say": "doing dumbbells instead", "does": "Logs the swap for your coach.", "state": "rest", "intent": "swapTo" },
+        { "say": "it's free", "does": "Back to the plan.", "state": "rest", "intent": "equipmentFree" }
+      ]
+    },
+    {
+      "title": "For your coach",
+      "detail": "Setecho never coaches. Anything that's his call becomes a note in Thursday's check-in.",
+      "phrases": [
+        { "say": "note for the coach: left shoulder pinched", "does": "Saves your words for the check-in.", "state": "rest", "intent": "note" },
+        { "say": "should I go heavier next week?", "does": "Offers to note it for him.", "state": "rest", "intent": "question", "topic": "outOfScope" }
+      ]
+    },
+    {
+      "title": "Fix and control",
+      "detail": "Every action is shown and said back.",
+      "phrases": [
+        { "say": "undo", "does": "Takes back the last action.", "state": "rest", "intent": "undo" },
+        { "say": "say that again", "does": "Replays your coach's cue for this exercise.", "state": "rest", "intent": "replayCue" },
+        { "say": "yes", "does": "Answers what Setecho just asked. \"No\" works too.", "state": "rest", "intent": "yes" },
+        { "say": "pause", "does": "Pauses the session. \"Resume\" picks it up.", "state": "rest", "intent": "pause" },
+        { "say": "end session", "does": "Asks first, then ends it.", "state": "rest", "intent": "endSession" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "scenario": "m_help",
+  "title": "\"What can I say?\" answers with what works right then.",
+  "utterances": [
+    {
+      "say": "what can I say?",
+      "state": "ready",
+      "via": "rules",
+      "intent": {
+        "intent": "question",
+        "topic": "help"
+      }
+    },
+    {
+      "say": "done, 8",
+      "state": "ready",
+      "via": "rules",
+      "intent": {
+        "intent": "endSet",
+        "number": 8
+      }
+    },
+    {
+      "say": "what can I say?",
+      "state": "rest",
+      "via": "rules",
+      "intent": {
+        "intent": "question",
+        "topic": "help"
+      }
+    }
+  ]
+}

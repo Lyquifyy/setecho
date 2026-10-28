@@ -1567,6 +1567,9 @@ final class SessionEngine {
             return say("His note: \(notes)")
         case .outOfScope:
             return ask(.noteOffer(transcript), "That's one for your coach. Want me to note it for Thursday?", now: now)
+        case .help:
+            return say(VoiceGuide.spokenHelp(state: state, firstSet: session.sets.isEmpty, suggestion: pendingSuggestion != nil,
+                                             timed: currentSetIsTimed))
         case nil:
             return heard(transcript)
         }

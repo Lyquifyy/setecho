@@ -352,3 +352,19 @@ private let vacuums = AddOn(id: "addon_vac", name: "Stomach Vacuums", exercises:
     #expect(!engine.shouldUpload(setId: abSets[0].id))
     #expect(gym.unheardLines == 0)
 }
+
+@Test @MainActor func mWhatCanISayAnswersForTheMoment() async throws {
+    let engine = SessionEngine(day: shortDay, weekNumber: 1, lastSets: logbook)
+    let gym = try Gym("m_help", engine: engine, camera: false)
+    let tail = "Change the weight with add five, or say skip this set or next exercise. Start with note for the coach to leave him a message. Undo takes back anything."
+    await check(gym, "what can I say?", ["Just lift. When you finish, say done and the count, like done, eight. Ask what's next anytime. " + tail])
+    _ = await gym.say("done, 8")
+    await check(gym, "what can I say?", ["Fix a count with that was seven. Ask what's next, or how long left. " + tail])
+    #expect(engine.session.sets.count == 1)
+    #expect(gym.unheardLines == 0)
+}
+
+@Test func voiceGuideLoadsFromTheBundle() {
+    #expect(VoiceGuide.sections.count == 7)
+    #expect(VoiceGuide.sections.allSatisfy { !$0.phrases.isEmpty })
+}

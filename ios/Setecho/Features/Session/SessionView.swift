@@ -77,6 +77,9 @@ struct SessionView: View {
             } else if let heard = coordinator.heard {
                 // Chatter: shown, never answered.
                 Text(heard).font(.hudLabel).secondaryText().lineLimit(2)
+            } else if engine.session.sets.isEmpty, engine.currentExercise != nil {
+                // Until the first set, the one line that leads to all the others.
+                Text("Not sure what to say? Ask \u{201C}what can I say?\u{201D}").font(.hudLabel).secondaryText().multilineTextAlignment(.center)
             }
             if let offer = engine.takenOffer {
                 TakenCard(what: offer.what ?? engine.exercises.first { $0.exercise.id == offer.exerciseId }?.exercise.name ?? "Machine",

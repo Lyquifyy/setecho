@@ -152,6 +152,7 @@ def test_accept_and_keep_never_fire_on_a_negation_or_a_long_sentence(transcript)
         ("what did he say about these", "coachNotes"), ("what's the tempo", "coachNotes"),
         ("should I go heavier next week?", "outOfScope"), ("how's my form", "outOfScope"),
         ("what should I eat", "outOfScope"),
+        ("what can I say?", "help"), ("help", "help"), ("what do I say", "help"), ("how does this work", "help"),
     ],
 )  # fmt: skip
 def test_questions_carry_their_topic(transcript, topic):
@@ -355,4 +356,27 @@ def test_conversation_fixtures(monkeypatch, path):
 
 
 def test_every_scenario_has_a_fixture():
-    assert {p.stem[0] for p in CONVERSATIONS} == set("abcdefghijkl")
+    assert {p.stem[0] for p in CONVERSATIONS} == set("abcdefghijklm")
+
+
+# The phone's "What you can say" guide (VoiceGuideView): every example on it must do what it says.
+VOICE_GUIDE = Path(__file__).parents[2] / "ios" / "Setecho" / "Resources" / "VoiceGuide.json"
+GUIDE_LINES = [
+    line for section in json.loads(VOICE_GUIDE.read_text())["sections"] for line in section["phrases"]
+]
+
+
+@pytest.mark.parametrize("line", GUIDE_LINES, ids=[f"{line['state']}:{line['say']}" for line in GUIDE_LINES])
+def test_voice_guide_lines_do_what_the_guide_says(line):
+    ctx = CONTEXT.model_copy(
+        update={
+            "state": line["state"],
+            "exercisesAhead": line.get("exercisesAhead", []),
+            "addOnNames": line.get("addOnNames", []),
+        }
+    )
+    result, by = voice.route(line["say"], ctx)
+    assert by == "rules", line["say"]
+    assert result.intent == line["intent"], line["say"]
+    assert result.topic == line.get("topic"), line["say"]
+    assert result.confidence >= 0.7, line["say"]
