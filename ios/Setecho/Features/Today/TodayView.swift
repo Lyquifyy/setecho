@@ -7,6 +7,10 @@ struct TodayView: View {
     @State private var showSession = false
     @State private var showMorning = false
     @State private var showPhotos = false
+    /// How a session works, once before the first one; its Start opens the session.
+    @State private var showIntro = false
+    @State private var startAfterIntro = false
+    @State private var showGuide = false
     /// Exercises opened to their details; closed by default so the whole day fits on screen.
     @State private var expanded: Set<String> = []
     private var schedule: CheckInSchedule { CheckInSchedule(plan: store.plan, lastSentAt: store.lastSentCheckIn?.sentAt) }
@@ -74,10 +78,18 @@ struct TodayView: View {
             .fixedSize(horizontal: false, vertical: true)
         } footer: {
             // The only tap of a training day.
-            Button(today?.day.isRest == true ? "Rest day" : "Start session") { showSession = true }
-                .buttonStyle(.setechoPrimary)
-                .disabled(!canStart)
+            Button(today?.day.isRest == true ? "Rest day" : "Start session") {
+                if Settings.shared.hasSeenSessionIntro { showSession = true } else { showIntro = true }
+            }
+            .buttonStyle(.setechoPrimary)
+            .disabled(!canStart)
         }
+        .fullScreenCover(isPresented: $showIntro, onDismiss: {
+            if startAfterIntro { startAfterIntro = false; showSession = true }
+        }) {
+            SessionIntroView(onStart: { startAfterIntro = true }).environment(store)
+        }
+        .sheet(isPresented: $showGuide) { VoiceGuideView() }
         .fullScreenCover(isPresented: $showSession) {
             if let next = today {
                 SessionView(day: next.day, addOns: addOnsDue.map(\.addOn), weekNumber: next.week.number, store: store)
@@ -152,6 +164,9 @@ struct TodayView: View {
                 HStack(spacing: Theme.Space.xs) {
                     changeDayMenu
                     if !next.day.isRest {
+                        Button("What to say", systemImage: "text.bubble") { showGuide = true }
+                            .buttonStyle(.setechoTonalWide)
+                            .accessibilityLabel("What you can say")
                         expandAllButton(next.day)
                     }
                 }
