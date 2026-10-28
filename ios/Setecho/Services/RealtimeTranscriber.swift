@@ -12,6 +12,8 @@ final class RealtimeTranscriber {
     static let doneTimeout: Duration = .seconds(4)
 
     private(set) var partial: String = ""
+    /// Voice Transcribe marked a segment final: in sessions, the turn may end now if the room is quiet.
+    var onFinal: (() -> Void)?
     private(set) var isOpen = false
     private(set) var lastError: String?
 
@@ -147,7 +149,12 @@ final class RealtimeTranscriber {
                 queued.removeAll()
             case "transcript":
                 let transcript = event["transcript"] as? String ?? ""
-                if event["final"] as? Bool == true { commit(transcript) } else { partial = transcript }
+                if event["final"] as? Bool == true {
+                    commit(transcript)
+                    onFinal?()
+                } else {
+                    partial = transcript
+                }
             case "done":
                 let transcript = event["transcript"] as? String ?? ""
                 finish(transcript.isEmpty ? nil : transcript)

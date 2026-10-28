@@ -34,6 +34,21 @@ enum SessionDebug {
         var spoken: String?
         /// Why it went no further: "too short", "too long (noise)", or the request's error.
         var error: String?
+        /// "utterance", or "nearMiss": crossed the stream trigger (6 dB) but never the threshold,
+        /// so "never detected" is told apart from "misheard" (HANDOFF.md §7, Log the misses).
+        var kind: String?
+        /// The loudest moment over the room's floor, and the seconds above the threshold.
+        var levelAboveFloorDB: Double?
+        var speechSeconds: Double?
+        /// "AirPods mic", "Phone mic", …, and whether Apple's voice processing was on.
+        var input: String?
+        var voiceProcessing: Bool?
+        /// The conversation turn: what it did, the reply, whether it was meant for Setecho.
+        var actions: [String]?
+        var reply: String?
+        var addressed: Bool?
+        /// He spoke over a line and it stopped.
+        var bargedIn: Bool?
     }
 
     static func detectorFile(sessionId: UUID) -> String { "wrist-\(sessionId.uuidString.prefix(8)).json" }

@@ -46,16 +46,17 @@ private final class Gym {
         engine.cameraOnDuty = camera
         talk = SessionConversation(engine: engine)
         talk.now = { [unowned self] in self.clock }
-        talk.classify = { [unowned self] heard, context in
+        talk.classify = { [unowned self] heard, request in
             let line = self.lines.removeFirst()
             #expect(heard.transcript == line.say)
             // The line is said in the state the backend fixture reads it in.
-            #expect(context.state == line.state, "\(line.say)")
+            #expect(request.state == line.state, "\(line.say)")
             let i = line.intent
-            return VoiceCommandResponse(transcript: line.say,
-                                        intent: VoiceIntent(intent: i.intent, number: i.number, reps: i.reps, setNumber: i.setNumber,
-                                                            text: i.text, topic: i.topic, confidence: 0.95),
-                                        classifiedBy: line.via)
+            return SessionTurnResponse(command: VoiceCommandResponse(
+                transcript: line.say,
+                intent: VoiceIntent(intent: i.intent, number: i.number, reps: i.reps, setNumber: i.setNumber,
+                                    text: i.text, topic: i.topic, confidence: 0.95),
+                classifiedBy: line.via))
         }
     }
 
@@ -356,7 +357,7 @@ private let vacuums = AddOn(id: "addon_vac", name: "Stomach Vacuums", exercises:
 @Test @MainActor func mWhatCanISayAnswersForTheMoment() async throws {
     let engine = SessionEngine(day: shortDay, weekNumber: 1, lastSets: logbook)
     let gym = try Gym("m_help", engine: engine, camera: false)
-    let tail = "Change the weight with add five, or say skip this set or next exercise. Start with note for the coach to leave him a message. Undo takes back anything."
+    let tail = "Talk to me like a spotter: ask anything about today, or tell me if a machine's taken. Undo takes back anything."
     await check(gym, "what can I say?", ["Just lift. When you finish, say done and the count, like done, eight. Ask what's next anytime. " + tail])
     _ = await gym.say("done, 8")
     await check(gym, "what can I say?", ["Fix a count with that was seven. Ask what's next, or how long left. " + tail])
@@ -367,4 +368,74 @@ private let vacuums = AddOn(id: "addon_vac", name: "Stomach Vacuums", exercises:
 @Test func voiceGuideLoadsFromTheBundle() {
     #expect(VoiceGuide.guides.map(\.title) == ["Working out", "Abs", "Vacuums"])
     #expect(VoiceGuide.guides.allSatisfy { !$0.sections.isEmpty && $0.sections.allSatisfy { !$0.phrases.isEmpty } })
+}
+
+// MARK: Talk to it like a person (HANDOFF.md §7): turns from Muse Spark, through the real engine
+
+@MainActor
+private func spark(_ engine: SessionEngine, _ turn: SessionTurnResponse) -> SessionConversation {
+    let talk = SessionConversation(engine: engine)
+    talk.classify = { _, _ in turn }
+    return talk
+}
+
+@Test @MainActor func aTurnCanCarrySeveralActionsAndTheReplyConfirmsThem() async throws {
+    let engine = SessionEngine(day: shortDay, weekNumber: 1, lastSets: logbook)
+    let talk = SessionConversation(engine: engine)
+    var turns = [
+        SessionTurnResponse(transcript: "done, 8", actions: [VoiceIntent(intent: .endSet, number: 8, confidence: 0.95)], classifiedBy: "rules"),
+        SessionTurnResponse(transcript: "that was 9, and note my shoulder pinched", actions: [
+            VoiceIntent(intent: .reps, number: 9, confidence: 0.9),
+            VoiceIntent(intent: .note, text: "my shoulder pinched", confidence: 0.9),
+        ], reply: "Nine on set 1. Noted for Thursday.", classifiedBy: "spark"),
+    ]
+    talk.classify = { _, _ in turns.removeFirst() }
+    await talk.hear(.init(transcript: "done, 8", wav: nil, seconds: 1, speechEndedAt: .now))
+    let before = talk.said.count
+    await talk.hear(.init(transcript: "that was 9, and note my shoulder pinched", wav: nil, seconds: 2, speechEndedAt: .now))
+    #expect(engine.session.sets.first?.reps == 9)
+    #expect(engine.session.notes.count == 1)
+    #expect(Array(talk.said[before...]) == ["Nine on set 1. Noted for Thursday."])
+    // The follow-up gets the exchange.
+    var seen: SessionTurnRequest?
+    talk.classify = { _, request in
+        seen = request
+        return SessionTurnResponse(transcript: "undo", actions: [VoiceIntent(intent: .undo, confidence: 0.95)], classifiedBy: "rules")
+    }
+    await talk.hear(.init(transcript: "undo", wav: nil, seconds: 1, speechEndedAt: .now))
+    #expect(seen?.recentTurns.last == Exchange(heard: "that was 9, and note my shoulder pinched", said: "Nine on set 1. Noted for Thursday."))
+    #expect(seen?.facts.sets.first?.reps == 9)
+}
+
+@Test @MainActor func talkNotMeantForSetechoDoesNothing() async {
+    let engine = SessionEngine(day: shortDay, weekNumber: 1)
+    let talk = spark(engine, SessionTurnResponse(transcript: "bro can I work in", actions: [], addressed: false, classifiedBy: "spark"))
+    await talk.hear(.init(transcript: "bro can I work in", wav: nil, seconds: 1, speechEndedAt: .now))
+    #expect(talk.said.isEmpty && engine.session.sets.isEmpty && engine.state == .ready)
+    #expect(talk.heard == "Heard: bro can I work in")
+}
+
+@Test @MainActor func anActionThatAsksSpeaksTheEnginesQuestionNotTheReply() async {
+    let engine = SessionEngine(day: shortDay, weekNumber: 1)
+    let talk = spark(engine, SessionTurnResponse(transcript: "I'm done for today", actions: [VoiceIntent(intent: .endSession, confidence: 0.9)],
+                                                 reply: "Alright, see you Thursday.", classifiedBy: "spark"))
+    await talk.hear(.init(transcript: "I'm done for today", wav: nil, seconds: 1, speechEndedAt: .now))
+    #expect(talk.said.count == 1 && talk.said[0].hasPrefix("End the session?"))
+    #expect(engine.state != .ended)
+}
+
+@Test @MainActor func aQuestionIsAnsweredByTheReply() async {
+    let engine = SessionEngine(day: shortDay, weekNumber: 1, lastSets: logbook)
+    let talk = spark(engine, SessionTurnResponse(transcript: "what'd I get last week", actions: [], reply: "Last time 145 for 9.", classifiedBy: "spark"))
+    await talk.hear(.init(transcript: "what'd I get last week", wav: nil, seconds: 1, speechEndedAt: .now))
+    #expect(talk.said == ["Last time 145 for 9."])
+}
+
+@Test @MainActor func midSetOnlySetCommandsActEvenFromATurn() async {
+    let engine = SessionEngine(day: shortDay, weekNumber: 1)
+    engine.setStarted()
+    let talk = spark(engine, SessionTurnResponse(transcript: "the incline's taken", actions: [VoiceIntent(intent: .equipmentTaken, text: "incline", confidence: 0.9)],
+                                                 reply: "Incline's taken.", classifiedBy: "spark"))
+    await talk.hear(.init(transcript: "the incline's taken", wav: nil, seconds: 1, speechEndedAt: .now))
+    #expect(talk.said.isEmpty && engine.state == .recording)
 }

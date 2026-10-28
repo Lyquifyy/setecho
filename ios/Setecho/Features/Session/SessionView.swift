@@ -52,7 +52,7 @@ struct SessionView: View {
 
             HStack(spacing: Theme.Space.m) {
                 HUDState(state: coordinator.hudState)
-                InputStatus(camera: coordinator.detector.isOnDuty)
+                InputStatus(camera: coordinator.detector.isOnDuty, mic: coordinator.audio.inputLabel, micOnHim: coordinator.audio.isHeadWornMic)
             }
 
             if let last = engine.session.sets.last {
@@ -77,9 +77,10 @@ struct SessionView: View {
             } else if let heard = coordinator.heard {
                 // Chatter: shown, never answered.
                 Text(heard).font(.hudLabel).secondaryText().lineLimit(2)
-            } else if engine.session.sets.isEmpty, engine.currentExercise != nil {
-                // Until the first set, the one line that leads to all the others.
-                Text("Not sure what to say? Ask \u{201C}what can I say?\u{201D}").font(.hudLabel).secondaryText().multilineTextAlignment(.center)
+            } else if engine.currentExercise != nil, !VoiceGuide.hints(for: engine).isEmpty {
+                // Two or three things that fit the moment, so he never needs the list.
+                Text("Try " + VoiceGuide.hints(for: engine).map { "\u{201C}\($0)\u{201D}" }.joined(separator: " · "))
+                    .font(.hudLabel).secondaryText().multilineTextAlignment(.center)
             }
             if let offer = engine.takenOffer {
                 TakenCard(what: offer.what ?? engine.exercises.first { $0.exercise.id == offer.exerciseId }?.exercise.name ?? "Machine",

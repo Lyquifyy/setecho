@@ -20,6 +20,12 @@ final class AudioService {
     private(set) var levelDB: Double = -120
     private(set) var noiseFloorDB: Double?
     private(set) var inputDescription = "—"
+    /// The live input in plain words for the session HUD: "AirPods mic", "External mic", "Phone mic".
+    private(set) var inputLabel = "No mic"
+    /// The input is on him (AirPods, the DJI receiver, a headset), not the phone on the tripod.
+    private(set) var isHeadWornMic = false
+    /// Apple's voice processing (noise suppression and gain control) was on for this run.
+    private(set) var voiceProcessingOn = false
     private(set) var lastError: String?
 
     /// Called on the main actor with each finished utterance while listening.
@@ -28,6 +34,15 @@ final class AudioService {
     /// and every chunk captured while the athlete keeps talking.
     var onSpeechStart: (() -> Void)?
     var onLiveSamples: (([Float], Double) -> Void)?
+    /// A sound crossed the stream trigger but never became an utterance (sessions only).
+    var onNearMiss: ((VoiceDetector.NearMiss) -> Void)?
+    /// He started talking while Setecho was speaking: the line was cut and the mic is his.
+    var onBargeIn: (() -> Void)?
+    /// Barge-in (sessions): with the mic on him, speech over a line stops it. With the phone's
+    /// own mic the speaker would hear itself, so the mic stays closed while a line plays.
+    var allowsBargeIn = false
+    /// Apple's voice processing on the input (Settings → Developer). Read when listening starts.
+    var wantsVoiceProcessing = false
     /// The detector's settings for this run; nil is the check-in's (sessions use `.session`).
     var detectorConfig: ((Double) -> VoiceDetector.Config)?
     /// The last second of audio, so the stream can start before the onset was detected.
@@ -49,7 +64,9 @@ final class AudioService {
         // AirPods dropping to call quality, or the output vanishing, mid-run: check and fall back.
         routeObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
-                guard let self, AirPodsMic.shared.isActive, AirPodsMic.shared.check(self.session) else { return }
+                guard let self else { return }
+                self.updateInput()
+                guard AirPodsMic.shared.isActive, AirPodsMic.shared.check(self.session) else { return }
                 self.configure()
             }
         }
@@ -65,8 +82,8 @@ final class AudioService {
     func configure() {
         do {
             try AirPodsMic.shared.apply(to: session, ducking: holdsDucking)
-            // The DJI receiver when it's plugged in, unless he asked for the AirPods mic.
-            if !AirPodsMic.shared.isActive, let usb = session.availableInputs?.first(where: { $0.portType == .usbAudio }) {
+            // A plugged-in external mic (the DJI receiver) wins over the AirPods and the phone.
+            if let usb = session.availableInputs?.first(where: { $0.portType == .usbAudio }) {
                 try session.setPreferredInput(usb)
             }
             try session.setActive(true)
@@ -76,11 +93,32 @@ final class AudioService {
                 if let usb = session.availableInputs?.first(where: { $0.portType == .usbAudio }) { try session.setPreferredInput(usb) }
                 try session.setActive(true)
             }
-            let inputs = session.currentRoute.inputs.map { "\($0.portName) · \($0.portType.rawValue)" }
-            inputDescription = inputs.isEmpty ? "—" : inputs.joined(separator: ", ")
+            updateInput()
             lastError = nil
         } catch {
             lastError = "Audio session: \(error.localizedDescription)"
+        }
+    }
+
+    /// The route's input in words, for the HUD and the debug record.
+    private func updateInput() {
+        let inputs = session.currentRoute.inputs
+        inputDescription = inputs.isEmpty ? "—" : inputs.map { "\($0.portName) · \($0.portType.rawValue)" }.joined(separator: ", ")
+        guard let input = inputs.first else {
+            inputLabel = "No mic"
+            isHeadWornMic = false
+            return
+        }
+        (inputLabel, isHeadWornMic) = Self.label(portType: input.portType, name: input.portName)
+    }
+
+    static func label(portType: AVAudioSession.Port, name: String) -> (String, Bool) {
+        switch portType {
+        case .usbAudio: ("External mic", true)
+        case .bluetoothHFP, .bluetoothLE: (name.localizedCaseInsensitiveContains("airpods") ? "AirPods mic" : "Bluetooth mic", true)
+        case .headsetMic: ("Headset mic", true)
+        case .builtInMic: ("Phone mic", false)
+        default: (name, false)
         }
     }
 
@@ -95,6 +133,17 @@ final class AudioService {
         configure()
         let engine = AVAudioEngine()
         let input = engine.inputNode
+        voiceProcessingOn = false
+        if wantsVoiceProcessing {
+            // Noise suppression and gain control, with his music ducked as little as iOS allows.
+            do {
+                try input.setVoiceProcessingEnabled(true)
+                input.voiceProcessingOtherAudioDuckingConfiguration = .init(enableAdvancedDucking: false, duckingLevel: .min)
+                voiceProcessingOn = true
+            } catch {
+                lastError = "Voice processing: \(error.localizedDescription)"
+            }
+        }
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
             lastError = "No audio input"
@@ -146,25 +195,51 @@ final class AudioService {
         let (samples, _) = capture.drain()
         levelDB = capture.levelDB
         noiseFloorDB = detector.noiseFloorDB
-        // While a callout plays, the mic hears nothing we want: drop the audio instead of transcribing ourselves.
-        guard !isSpeaking else { return }
+        // While a line plays, the phone's own mic hears only Setecho: drop the audio. With the mic on
+        // him, keep listening, and only a voice louder than the threshold by `bargeInBoostDB` cuts in.
+        let bargeIn = isSpeaking && allowsBargeIn && isHeadWornMic
+        guard !isSpeaking || bargeIn else { return }
+        detector.boostDB = bargeIn ? Self.bargeInBoostDB : 0
         let rate = capture.sampleRate
         recent.append(contentsOf: samples)
         let keep = Int(rate)
         if recent.count > keep { recent.removeFirst(recent.count - keep) }
         let utterances = detector.process(samples)
-        if detector.isSpeaking, !wasSpeaking {
+        for event in detector.drainEvents() {
+            guard case .nearMiss(let miss) = event else { continue }
+            wasSpeaking = false
+            onNearMiss?(miss)
+        }
+        // The stream opens at the lower trigger in sessions, at the utterance's onset in the check-in.
+        let live = detector.isSpeaking || detector.streamOpen
+        if live, !wasSpeaking {
             wasSpeaking = true
             onSpeechStart?()
             onLiveSamples?(recent, rate)
-        } else if detector.isSpeaking {
+        } else if live {
             onLiveSamples?(samples, rate)
         } else if wasSpeaking {
             wasSpeaking = false
         }
+        if bargeIn, detector.isSpeaking {
+            stopSpeaking()
+            onBargeIn?()
+        }
         for utterance in utterances {
             onUtterance?(utterance)
         }
+    }
+
+    /// How much louder than the threshold he has to be to cut into a line (his own voice in the
+    /// AirPods' speakers is quieter than his voice at the mic).
+    static let bargeInBoostDB = 6.0
+
+    /// Voice Transcribe marked his words final and the room has gone quiet: end the utterance now
+    /// instead of waiting out the hangover (its own endpointing, HANDOFF.md §7).
+    func endUtteranceIfQuiet() {
+        guard let detector, let utterance = detector.endIfQuiet() else { return }
+        wasSpeaking = false
+        onUtterance?(utterance)
     }
 
     // MARK: Callouts

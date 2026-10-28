@@ -8,6 +8,9 @@ struct CountContext: Codable, Equatable {
     var phoneReps: Int?
     /// warmup, top, backOff or restPause (a rest-pause set gets no velocity loss); nil for a straight set.
     var setRole: String?
+    /// [x, y, w, h], normalized, top-left origin, in the upright (portrait) frame: his station.
+    /// The backend crops the clip to it before SAM, so other people's bars and plates aren't tracked.
+    var cropBox: [Double]?
 }
 
 /// /sets/count response (HANDOFF.md §5).

@@ -4,6 +4,7 @@ rule 7: iPhone video has a variable frame rate), and the small silent copy that 
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -39,6 +40,51 @@ def prepare_for_count(src: Path, dst: Path, height: int = COUNT_HEIGHT, fps: int
         "-movflags", "+faststart", "-map_metadata", "-1", str(dst),
     ]  # fmt: skip
     subprocess.run(cmd, check=True)
+    return dst
+
+
+def display_size(path: Path) -> tuple[int, int]:
+    """The frame size as ffmpeg decodes it: the stored size, turned when the file says to rotate."""
+    cmd = [
+        "ffprobe", "-v", "error", "-select_streams", "v:0",
+        "-show_entries", "stream=width,height:stream_side_data=rotation", "-of", "json", str(path),
+    ]  # fmt: skip
+    info = json.loads(subprocess.run(cmd, capture_output=True, text=True, check=True).stdout)
+    stream = info["streams"][0]
+    width, height = int(stream["width"]), int(stream["height"])
+    rotation = next(
+        (int(d.get("rotation", 0)) for d in stream.get("side_data_list", []) if "rotation" in d), 0
+    )
+    return (height, width) if abs(rotation) % 180 == 90 else (width, height)
+
+
+def crop_box_pixels(box: list[float], size: tuple[int, int]) -> tuple[int, int, int, int]:
+    """The phone's box (x, y, w, h, normalized, top-left origin, in the upright portrait frame Vision
+    saw with orientation .right) as an even-sized pixel crop (w, h, x, y) of the decoded frame. A
+    landscape frame is the sensor's own orientation: the upright frame turned 90° clockwise from it,
+    so its x is the upright y and its y runs from the upright right edge."""
+    x, y, w, h = (min(1.0, max(0.0, v)) for v in box)
+    width, height = size
+    if width > height:
+        x, y, w, h = y, 1 - x - w, h, w
+    px, py = round(x * width), round(y * height)
+    pw = min(width - px, round(w * width)) // 2 * 2
+    ph = min(height - py, round(h * height)) // 2 * 2
+    return pw, ph, px, py
+
+
+def crop(src: Path, dst: Path, box: list[float]) -> Path:
+    """The count clip cut to his station before SAM sees it: same frames, same timestamps (rule 7)."""
+    pw, ph, px, py = crop_box_pixels(box, display_size(src))
+    if pw < 16 or ph < 16:
+        raise ValueError(f"crop box too small: {box}")
+    cmd = [
+        "ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
+        "-vf", f"crop={pw}:{ph}:{px}:{py}", "-fps_mode", "passthrough", "-an",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart", "-map_metadata", "-1", str(dst),
+    ]  # fmt: skip
+    subprocess.run(cmd, check=True, capture_output=True)
     return dst
 
 

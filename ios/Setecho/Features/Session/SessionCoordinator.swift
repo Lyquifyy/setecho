@@ -72,11 +72,22 @@ final class SessionCoordinator {
     }
 
     private func wireConversation() {
-        conversation.classify = { [api] heard, context in
-            if let words = heard.transcript, !words.isEmpty { return try await api.voiceCommand(transcript: words, context: context) }
-            guard let wav = heard.wav else { return VoiceCommandResponse(transcript: "", intent: VoiceIntent(intent: .unknown, confidence: 0)) }
-            return try await api.voiceCommand(wav: wav, context: context)
+        conversation.classify = { [api, engine] heard, request in
+            do {
+                if let words = heard.transcript, !words.isEmpty { return try await api.sessionTurn(request) }
+                guard let wav = heard.wav else { return SessionTurnResponse(transcript: "", actions: [], addressed: false) }
+                return try await api.sessionTurn(wav: wav, request)
+            } catch let error as APIError where error.status == 404 {
+                // A backend from before the conversation turn: the old command path, one intent.
+                let context = engine.context
+                if let words = heard.transcript, !words.isEmpty {
+                    return SessionTurnResponse(command: try await api.voiceCommand(transcript: words, context: context))
+                }
+                guard let wav = heard.wav else { throw error }
+                return SessionTurnResponse(command: try await api.voiceCommand(wav: wav, context: context))
+            }
         }
+        conversation.inputState = { [audio] in (audio.inputLabel, audio.voiceProcessingOn) }
         conversation.speak = { [weak self] line in await self?.speak(line) }
         conversation.chime = { [weak self] in self?.audio.playTurnEndSound() }
         conversation.cameraSet = { [weak self] in
@@ -123,6 +134,9 @@ final class SessionCoordinator {
             return
         }
         started = true
+        let settings = Settings.shared
+        let firstSession = settings.sessionsStarted == 0
+        if !rehearsal { settings.sessionsStarted += 1 }
         Task { [api] in _ = try? await api.health() } // warm the backend's route before the first set
         if Settings.shared.filmingMode {
             let recorder = FilmingRecorder(root: store.mediaDirectory, kind: "session")
@@ -133,10 +147,27 @@ final class SessionCoordinator {
         }
         audio.configure()
         audio.detectorConfig = { VoiceDetector.Config.session(sampleRate: $0) }
+        audio.allowsBargeIn = true
+        audio.wantsVoiceProcessing = settings.voiceProcessing
         audio.onSpeechStart = { [weak self] in
             let stream = RealtimeTranscriber()
+            // Voice Transcribe's own endpointing: its final words and a quiet room end the turn at once.
+            stream.onFinal = { [weak self] in self?.audio.endUtteranceIfQuiet() }
             stream.start()
+            self?.stream?.cancel()
             self?.stream = stream
+        }
+        audio.onNearMiss = { [weak self] miss in
+            Task { await self?.nearMiss(miss) }
+        }
+        audio.onBargeIn = { [weak self] in
+            guard let self else { return }
+            self.conversation.interrupt()
+            var record = SessionDebug.UtteranceRecord(at: .now, seconds: 0, state: self.engine.context.state)
+            record.kind = "bargeIn"
+            record.bargedIn = true
+            record.input = self.audio.inputLabel
+            SessionDebug.append(record, sessionId: self.engine.session.id, in: self.store.mediaDirectory)
         }
         audio.onLiveSamples = { [weak self] samples, rate in self?.stream?.send(samples, rate: rate) }
         audio.onUtterance = { [weak self] utterance in
@@ -144,17 +175,29 @@ final class SessionCoordinator {
         }
         if !rehearsal { audio.startListening() }
         startClock()
+        engine.cameraStartsSets = settings.cameraStartsSets
+        engine.usesArming = camera
+        engine.armReminder = settings.sessionsStarted <= 3 && !rehearsal
         if camera {
             cameraOn = true
+            syncCamera()
             detector.onSetStart = { [weak self] start in self?.cameraSetStarted(at: start) }
             detector.onSetEnd = { [weak self] end in self?.cameraSetEnded(at: end) }
             detector.onClipsReady = { [weak self] clips in self?.clipsReady(clips) }
             detector.start()
         }
+        if firstSession, !rehearsal { conversation.say(Self.firstSessionIntro) }
         conversation.say(engine.intro)
+        // The tripod is 2-3 m away: the phone's own mic misses short commands under gym music.
+        if camera, !audio.isHeadWornMic { conversation.say("I hear you best through your AirPods mic.") }
         await playCueIfDue()
         conversation.show(engine.beginLeadInIfDue())
     }
+
+    /// Before his first session ever, about 15 seconds: how to talk to it, so he never needs a list
+    /// (HANDOFF.md §7, Talk to it like a person).
+    static let firstSessionIntro = "Talk to me like a spotter. Say go when you lift, tell me what you got, "
+        + "or ask me anything about today. If a machine's taken, just say so."
 
     /// The coach's cue for the current exercise, once, in Ready, before its first set (HANDOFF.md §7).
     private func playCueIfDue() async {
@@ -213,9 +256,25 @@ final class SessionCoordinator {
     private func cameraSetStarted(at start: Double) {
         // A timed set is a countdown, and an add-on set goes by voice: never a camera set (HANDOFF.md §7).
         guard !engine.currentSetIsVoiceOnly else { return }
+        // Started by voice in a pocket and then seen, or armed by "go": his set. Anything else is
+        // someone else's movement (the detector only reports starts it's allowed, but the arm may have lapsed).
+        guard engine.state == .recording || engine.cameraMayStart else { return }
         currentSetStart = start
         detector.restPause = engine.currentSetIsRestPause
-        show(engine.setStarted())
+        show(engine.state == .recording ? .none : engine.cameraStarted())
+        syncCamera()
+    }
+
+    /// The detector follows the arm: "go" picks him again in the frame, and only an armed set (or
+    /// one under way) may start. With Settings → "Start sets from the camera" any movement may.
+    private var lastArmedAt: Date?
+    private func syncCamera() {
+        guard cameraOn else { return }
+        if engine.armedAt != lastArmedAt {
+            if engine.armedAt != nil { detector.lockOnHim() }
+            lastArmedAt = engine.armedAt
+        }
+        detector.startsAllowed = engine.cameraMayStart || engine.state == .recording
     }
 
     private func cameraSetEnded(at end: Double) {
@@ -232,6 +291,7 @@ final class SessionCoordinator {
 
     private func clipsReady(_ clips: SetDetector.Clips) {
         guard let setId = setsAwaitingClips.removeValue(forKey: clips.setStart) else { return }
+        if let crop = clips.cropBox { cropBoxes[setId] = crop }
         if let clip = clips.clipFile { engine.attachClip(setId: setId, file: clip) }
         guard let countFile = clips.countFile else {
             show(engine.countFailed(setId: setId))
@@ -248,6 +308,8 @@ final class SessionCoordinator {
 
     /// Count clips of warm-ups, kept until the session ends in case a warm-up becomes a working set.
     private var countFilesHeld: [UUID: String] = [:]
+    /// His station per set: the count clip is cut to it before SAM.
+    private var cropBoxes: [UUID: CGRect] = [:]
 
     /// A warm-up reclassified by voice uploads then (HANDOFF.md §7).
     private func uploadReclassified() {
@@ -269,9 +331,10 @@ final class SessionCoordinator {
             return
         }
         let planned = exercise.sets.indices.contains(set.setIndex) ? exercise.sets[set.setIndex] : nil
+        let crop = cropBoxes[setId].map { [Double($0.minX), Double($0.minY), Double($0.width), Double($0.height)] }
         let context = CountContext(exerciseId: set.exerciseId, equipment: exercise.equipment,
                                    plannedReps: planned?.reps ?? planned?.repsMin, phoneReps: set.repCount.phone,
-                                   setRole: set.role?.rawValue)
+                                   setRole: set.role?.rawValue, cropBox: crop)
         countsInFlight += 1
         defer { countsInFlight -= 1 }
         for (attempt, delay) in ([0.0] + Self.uploadRetryDelays).enumerated() {
@@ -324,6 +387,7 @@ final class SessionCoordinator {
                 let before = self.engine.state
                 self.engine.cameraOnDuty = self.cameraOn && self.detector.isOnDuty
                 self.conversation.tick()
+                self.syncCamera()
                 if self.engine.state != before { self.afterStateChange() }
             }
         }
@@ -331,19 +395,23 @@ final class SessionCoordinator {
 
     // MARK: Voice
 
-    /// One utterance from the mic: never dropped, queued behind any still being handled. A sound
-    /// under a fifth of a second is a clank; one that ran to the 10 s limit was noise, and the floor
-    /// is learned again.
+    /// One utterance from the mic: never dropped, queued behind any still being handled. Under
+    /// 0.15 s of speech it's a clank; one that ran to the 10 s limit was noise (the detector's floor
+    /// has risen to it).
     private func handle(_ utterance: VoiceDetector.Utterance) async {
         let stream = self.stream
         self.stream = nil
         let endedAt = Date.now
-        if utterance.hitMax || utterance.seconds < 0.2 {
+        if utterance.hitMax || utterance.speechSeconds < Self.minimumSpeechSeconds {
             stream?.cancel()
-            if utterance.hitMax { audio.recalibrate() }
-            SessionDebug.append(.init(at: endedAt, seconds: utterance.seconds, state: engine.context.state,
-                                      error: utterance.hitMax ? "too long (noise)" : "too short"),
-                                sessionId: engine.session.id, in: store.mediaDirectory)
+            var record = SessionDebug.UtteranceRecord(at: endedAt, seconds: utterance.seconds, state: engine.context.state,
+                                                      error: utterance.hitMax ? "too long (noise)" : "too short")
+            record.kind = "utterance"
+            record.levelAboveFloorDB = utterance.peakAboveFloorDB
+            record.speechSeconds = utterance.speechSeconds
+            record.input = audio.inputLabel
+            record.voiceProcessing = audio.voiceProcessingOn
+            SessionDebug.append(record, sessionId: engine.session.id, in: store.mediaDirectory)
             return
         }
         let pcm = Resample.toInt16Mono(utterance.samples, from: utterance.sampleRate, to: 16_000)
@@ -356,6 +424,32 @@ final class SessionCoordinator {
         }
         engine.cameraOnDuty = cameraOn && detector.isOnDuty
         await conversation.hear(heard)
+    }
+
+    static let minimumSpeechSeconds = 0.15
+
+    /// A sound that crossed the stream trigger but never the utterance threshold. Logged either way;
+    /// if Voice Transcribe found words in it, they are heard like any utterance (a quiet "go").
+    private func nearMiss(_ miss: VoiceDetector.NearMiss) async {
+        let stream = self.stream
+        self.stream = nil
+        let endedAt = Date.now
+        var record = SessionDebug.UtteranceRecord(at: endedAt, seconds: miss.seconds, state: engine.context.state)
+        record.kind = "nearMiss"
+        record.levelAboveFloorDB = miss.peakAboveFloorDB
+        record.input = audio.inputLabel
+        record.voiceProcessing = audio.voiceProcessingOn
+        let words = await stream?.end()
+        record.transcript = words
+        if words != nil { record.toTranscript = Date.now.timeIntervalSince(endedAt) }
+        guard let words, words.contains(where: \.isLetter) else {
+            record.error = stream == nil ? "no stream" : "no words"
+            SessionDebug.append(record, sessionId: engine.session.id, in: store.mediaDirectory)
+            return
+        }
+        SessionDebug.append(record, sessionId: engine.session.id, in: store.mediaDirectory)
+        engine.cameraOnDuty = cameraOn && detector.isOnDuty
+        await conversation.hear(.init(transcript: words, wav: nil, seconds: miss.seconds, speechEndedAt: endedAt))
     }
 
     /// Developer → Session rehearsal: a typed line through the real backend, as if it was heard.
@@ -379,6 +473,7 @@ final class SessionCoordinator {
             detector.endSetByVoice()
         }
         if response.intent.intent == .topSet { uploadReclassified() }
+        syncCamera()
         afterStateChange()
     }
 

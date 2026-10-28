@@ -150,3 +150,59 @@ def test_context_model_defaults():
 def test_clips_are_720p_at_15_fps():
     assert video.COUNT_FPS == 15 and video.COUNT_HEIGHT == 720
     assert video.MAX_COUNT_FRAMES == 4 * 60 * 15
+
+
+# His station only (HANDOFF.md §7, Sets start on his word): the phone sends his box, SAM sees the crop.
+
+
+def test_a_crop_box_cuts_the_clip_before_sam(client, fake_sam, monkeypatch):
+    cropped = []
+
+    def fake_crop(src, dst, box):
+        cropped.append(box)
+        dst.write_bytes(src.read_bytes())
+        return dst
+
+    monkeypatch.setattr(video, "crop", fake_crop)
+    ctx = {"exerciseId": "e", "equipment": "barbell", "cropBox": [0.2, 0.1, 0.5, 0.6]}
+    r = _post(client, context=ctx)
+    assert r.status_code == 200, r.text
+    assert cropped == [[0.2, 0.1, 0.5, 0.6]]
+    assert fake_sam["uploaded"] == ["station.mp4"]
+    assert "crop" in r.json()["timings"]
+
+
+def test_a_crop_that_fails_counts_the_whole_frame(client, fake_sam, monkeypatch):
+    def broken(src, dst, box):
+        raise ValueError("crop box too small")
+
+    monkeypatch.setattr(video, "crop", broken)
+    r = _post(
+        client, context={"exerciseId": "e", "equipment": "barbell", "cropBox": [0.5, 0.5, 0.001, 0.001]}
+    )
+    assert r.status_code == 200 and r.json()["reps"] == 8
+    assert fake_sam["uploaded"] == ["set.mp4"]
+
+
+def test_crop_box_in_the_upright_frame_and_the_sensors():
+    # Portrait as decoded (the file carries its rotation): the box as the phone saw it.
+    assert video.crop_box_pixels([0.25, 0.1, 0.5, 0.5], (720, 1280)) == (360, 640, 180, 128)
+    # Landscape, the sensor's own orientation: the upright frame is this one turned 90° clockwise,
+    # so the upright top-left quarter is the sensor frame's bottom-left quarter.
+    assert video.crop_box_pixels([0.0, 0.0, 0.5, 0.5], (1280, 720)) == (640, 360, 0, 360)
+    assert video.crop_box_pixels([0.5, 0.0, 0.5, 0.5], (1280, 720)) == (640, 360, 0, 0)
+
+
+@pytest.mark.skipif(not video.has_ffmpeg(), reason="ffmpeg not installed")
+def test_crop_keeps_every_frame_and_its_time(tmp_path):
+    import subprocess
+
+    src = tmp_path / "src.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=720x1280:rate=15:duration=2",
+         "-pix_fmt", "yuv420p", str(src)],
+        check=True,
+    )  # fmt: skip
+    out = video.crop(src, tmp_path / "out.mp4", [0.25, 0.25, 0.5, 0.5])
+    assert video.display_size(out) == (360, 640)
+    assert video.frame_times(out) == pytest.approx(video.frame_times(src))

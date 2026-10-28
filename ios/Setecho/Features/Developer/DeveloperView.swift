@@ -37,6 +37,13 @@ struct DeveloperView: View {
                     .font(.footnote).secondaryText()
             }
 
+            SectionCard("Hearing") {
+                Toggle("Apple voice processing", isOn: $settings.voiceProcessing)
+                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+                Text("Noise suppression and gain control on the session mic, with your music ducked as little as iOS allows. Each utterance in the session data says whether it was on: keep whichever hears more.")
+                    .font(.footnote).secondaryText()
+            }
+
             SectionCard("Filming") {
                 Toggle("Filming mode", isOn: $settings.filmingMode)
                     .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)

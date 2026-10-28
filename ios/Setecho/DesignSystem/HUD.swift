@@ -7,6 +7,9 @@ extension Font {
     static let hudTarget = Font.system(size: 96, weight: .bold).monospacedDigit()
     /// The state line: Ready · Recording · Saved · Rest 2:14 · Listening
     static let hudState = Font.system(size: 34, weight: .semibold).monospacedDigit()
+    /// A long question in a spoken check-in (the introduction, a read-back with its fact): one step
+    /// down from the state line, so it fits above the voice bar.
+    static let hudQuestion = Font.system(size: 28, weight: .semibold).monospacedDigit()
     /// Everything else on a hands-free screen.
     static let hudLabel = Font.system(size: 22, weight: .regular).monospacedDigit()
 }
@@ -80,6 +83,9 @@ struct HUDState: View {
 struct InputStatus: View {
     let camera: Bool
     var watch: Bool?
+    /// The live mic in words ("AirPods mic", "Phone mic"); cobalt when it's on him.
+    var mic: String?
+    var micOnHim = false
 
     var body: some View {
         HStack(spacing: Theme.Space.xs) {
@@ -88,6 +94,11 @@ struct InputStatus: View {
             if let watch {
                 Image(systemName: watch ? "applewatch" : "applewatch.slash")
                     .foregroundStyle(watch ? Theme.cobalt : Theme.textSecondary)
+            }
+            if let mic {
+                Image(systemName: micOnHim ? "airpods" : "mic.fill")
+                    .foregroundStyle(micOnHim ? Theme.cobalt : Theme.textSecondary)
+                Text(mic).foregroundStyle(micOnHim ? Theme.cobalt : Theme.textSecondary)
             }
         }
         .font(.hudLabel.weight(.semibold))
@@ -98,6 +109,7 @@ struct InputStatus: View {
     private var label: String {
         var parts = [camera ? "Camera on" : "Camera off"]
         if let watch { parts.append(watch ? "watch on" : "watch off") }
+        if let mic { parts.append(mic) }
         return parts.joined(separator: ", ")
     }
 }

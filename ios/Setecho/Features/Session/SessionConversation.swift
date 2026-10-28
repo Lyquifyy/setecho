@@ -1,14 +1,19 @@
 import Foundation
 import Observation
 
-/// The talk between sets (HANDOFF.md §7, The between-set conversation): every utterance heard is
-/// queued and handled in order, read by the backend, applied to the engine and answered; the
-/// session clock's ticks speak through it too. No devices here: the coordinator wires in the
+/// The talk between sets (HANDOFF.md §7, The between-set conversation; Talk to it like a person):
+/// every utterance heard is queued and handled in order, read by the backend as a conversation turn
+/// (the fast path's template lines, else Muse Spark with today's facts and the last 8 exchanges),
+/// each of its actions applied to the engine, and answered; the session clock's ticks speak
+/// through it too. No devices here: the coordinator wires in the
 /// backend, the voice, the camera and the chime, and `ConversationTests` wire in fakes, so the path
 /// the athlete uses is the path the tests drive.
 ///
 /// During a set only the rule layer's set commands count ("done", "done, 12", "that was 8", "top
-/// set"); everything else then is noise. Chatter is never answered: the HUD shows "Heard: …".
+/// set"); everything else then is noise. Talk not meant for Setecho is never answered: the HUD
+/// shows "Heard: …". A reply is spoken when the turn's actions ask nothing of their own; an action
+/// that opens a question (a count to confirm, a machine-taken offer, the end-session yes) speaks
+/// the engine's exact words.
 @MainActor
 @Observable
 final class SessionConversation {
@@ -33,8 +38,8 @@ final class SessionConversation {
     private(set) var spokenLine: String?
     private(set) var isBusy = false
 
-    /// The backend: rules then Spark. Throws on a timeout or a failed request.
-    @ObservationIgnored var classify: @MainActor (Heard, SessionContext) async throws -> VoiceCommandResponse = { _, _ in
+    /// The backend: the fast path, else a Spark turn. Throws on a timeout or a failed request.
+    @ObservationIgnored var classify: @MainActor (Heard, SessionTurnRequest) async throws -> SessionTurnResponse = { _, _ in
         throw APIError(status: 0, message: "No backend")
     }
     /// Hand a line to the voice. Lines are spoken in the order given.
@@ -48,7 +53,12 @@ final class SessionConversation {
     /// One record per utterance for the session's debug JSON.
     @ObservationIgnored var record: (SessionDebug.UtteranceRecord) -> Void = { _ in }
     @ObservationIgnored var now: () -> Date = { .now }
+    /// The live input and voice processing, for the debug record.
+    @ObservationIgnored var inputState: () -> (input: String, voiceProcessing: Bool) = { ("", false) }
 
+    /// The session's exchanges, for follow-ups ("what about the other one?", "same as last set").
+    private(set) var exchanges: [Exchange] = []
+    static let recentTurns = 8
     private var queue: [Heard] = []
     private var speechQueue: [String] = []
     private var speaking = false
@@ -78,14 +88,23 @@ final class SessionConversation {
     private func handle(_ heard: Heard) async {
         var heard = heard
         var log = SessionDebug.UtteranceRecord(at: heard.speechEndedAt, seconds: heard.seconds, state: engine.context.state)
+        log.kind = "utterance"
+        (log.input, log.voiceProcessing) = inputState()
         if heard.transcript == nil, let words = heard.words {
             heard.transcript = await words()
             if heard.transcript != nil { log.toTranscript = now().timeIntervalSince(heard.speechEndedAt) }
         }
-        let context = engine.context
-        let response: VoiceCommandResponse
+        // The chime the moment he's heard, before the turn's ~2 s: never mid-set, where it waits for a set command.
+        var chimed = false
+        if engine.state != .recording, let words = heard.transcript, words.contains(where: \.isLetter) {
+            chime()
+            chimed = true
+        }
+        let request = SessionTurnRequest(transcript: heard.transcript ?? "", state: engine.context.state,
+                                         recentTurns: Array(exchanges.suffix(Self.recentTurns)), facts: engine.turnFacts(now: now()))
+        let turn: SessionTurnResponse
         do {
-            response = try await classify(heard, context)
+            turn = try await classify(heard, request)
         } catch {
             // A failed or slow request is never a spoken error: the HUD says so and the mic carries on.
             log.error = String(describing: error)
@@ -93,30 +112,57 @@ final class SessionConversation {
             show(.init(heard: "Didn't catch that"))
             return
         }
-        log.transcript = response.transcript
-        log.intent = response.intent.intent.rawValue
-        log.number = response.intent.number
-        log.classifiedBy = response.classifiedBy
+        log.transcript = turn.transcript
+        log.intent = turn.actions.first?.intent.rawValue
+        log.number = turn.actions.first?.number
+        log.actions = turn.actions.map(\.intent.rawValue)
+        log.classifiedBy = turn.classifiedBy
+        log.addressed = turn.addressed
+        log.reply = turn.reply
         log.toIntent = now().timeIntervalSince(heard.speechEndedAt)
-        var outcome: SessionEngine.Outcome
-        let wasRecording = engine.state == .recording
-        if wasRecording, !Self.isSetCommand(response) {
-            // Mid-set: grunts, counting aloud, someone else. Never a command.
-            outcome = .init(heard: response.transcript.isEmpty ? nil : response.transcript)
-        } else {
-            let camera = wasRecording ? cameraSet() : nil
-            outcome = engine.apply(response, now: now(), phone: camera?.phone, willMeasure: camera?.willMeasure ?? false)
-            applied(response, wasRecording)
-        }
-        if outcome.speech != nil || outcome.echo != nil { chime() }
+        let outcome = apply(turn)
+        if !chimed, outcome.speech != nil || outcome.echo != nil { chime() }
+        if turn.addressed, !turn.transcript.isEmpty { exchanges.append(Exchange(heard: turn.transcript, said: outcome.speech)) }
         log.spoken = outcome.speech
         log.toFirstAudio = outcome.speech == nil ? nil : now().timeIntervalSince(heard.speechEndedAt)
         record(log)
         show(outcome)
     }
 
+    /// The turn's actions on the engine, in order, and what to say. Mid-set only the rules' set
+    /// commands act. The reply stands in for the templates unless an action asked something.
+    private func apply(_ turn: SessionTurnResponse) -> SessionEngine.Outcome {
+        guard turn.addressed else { return .init(heard: turn.transcript.isEmpty ? nil : turn.transcript) }
+        let wasRecording = engine.state == .recording
+        let commands = wasRecording ? turn.commands.filter(Self.isSetCommand) : turn.commands
+        if wasRecording, commands.isEmpty {
+            // Mid-set: grunts, counting aloud, someone else. Never a command.
+            return .init(heard: turn.transcript.isEmpty ? nil : turn.transcript)
+        }
+        let askBefore = engine.pendingAskText
+        var outcome = SessionEngine.Outcome.none
+        for (i, command) in commands.enumerated() {
+            // The camera's count belongs to the set it was filming: only the first command can end it.
+            let camera = wasRecording && i == 0 ? cameraSet() : nil
+            outcome = outcome.merged(with: engine.apply(command, now: now(), phone: camera?.phone, willMeasure: camera?.willMeasure ?? false))
+            applied(command, wasRecording)
+        }
+        let openedAsk = engine.pendingAskText != nil && engine.pendingAskText != askBefore
+        if let reply = turn.reply, !reply.isEmpty, !openedAsk {
+            outcome.speech = reply
+            if commands.isEmpty { outcome.echo = reply }
+        }
+        return outcome
+    }
+
+    /// He spoke over a line: it stopped, and the lines waiting behind it are dropped (they're on the HUD).
+    func interrupt() {
+        speechQueue.removeAll()
+    }
+
     /// What may act during a set: the rule layer's "done", counts and "top set".
     static func isSetCommand(_ response: VoiceCommandResponse) -> Bool {
+        guard response.intent.intent != .chatter else { return false }
         guard response.classifiedBy == nil || response.classifiedBy == "rules" else { return false }
         return [.endSet, .reps, .topSet].contains(response.intent.intent)
     }
@@ -127,6 +173,7 @@ final class SessionConversation {
     /// fallback when SAM is late.
     func tick() {
         let at = now()
+        engine.tickArm(at: at)
         show(engine.tickRest())
         show(engine.tickLeadIn(at: at))
         show(engine.tickHold(at: at))

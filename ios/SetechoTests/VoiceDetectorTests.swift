@@ -97,3 +97,84 @@ private func detector() -> VoiceDetector {
     #expect(abs(VoiceDetector.rmsDB([1, -1, 1, -1]) - 0) < 1e-6)
     #expect(abs(VoiceDetector.rmsDB([0.1, -0.1]) - (-20)) < 1e-4)
 }
+
+// MARK: Sessions (HANDOFF.md §7, Hearing him in a gym)
+
+private func sessionDetector() -> VoiceDetector {
+    VoiceDetector(config: .session(sampleRate: rate))
+}
+
+/// A tone this many dB over a floor of amplitude 0.01 (about -43 dBFS RMS for the noise).
+private func over(_ d: VoiceDetector, db: Double, seconds: Double) -> [Float] {
+    let target = d.noiseFloorDB! + db
+    // A sine's RMS is amplitude / sqrt(2).
+    let amplitude = Float(pow(10, target / 20) * 2.0.squareRoot())
+    return tone(seconds: seconds, amplitude: amplitude)
+}
+
+@Test func aShortQuietGoIsHeardInASession() {
+    // Oct 28 gym test: 13 dB and 350 ms let short commands through the floor. A "go" is ~0.3 s.
+    let d = sessionDetector()
+    _ = d.process(noise(seconds: 2.5, amplitude: 0.01))
+    var out = d.process(over(d, db: 10, seconds: 0.3))
+    out += d.process(noise(seconds: 1.2, amplitude: 0.01))
+    #expect(out.count == 1)
+    #expect(out[0].speechSeconds >= 0.15 && out[0].speechSeconds < 0.5)
+    #expect(d.drainEvents().first == .streamOpened)
+}
+
+@Test func aSoundBetweenTheTriggersOpensTheStreamAndEndsAsANearMiss() {
+    let d = sessionDetector()
+    _ = d.process(noise(seconds: 2.5, amplitude: 0.01))
+    var out = d.process(over(d, db: 7, seconds: 0.5))
+    out += d.process(noise(seconds: 1.2, amplitude: 0.01))
+    #expect(out.isEmpty)
+    let events = d.drainEvents()
+    #expect(events.first == .streamOpened)
+    guard case .nearMiss(let miss) = events.last else {
+        Issue.record("no near miss: \(events)")
+        return
+    }
+    #expect(abs(miss.seconds - 0.5) < 0.1)
+    #expect(miss.peakAboveFloorDB > 6 && miss.peakAboveFloorDB < 8)
+}
+
+@Test func theCheckInHasNoStreamTrigger() {
+    let d = detector()
+    _ = d.process(noise(seconds: 2.5, amplitude: 0.01))
+    _ = d.process(tone(seconds: 0.5, amplitude: 0.05))
+    _ = d.process(noise(seconds: 1.5, amplitude: 0.01))
+    #expect(d.drainEvents().isEmpty)
+}
+
+@Test func aMaximumLengthNoiseRaisesTheFloor() {
+    let d = sessionDetector()
+    _ = d.process(noise(seconds: 2.5, amplitude: 0.01))
+    let before = d.noiseFloorDB!
+    let out = d.process(noise(seconds: 11, amplitude: 0.1, seed: 7)) // music turned up, 20 dB louder
+    #expect(out.count == 1 && out[0].hitMax)
+    #expect(d.noiseFloorDB! > before + 12)
+    // The louder room is now the floor: the same music no longer starts an utterance at once.
+    #expect(d.process(noise(seconds: 2, amplitude: 0.1, seed: 9)).isEmpty && !d.isSpeaking)
+}
+
+@Test func theStreamEndsAnUtteranceOnceTheRoomIsQuiet() {
+    let d = sessionDetector()
+    _ = d.process(noise(seconds: 2.5, amplitude: 0.01))
+    _ = d.process(over(d, db: 15, seconds: 0.6))
+    #expect(d.endIfQuiet() == nil) // still loud
+    _ = d.process(noise(seconds: 0.3, amplitude: 0.01))
+    let u = d.endIfQuiet()
+    #expect(u != nil && !d.isSpeaking)
+}
+
+@Test func whileSetechoTalksOnlyALouderVoiceInterrupts() {
+    let d = sessionDetector()
+    _ = d.process(noise(seconds: 2.5, amplitude: 0.01))
+    d.boostDB = 6
+    var out = d.process(over(d, db: 10, seconds: 0.4)) // 10 dB over the floor: under 8 + 6
+    out += d.process(noise(seconds: 1.2, amplitude: 0.01))
+    #expect(out.isEmpty)
+    out = d.process(over(d, db: 18, seconds: 0.4))
+    #expect(d.isSpeaking)
+}

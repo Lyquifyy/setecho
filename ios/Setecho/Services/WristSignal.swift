@@ -93,6 +93,14 @@ struct WristSignal {
         return nil
     }
 
+    /// Forget the series: the person followed changed, so the history isn't his.
+    mutating func clearHistory() {
+        series.removeAll()
+        recentRaw.removeAll()
+        isActive = false
+        activeSince = nil
+    }
+
     /// Drop samples older than `seconds` so a long session stays small.
     mutating func trim(olderThan seconds: Double, now t: Double) {
         series.removeAll { $0.t < t - seconds }

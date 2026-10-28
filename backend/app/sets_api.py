@@ -23,6 +23,7 @@ from app import meta, reps, video
 from app.schemas import StrictModel
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 MAX_CLIP_BYTES = 40 * 1024 * 1024
 
@@ -33,6 +34,11 @@ class CountContext(StrictModel):
     plannedReps: int | None = None
     phoneReps: int | None = None
     setRole: reps.SetRole | None = Field(default=None, description="A rest-pause set gets no velocity loss")
+    cropBox: list[float] | None = Field(
+        default=None,
+        description="[x, y, w, h], normalized, top-left, upright portrait: his station. The clip is cut to "
+        "it before SAM, so other people's bars and plates aren't tracked",
+    )
 
 
 class CountResponse(StrictModel):
@@ -74,6 +80,13 @@ async def count_clip(data: bytes, context: CountContext) -> CountResponse:
         path.write_bytes(data)
         timings: dict[str, float] = {}
         t0 = time.monotonic()
+        if context.cropBox is not None and len(context.cropBox) == 4:
+            try:
+                path = await run_in_threadpool(video.crop, path, Path(tmp) / "station.mp4", context.cropBox)
+            except Exception as e:  # noqa: BLE001 - an odd box or clip: count the whole frame instead
+                log.info("crop failed, counting the whole frame: %s", e)
+            timings["crop"] = round(time.monotonic() - t0, 2)
+            t0 = time.monotonic()
         try:
             times = await run_in_threadpool(video.frame_times, path)
         except Exception as e:  # ffprobe could not read it: not a video we can count

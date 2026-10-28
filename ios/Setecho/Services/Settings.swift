@@ -56,14 +56,26 @@ final class Settings {
     var filmingMode: Bool { didSet { defaults.set(filmingMode, forKey: "filmingMode") } }
     /// Developer tools (off): Settings → Developer, plus the Facts link on the Check-in tab.
     var developerTools: Bool { didSet { defaults.set(developerTools, forKey: "developerTools") } }
-    /// iOS 26 high-quality AirPods recording (HANDOFF.md §9, block 1). Off: AirPods are output only,
-    /// over A2DP, and the DJI receiver or the iPhone mic records. A change clears an earlier fallback.
+    /// iOS 26 high-quality AirPods recording (HANDOFF.md §7, Hearing him in a gym): on by default
+    /// since the Oct 28 gym test (the phone's mic on a tripod 2-3 m away missed half of what he said).
+    /// Off: AirPods are output only, over A2DP, and the DJI receiver or the iPhone mic records. A
+    /// plugged-in external mic wins either way. A change clears an earlier fallback.
     var useAirPodsMic: Bool {
         didSet {
             defaults.set(useAirPodsMic, forKey: "useAirPodsMic")
             Task { @MainActor in AirPodsMic.shared.reset() }
         }
     }
+    /// Settings → "Start sets from the camera" (off): any movement in frame starts a set, for an empty
+    /// home gym. Off, a set starts only after he arms it by voice ("go"), and the camera follows only
+    /// him (HANDOFF.md §7, Sets start on his word).
+    var cameraStartsSets: Bool { didSet { defaults.set(cameraStartsSets, forKey: "cameraStartsSets") } }
+    /// Developer → "Apple voice processing" (off until the gym data says it hears more): noise
+    /// suppression and gain control on the session mic, recorded with every utterance.
+    var voiceProcessing: Bool { didSet { defaults.set(voiceProcessing, forKey: "voiceProcessing") } }
+    /// Sessions started (rehearsals don't count): the spoken intro before the first, and "Say go
+    /// when you lift." at the end of each rest for the first three.
+    var sessionsStarted: Int { didSet { defaults.set(sessionsStarted, forKey: "sessionsStarted") } }
     /// When the due-day notification fires ("06:30"); opening the app from it starts the morning flow.
     var checkInWakeTime: String { didSet { defaults.set(checkInWakeTime, forKey: "checkInWakeTime") } }
     /// The day (DayKey) Check-in morning last started itself, so it starts once per due day.
@@ -99,7 +111,10 @@ final class Settings {
         ownWhatsAppNumber = defaults.string(forKey: "ownWhatsAppNumber") ?? ""
         filmingMode = defaults.bool(forKey: "filmingMode")
         developerTools = defaults.bool(forKey: "developerTools")
-        useAirPodsMic = defaults.bool(forKey: "useAirPodsMic")
+        useAirPodsMic = defaults.object(forKey: "useAirPodsMic") as? Bool ?? true
+        cameraStartsSets = defaults.bool(forKey: "cameraStartsSets")
+        voiceProcessing = defaults.bool(forKey: "voiceProcessing")
+        sessionsStarted = defaults.integer(forKey: "sessionsStarted")
         checkInWakeTime = defaults.string(forKey: "checkInWakeTime") ?? "06:30"
         lastMorningAutoStart = defaults.string(forKey: "lastMorningAutoStart") ?? ""
     }

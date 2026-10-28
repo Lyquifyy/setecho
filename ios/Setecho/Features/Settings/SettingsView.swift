@@ -104,8 +104,11 @@ struct SettingsView: View {
                 SettingToggle("Machine-taken help", isOn: $settings.machineTakenHelp)
                 Note("When you say a machine's taken, his choices in the order you confirmed. Off: your own swaps (\u{201C}doing dumbbells instead\u{201D}) still work, and he still sees them.")
                 CardDivider()
+                SettingToggle("Start sets from the camera", isOn: $settings.cameraStartsSets)
+                Note("For an empty home gym: any movement in frame starts a set. Off: say \u{201C}go\u{201D} when you lift, and the camera follows only you.")
+                CardDivider()
                 SettingToggle("Use AirPods mic", isOn: $settings.useAirPodsMic)
-                Note(AirPodsMic.shared.notice ?? "On: AirPods listen as well as play, at full quality where iOS supports it, or Setecho switches back by itself. Off: the DJI receiver or the iPhone mic listens.")
+                Note(AirPodsMic.shared.notice ?? "On: AirPods listen as well as play, at full quality where iOS supports it, or Setecho switches back by itself. A plugged-in mic always wins. Off: the iPhone mic listens.")
                 CardDivider()
                 LinkButton(title: "How a session works") { showIntro = true }
                 LinkButton(title: "What you can say") { showGuide = true }

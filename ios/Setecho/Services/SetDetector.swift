@@ -7,6 +7,10 @@ import Vision
 /// request on every 4th frame, the wrist signal fed with the frame's own timestamp, every joint
 /// kept for the instant rep count, and continuous recording split at set ends so each set's clip
 /// has pre-roll. Events arrive on the main actor; times are capture-clock seconds.
+///
+/// Only his body counts (Sets start on his word): `BodyTracker` follows the body picked when he
+/// arms, and a start is reported only while `startsAllowed` (he armed, or the camera may start
+/// sets). The count clip carries his boxes over the set, so SAM sees only his station.
 @MainActor
 @Observable
 final class SetDetector: NSObject {
@@ -15,6 +19,9 @@ final class SetDetector: NSObject {
         var setStart: Double
         var clipFile: String?
         var countFile: String?
+        /// His boxes over the set plus room for the bar, normalized in the upright frame: the
+        /// backend crops the count clip to it before SAM. The clip for his coach stays whole.
+        var cropBox: CGRect?
     }
 
     private(set) var isRunning = false
@@ -26,6 +33,12 @@ final class SetDetector: NSObject {
     private(set) var lastError: String?
     /// The latest frame's capture-clock time: the end of a set ended by voice.
     var lastFrameTime: Double? { lastFrameT }
+
+    /// A start may be reported: he armed the set, or Settings lets the camera start sets. While
+    /// false, movement (his or anyone's) starts nothing.
+    var startsAllowed = true
+    /// Bodies in the latest pose frame, for the HUD and the debug record.
+    private(set) var bodiesInFrame = 0
 
     /// The set's real start (capture-clock seconds).
     var onSetStart: ((Double) -> Void)?
@@ -40,6 +53,10 @@ final class SetDetector: NSObject {
     private let queue = DispatchQueue(label: "com.getsetecho.setdetector")
     private var signal = WristSignal()
     private var joints = JointSeries()
+    private var tracker = BodyTracker()
+    private var relockPending = false
+    /// His box per pose frame, for the count clip's crop.
+    private var boxes: [(t: Double, box: CGRect)] = []
     private let mediaDirectory: URL
     private let sessionId: UUID
     private var clipIndex = 0
@@ -50,7 +67,7 @@ final class SetDetector: NSObject {
     /// When the file now being written started, in capture-clock seconds.
     private var segmentStartT: Double?
     /// The set whose clip lives in the segment that is being finalized.
-    private var pendingSets: [URL: (start: Double, end: Double, segmentStart: Double)] = [:]
+    private var pendingSets: [URL: (start: Double, end: Double, segmentStart: Double, crop: CGRect?)] = [:]
     private var stopping = false
     /// The tuning record (HANDOFF.md §7): the whole session's wrist series (the live signal keeps
     /// only 10 minutes), set events, the pose around each set, and the capture clock against the wall.
@@ -99,8 +116,8 @@ final class SetDetector: NSObject {
         if captureSession.canAddOutput(movieOutput) { captureSession.addOutput(movieOutput) }
         captureSession.commitConfiguration()
 
-        processor.onPose = { [weak self] sample in
-            Task { @MainActor in self?.handle(sample) }
+        processor.onPose = { [weak self] frame in
+            Task { @MainActor in self?.handle(frame) }
         }
         let session = captureSession
         queue.async { session.startRunning() }
@@ -125,6 +142,11 @@ final class SetDetector: NSObject {
         exportDebugSeries()
     }
 
+    /// He armed a set: the next pose frame picks him again (largest, nearest the centre) and follows him.
+    func lockOnHim() {
+        relockPending = true
+    }
+
     /// The set was ended by voice: close its clip now instead of waiting for stillness.
     func endSetByVoice() {
         guard let start = currentSetStart, let t = lastFrameT, signal.isActive || restPausePausedAt != nil else { return }
@@ -143,13 +165,31 @@ final class SetDetector: NSObject {
 
     // MARK: Frames
 
-    private func handle(_ sample: JointSeries.Sample) {
+    private func handle(_ frame: FrameProcessor.PoseFrame) {
         framesSeen += 1
+        bodiesInFrame = frame.bodies.count
+        let him: BodyTracker.Body?
+        if relockPending, !frame.bodies.isEmpty {
+            relockPending = false
+            let (body, changed) = tracker.lock(frame.bodies, at: frame.t)
+            him = body
+            // The wrist history was someone else's: start his afresh (the clip's 3 s pre-roll still covers a late arm).
+            if changed, !signal.isActive { signal.clearHistory() }
+            debugEvents.append(["kind": "lock", "t": frame.t, "bodies": frame.bodies.count, "changed": changed])
+        } else {
+            him = tracker.follow(frame.bodies, at: frame.t)
+        }
+        if let box = him?.box { boxes.append((frame.t, box)) }
+        handle(JointSeries.Sample(t: frame.t, joints: him?.joints ?? [:]))
+    }
+
+    private func handle(_ sample: JointSeries.Sample) {
         lastFrameT = sample.t
         if clockAnchor == nil { clockAnchor = (sample.t, Date.now.timeIntervalSince1970) }
         joints.add(sample)
         if framesSeen % 150 == 0 {
             joints.trim(olderThan: 300, now: sample.t)
+            boxes.removeAll { $0.t < sample.t - 300 }
             signal.trim(olderThan: 600, now: sample.t)
         }
         if framesSeen % 15 == 0 { isOnDuty = joints.isOnDuty(now: sample.t) }
@@ -169,6 +209,11 @@ final class SetDetector: NSObject {
         }
         switch signal.add(y: y, at: sample.t) {
         case .start(_, let realStart):
+            if !startsAllowed, currentSetStart == nil, restPausePausedAt == nil {
+                // Not armed: someone else, or him re-racking. Nothing starts, and the signal looks again next frame.
+                signal.reset()
+                break
+            }
             if restPausePausedAt != nil, currentSetStart != nil {
                 restPausePausedAt = nil // the next round of the same set
             } else {
@@ -198,7 +243,8 @@ final class SetDetector: NSObject {
         restPausePausedAt = nil
         debugEvents.append(["kind": "end", "t": realEnd, "start": start])
         onSetEnd?(realEnd)
-        rotateSegment(for: (start, realEnd))
+        let window = boxes.filter { $0.t >= start - Self.preRollSeconds && $0.t <= realEnd + Self.postRollSeconds }.map(\.box)
+        rotateSegment(for: (start, realEnd), crop: BodyTracker.cropBox(window))
     }
 
     // MARK: Continuous recording, split at set ends
@@ -219,12 +265,12 @@ final class SetDetector: NSObject {
     }
 
     /// Close the current file on this set's end and open the next one right away.
-    private func rotateSegment(for set: (start: Double, end: Double)) {
+    private func rotateSegment(for set: (start: Double, end: Double), crop: CGRect?) {
         guard movieOutput.isRecording, let url = movieOutput.outputFileURL, let segmentStart = segmentStartT else {
             onClipsReady?(Clips(setStart: set.start, clipFile: nil, countFile: nil))
             return
         }
-        pendingSets[url] = (set.start, set.end, segmentStart)
+        pendingSets[url] = (set.start, set.end, segmentStart, crop)
         if stopping {
             movieOutput.stopRecording()
         } else if let t = lastFrameT {
@@ -253,7 +299,7 @@ final class SetDetector: NSObject {
                                                   name: "set-\(self.sessionId.uuidString.prefix(8))-\(index)")
             try? FileManager.default.removeItem(at: url)
             if let error = clips.error { self.lastError = error }
-            self.onClipsReady?(Clips(setStart: set.start, clipFile: clips.clipFile, countFile: clips.countFile))
+            self.onClipsReady?(Clips(setStart: set.start, clipFile: clips.clipFile, countFile: clips.countFile, cropBox: set.crop))
         }
     }
 
@@ -357,9 +403,15 @@ enum ClipExporter {
     }
 }
 
-/// Runs Vision on the capture queue and reports every joint's normalized y with the frame's timestamp.
+/// Runs Vision on the capture queue and reports every body in the frame (each joint's normalized y,
+/// and the body's box) with the frame's timestamp. `SetDetector` picks which body is him.
 final class FrameProcessor: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
-    var onPose: (@Sendable (JointSeries.Sample) -> Void)?
+    struct PoseFrame: Sendable {
+        var t: Double
+        var bodies: [BodyTracker.Body]
+    }
+
+    var onPose: (@Sendable (PoseFrame) -> Void)?
     private var frameCount = 0
     private let request = VNDetectHumanBodyPoseRequest()
 
@@ -378,15 +430,23 @@ final class FrameProcessor: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         guard frameCount % 4 == 0, let onPose, let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let t = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right)
-        var joints: [String: Double] = [:]
-        if (try? handler.perform([request])) != nil,
-           let body = request.results?.first,
-           let points = try? body.recognizedPoints(.all) {
-            for (name, joint) in Self.jointNames {
-                if let p = points[joint], p.confidence > 0.3 { joints[name] = Double(p.location.y) }
+        var bodies: [BodyTracker.Body] = []
+        if (try? handler.perform([request])) != nil {
+            for observation in request.results ?? [] {
+                guard let points = try? observation.recognizedPoints(.all) else { continue }
+                let seen = points.values.filter { $0.confidence > 0.3 }
+                guard seen.count >= 4 else { continue }
+                var joints: [String: Double] = [:]
+                for (name, joint) in Self.jointNames {
+                    if let p = points[joint], p.confidence > 0.3 { joints[name] = Double(p.location.y) }
+                }
+                // Vision's points are bottom-up; the box is top-left origin like the rest of UIKit.
+                let xs = seen.map { $0.location.x }, ys = seen.map { $0.location.y }
+                let box = CGRect(x: xs.min()!, y: 1 - ys.max()!, width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
+                bodies.append(BodyTracker.Body(box: box, joints: joints))
             }
         }
-        onPose(JointSeries.Sample(t: t, joints: joints))
+        onPose(PoseFrame(t: t, bodies: bodies))
     }
 }
 

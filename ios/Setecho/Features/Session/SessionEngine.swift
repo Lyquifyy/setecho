@@ -124,6 +124,8 @@ final class SessionEngine {
     /// The lead-in before a hold, and the longer one to get into position for a new timed exercise.
     static let leadInSeconds = 3
     static let firstLeadInSeconds = 5
+    /// An arm with no movement this long lapses, silently: arming is cheap to get wrong.
+    static let armSeconds: TimeInterval = 20
     /// An end-session or ask-back yes counts only this long after the question.
     static let askExpirySeconds: TimeInterval = 30
     /// "Done, 12" this soon after the camera ended a set is about that set, not a new one.
@@ -161,6 +163,15 @@ final class SessionEngine {
     let recentVariants: [String]
     /// The camera sees him (SetDetector.isOnDuty), set by the coordinator. A voice-only set ignores it.
     var cameraOnDuty = false
+    /// Settings → "Start sets from the camera" (off): any movement starts a set, with no arming.
+    var cameraStartsSets = false
+    /// The camera is on the tripod and sets start on his word: the intro and the rest's end say so.
+    var usesArming = false
+    /// His first three sessions: the end of a rest says "Say go when you lift." instead of "Go."
+    var armReminder = false
+    /// When "go" (or "top set") armed the next set (HANDOFF.md §7, Sets start on his word). The
+    /// camera starts a set only while armed; with no movement in `armSeconds` it lapses silently.
+    private(set) var armedAt: Date?
     /// The app's last line, for the backend's context.
     var lastSpoken: String?
 
@@ -298,7 +309,12 @@ final class SessionEngine {
         if currentSetIsTimed { return autoHolds ? "\(name), \(targetRepsText)." : "\(name), \(targetRepsText). Say go." }
         var line = "\(name), \(Callout.target(load: targetLoadLb, reps: targetRepsText))."
         if let logbook = logbookLine(for: ex) { line += " \(logbook)" }
-        line += warmupMode ? " Warm-ups first." : " Lift when ready, or say starting."
+        let arming = usesArming && !cameraStartsSets
+        if warmupMode {
+            line += arming ? " Warm-ups first. Say go when you lift." : " Warm-ups first."
+        } else {
+            line += arming ? " Say go when you lift." : " Lift when ready, or say starting."
+        }
         if needsLoad { line += " \(loadAsk)" }
         return line
     }
@@ -400,12 +416,41 @@ final class SessionEngine {
 
     // MARK: Set detection events
 
+    /// He armed the next set by voice: the camera may start it now. No speech (the chime says he was heard).
+    var isArmed: Bool { armedAt != nil }
+    /// The camera may start a set: he armed it, or Settings lets any movement start one.
+    var cameraMayStart: Bool { cameraStartsSets || armedAt != nil }
+    /// Sets start on his word: the camera is on duty for this set and doesn't start sets by itself.
+    var startsByArming: Bool { cameraSees && !cameraStartsSets }
+
+    @discardableResult
+    func arm(at now: Date = .now) -> Outcome {
+        guard !isComplete, state != .recording, state != .ended, state != .paused else { return .none }
+        armedAt = now
+        return Outcome(echo: warmupMode ? "Warm-up \(warmupCount + 1) · lift when ready" : "Set \(setNumber) · lift when ready")
+    }
+
+    /// The camera saw his wrists move. Unarmed (and with camera starts off) it's someone else, or
+    /// him re-racking: nothing starts.
+    @discardableResult
+    func cameraStarted(at now: Date = .now) -> Outcome {
+        guard cameraMayStart else { return .none }
+        armedAt = nil
+        return setStarted(at: now)
+    }
+
+    /// Every second: an arm with no movement for 20 s lapses, with nothing said.
+    func tickArm(at now: Date) {
+        if let armedAt, now.timeIntervalSince(armedAt) >= Self.armSeconds { self.armedAt = nil }
+    }
+
     /// The bar started moving (or the athlete said "starting"). On a timed set, "go" starts the hold.
     @discardableResult
     func setStarted(at now: Date = .now) -> Outcome {
         guard !isComplete, state != .recording, state != .ended, state != .paused else { return .none }
         if case .hold = state { return .none }
         lapseAsk()
+        armedAt = nil
         if let planned = currentPlannedSet, planned.isTimed, let seconds = planned.seconds {
             holdStartedAt = now
             state = .hold(remaining: seconds)
@@ -905,6 +950,7 @@ final class SessionEngine {
             state = .ready
             // A hold starts itself; "Go." is for rep sets.
             if autoHolds, currentSetIsTimed { return beginLeadIn() }
+            if armReminder, startsByArming { return Outcome(speech: "Say go when you lift.", echo: "Ready · say go when you lift") }
             return Outcome(speech: "Go.", echo: "Ready")
         }
         state = .rest(remaining: remaining - 1)
@@ -1078,6 +1124,8 @@ final class SessionEngine {
                 if case .rest = state { state = .ready }
                 return beginLeadIn(seconds: Self.leadInSeconds)
             }
+            // On the tripod "go" arms the set; his movement starts it, with the 3 s pre-roll.
+            if startsByArming, !currentSetIsTimed { return arm(at: now) }
             let outcome = setStarted(at: now)
             return outcome.echo == nil ? .none : outcome
         case .replayCue:
@@ -1569,7 +1617,7 @@ final class SessionEngine {
             return ask(.noteOffer(transcript), "That's one for your coach. Want me to note it for Thursday?", now: now)
         case .help:
             return say(VoiceGuide.spokenHelp(state: state, firstSet: session.sets.isEmpty, suggestion: pendingSuggestion != nil,
-                                             timed: currentSetIsTimed))
+                                             timed: currentSetIsTimed, arming: startsByArming))
         case nil:
             return heard(transcript)
         }
@@ -1593,6 +1641,8 @@ final class SessionEngine {
         if aboutTheLast, let last = session.sets.indices.last, session.sets[last].isWarmup, session.sets[last].exerciseId == currentExercise?.id {
             return reclassify(at: last, toWarmup: false, transcript: transcript, now: now)
         }
+        // "Top set" is an arm phrase too: the camera may start the set.
+        if startsByArming { armedAt = now }
         // "Top set. Last time 145 for 9. Beat the logbook." (the cold open)
         guard warmupMode || currentPlannedSet?.role == .top else { return say("Set \(setNumber) is next.") }
         if warmupMode {
@@ -1821,5 +1871,54 @@ final class SessionEngine {
 
         var action: Action
         var description: String
+    }
+}
+
+// MARK: The conversation's facts
+
+extension SessionEngine {
+    /// Today as the conversation turn sees it (HANDOFF.md §7, Talk to it like a person): the plan
+    /// and where he is in it, every set logged with its count, source and effort, the rest left,
+    /// the open ask, last time per exercise, his confirmed rules, his sheet notes, the add-ons and
+    /// his alternates. Every number comes from here; the backend checks each reply against it.
+    func turnFacts(now: Date = .now) -> SessionFacts {
+        var facts = SessionFacts(state: context.state)
+        facts.day = day?.name
+        if !isComplete {
+            facts.exercise = currentExercise?.name
+            facts.setNumber = setNumber
+            facts.setCount = setCount
+            facts.targetLoadLb = targetLoadLb
+            facts.targetReps = targetRepsText
+        }
+        if case .rest(let left) = state { facts.restLeft = String(format: "%d:%02d", left / 60, left % 60) }
+        facts.openAsk = pendingAskText
+        facts.exercises = exercises.map { entry in
+            let ex = entry.exercise
+            let first = ex.sets.first
+            let last = lastSets[Self.loadKey(ex.id, first?.role)]
+            return SessionFacts.ExerciseFact(
+                name: ex.name, setsPlanned: ex.sets.count,
+                setsDone: session.sets.filter { $0.exerciseId == ex.id && !$0.isWarmup }.count,
+                target: first.map { $0.isTimed ? $0.repsText : "\($0.repsText) reps" },
+                loadLb: ex.id == currentExercise?.id ? targetLoadLb : nil,
+                lastTime: last.map { "\(Format.number($0.loadLb)) for \($0.reps)" },
+                sheetNote: ex.notes, alternates: ex.alternates.map(\.name), addOn: entry.section)
+        }
+        facts.sets = session.sets.map { set in
+            SessionFacts.SetFact(
+                exercise: exercises.first { $0.exercise.id == set.exerciseId }?.exercise.name ?? set.exerciseId,
+                setNumber: set.setIndex + 1, role: set.role?.rawValue,
+                reps: set.seconds == nil ? set.reps : nil,
+                repSource: set.repCount.isCounting ? "counting" : set.repCount.source.rawValue,
+                loadLb: set.loadLb > 0 ? set.loadLb : nil, rpe: set.rpe, estimatedRIR: set.repCount.estimatedRIR,
+                seconds: set.seconds, doneAs: set.doneAs,
+                minutesAgo: Int(now.timeIntervalSince(set.endedAt) / 60))
+        }
+        facts.rules = rules.filter(\.confirmed).compactMap(\.quote)
+        facts.addOns = availableAddOns.map(\.name)
+        facts.takenOptions = takenOffer?.options.map(\.name) ?? []
+        facts.athleteName = athleteName
+        return facts
     }
 }
