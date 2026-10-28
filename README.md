@@ -5,14 +5,14 @@
 Setecho takes the manual work out of a coached bodybuilding prep. Import your coach's spreadsheet and check-in form once. After that:
 - your sets log themselves while you train hands-free: SAM counts every rep from the video and measures how hard each set was, and your coach's own rules suggest your next weight
 - your coach's two weekly video reviews go to the sets that most need them
-- your check-in photos take themselves
+- your check-in photos take themselves, four poses in your coach's order, hands-free
 - your check-in is half written from Apple Health before you answer the rest by voice
 - your coach's reply, a text or a voice note, updates the plan once you approve it
 
 Built on Meta Model API:
 - **Muse Spark 1.3** reads the coach's material and replies, writes the check-in with every number traced to its source, turns each reply into plan changes, and gives the spotter its words.
 - **Muse Voice Transcribe** runs the hands-free session and the wrap-up, and transcribes the coach's voice notes.
-- **SAM 3.1** counts the reps in every set, measures how much they slowed, and aligns the check-in photos.
+- **SAM 3.1** counts the reps in every set and measures how much they slowed.
 
 
 ## Run it

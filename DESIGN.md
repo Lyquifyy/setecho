@@ -92,6 +92,8 @@ Tabs: **Today / History / Check-in.** Settings, Connections and imports live in 
 - **Morning card,** on a day an on-waking add-on is due: "This morning: stomach vacuums · 4 × 20 s · 2 of 4 this week", with "Start".
 - **Rest day:** the session card becomes "Rest day" with his cardio line ("25 minutes of fasted LISS"). No Start button.
 - **This week's check-in card:** "11 of 22 ready", the due day, an "Open check-in" link. On check-in morning, a "Start check-in" link with a yellow "Due today" tag.
+- **Which day:** a seven-day cycle follows the day of the week (Day 1 on Monday); "Change day" overrides it for today.
+- **Loading:** while anything is being read (Import, the draft, Review and send), one `LoadingCard` with a short line, never a bare spinner.
 - **Check-in photos card:** last taken, next due, a "Take photos" link that opens Photo session.
 - **Coach reply card,** only when one is waiting: "Coach replied · voice note 1:12", a "Review changes" link to Coach reply.
 - **MacroFactor reminder,** after a macro change is applied: "Update MacroFactor: training-day carbs 250 → 225 g", with a "Done" link. Setecho can't change MacroFactor itself.
@@ -130,12 +132,12 @@ Tabs: **Today / History / Check-in.** Settings, Connections and imports live in 
 ### Photo session (full-screen, hands-free)
 - **Purpose:** the four check-in photos with no taps, framed like last week.
 - **The order is the coach's:** Front · Right side, arms up · Back · Left side, arms up.
-- **Layout:** the camera fills the screen. A faint outline of last week's position shows for alignment. The pose name in `.hudState` ("Turn right · arms up"). `PoseSlots` along the bottom.
+- **Layout:** the camera fills the screen. The pose name in `.hudState` ("Turn right · arms up"). `PoseSlots` along the bottom.
 - **Flow:**
   1. The framing check speaks ("step back a little") until the whole body is in frame.
   2. The app calls each pose and waits until the athlete is still.
   3. It captures, says "Got it", and moves to the next pose.
-- **Ends on Collage review:** the four photos as one image in the coach's layout, each cropped and scaled to match last week. A toggle compares with last week side by side. Alignment only: the image is never edited.
+- **Ends with the four photos as taken,** at full resolution, in his order. No collage, no cropping, no alignment. "Retake front" (or any pose) redoes that one.
 
 ### Check-in (tab)
 - **Purpose:** the current check-in, filling itself as the days go.
@@ -170,11 +172,11 @@ Tabs: **Today / History / Check-in.** Settings, Connections and imports live in 
 
 ### Review and send
 - **Purpose:** the exact message the coach receives, before it goes.
-- **Content:** both messages in the coach's format and order (the plan message, then the check-in), with the collage beneath the check-in. Every number can be tapped to see its source.
+- **Content:** both messages in the coach's format and order (the plan message, then the check-in), with the four photos beneath the check-in. Every number can be tapped to see its source.
 - **Videos for your coach:** the sets the athlete flagged ("flag that"), two at most from two different movements, each cropped to just the reps. One `VideoPickRow` each, with "Swap"; with none flagged, "Pick two". No verdicts, scores or form labels anywhere.
 - **Adjustments:** the week's accepted suggestions, one line each, as they'll appear in the message.
 - **Gym changes** (stretch): the week's swaps and reorders, one `DeviationRow` each, all checked. Untick one to leave it out.
-- **Footer:** "Send to WhatsApp", in his order as three steps, one share sheet each: the plan message (macros, cardio, supplements), the check-in with the collage, then the two videos. The footer names the next step ("Next: the check-in"). If WhatsApp drops the text when an image is shared, step 2 falls back to the image through the share sheet and the text copied, with a banner: "Paste the check-in text under the photo."
+- **Footer:** "Send to WhatsApp", in his order as three steps, one share sheet each: the plan message (macros, cardio, supplements), the check-in text with the four photos, then the two videos. The footer names the next step ("Next: the check-in"). If WhatsApp splits the text from the photos, the photos go first and the text right after. A "Rehearsal" switch (off) sends every step to the athlete's own chat.
 
 ### Coach reply
 - **Purpose:** see exactly what the coach changed before anything changes.
@@ -206,20 +208,19 @@ Tabs: **Today / History / Check-in.** Settings, Connections and imports live in 
 - **Sections:** This week · Previous sessions · Sent check-ins · Photos · Plan changes.
 - **Sessions** keep the board's grouped-card layout, with each set's clip and its count's `SourceChip`.
 - **Sent check-ins** reopen read-only.
-- **Photos** show the collages as a timeline, with any two weeks comparable side by side.
+- **Photos** show each week's four photos as a timeline.
 - **Plan changes** list each applied coach reply with its changes. The latest one has "Revert", which restores the previous plan.
 
 ## Flow
 
 1. **Import once:** program and form.
 2. **Training day:** Today → Start session (the day, plus any add-on) → hands-free Session → End session → Today. A morning add-on is its own short session: "Hey Siri, start my Setecho morning", or Today's Morning card.
-3. **Photo day:** Today → Take photos → Photo session → Collage review → Check-in.
+3. **Photo day:** Today → Take photos → Photo session → Check-in.
 4. **Check-in day:** "Hey Siri, start my Setecho check-in" → Check-in morning (weight, glucose, photos, questions) → Review and send → WhatsApp. The Photo session and Wrap-up still work on their own.
 5. **Coach replies:** WhatsApp → Share → Setecho (or paste) → Coach reply → Apply → Today shows the updated plan. His cues play in the next sessions.
 6. **Setup:** Import → Connections (Apple Health; the watch only if it's built) → Today.
 
 ## Open design questions
-- **Collage layout:** 1×4 or 2×2? Match the image the athlete sends today. Ask for a sample.
 - **Spreadsheet delivery:** decided Oct 26, a Google Sheets link. The Import screen's first step takes a pasted link, with a file or screenshot as the fallback.
 - **Change rows checked by default?** The default is checked, with the Apply tap as the approval. If that makes rubber-stamping too easy, start them unchecked.
 - **Tagline:** decided: "The prep that logs itself."

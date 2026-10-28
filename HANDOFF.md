@@ -20,7 +20,7 @@ Setecho:
 1. **Imports the coach's material once:** the spreadsheet program, the check-in form, and the coach's own rules for adjusting loads. The sheet's days become the training cycle in order, and rest days stay rest days. Blocks the coach adds on top of days ("abs 2x per week", "vacuums 4x per week upon waking") become add-ons that join the days the athlete picks, so one day can hold two workouts.
 2. **Logs training hands-free.** For the lifts the athlete wants measured or filmed, the phone goes on a tripod: it detects each set, and SAM 3.1 counts the reps from the set's video and measures how hard the set was from how much the reps slowed down. Without the tripod, the athlete's voice logs the set. A DJI wireless mic takes spoken commands, and a spotter's voice talks over the athlete's music. A Garmin watch app is a stretch item.
 3. **Suggests the next set's weight with the coach's own rules.** When a set lands above or below the coach's target effort, Setecho applies the adjustment rule the coach wrote, or the athlete confirmed as his, and says it during rest. The athlete decides, and the coach sees every adjustment in the check-in. **Stretch:** when a machine is taken, it offers the same lift on other equipment, or moves up a later lift from today that won't tire a muscle a heavier lift still needs, in the order the coach said he prefers. Every swap and reorder goes into the check-in. For each check-in it also crops the two sets the athlete flagged for the coach's video review to just the reps.
-4. **Takes the four check-in photos hands-free,** aligned to last week.
+4. **Takes the four check-in photos hands-free,** in his order, and sends them exactly as taken, at full resolution. No collage, no cropping, no alignment (decided Oct 27 evening).
 5. **Fills half the check-in from data.** Weight (Withings), macros (MacroFactor), and steps and sleep (Garmin) all arrive through Apple Health. On check-in morning the rest is one hands-free conversation: Setecho asks for the weight, the photos and the rest of the coach's questions, and understands natural answers like "give me a couple of minutes".
 6. **Sends the check-in to WhatsApp** in the coach's exact format and order: the plan message (macros, cardio, supplements), then the questionnaire with the photos, then the two videos.
 7. **Turns the coach's reply into plan changes.** The athlete shares the coach's WhatsApp text or voice note into Setecho. Each change is listed next to the coach's exact words, and nothing changes until the athlete approves it. Optionally, the coach's own voice plays in the athlete's headphones before the exercise he talked about.
@@ -700,20 +700,20 @@ His instructions about a specific exercise, played in his own voice before that 
   - **Framing:** the mask's bounding box sits inside the frame with at least 4% margin on every side. Otherwise speak "step back a little", "move left" or "move right", at most once every 3 s.
   - **Stillness:** the mask IoU between consecutive checks stays above 0.97 for 1.2 s.
 - **Flow:** speak the pose (Front → "Turn right, arms up" → "Turn around" → "Turn left, arms up"), wait for stillness, capture, say "Got it".
-- **Alignment (SAM 3.1):** send each captured still to `/photos/segment` and take the person box. Scale each photo so the body box height matches the reference week's (the first photo set ever), center the box horizontally, then crop to 3:4.
-- **Never alter pixels** beyond crop and scale.
-- **Collage:** 2×2 by default (front, right / back, left), or 1×4 as a setting. Write a JPEG, about 2400 px wide, to the photo set.
+- **Framing check, on the device:** head to toe in frame with margin on every side, from the person mask; otherwise "step back a little", "move left" or "move right".
+- **Retakes by voice:** "retake front" (or any pose) redoes that one.
+- **The photos are sent exactly as taken,** at full resolution, in his order: front, right side arms up, back, left side arms up. No collage, no cropping, no alignment, no last-week outline, no comparison screen (decided Oct 27 evening). `/photos/segment` is no longer called; SAM does not touch photos. The old collage, alignment and review code can stay in the tree for now.
 
 ### Check-in
-**Cadence** (`PlanState.checkInSchedule`, from his email, confirmed by the athlete): every other week for now, weekly later in prep; Thursday on waking, everything in by 9:00 AM Central. The check-in covers the period since the last sent check-in, so on a two-week cadence `WeekFacts` holds 14 days and every average spans them. Reminders and Check-in morning key off the due time.
+**Cadence** (`PlanState.checkInSchedule`, from his email, confirmed by the athlete): **weekly** (`everyWeeks` 1), Thursday on waking, everything in by 9:00 AM Central. The check-in covers the period since the last sent check-in, so `WeekFacts` holds the days since then (7 on the weekly cadence) and every average spans them. Reminders and Check-in morning key off the due time.
 
 1. Build `WeekFacts`, `TrainingSummary` and the week's `VoiceNote`s, then call `/checkin/draft`.
 2. Show the coach's form in his order (DESIGN.md, Check-in).
 3. **Wrap-up:** for each `.missing` or `.voice` field, speak the coach's label as a question. For example, "Energy levels, 1 to 10?". The three tape measurements are one question: "Waist, bicep and thigh?".
 4. Record one utterance and call `/checkin/answer`.
 5. Speak back a one-line confirmation: "Energy 6. Next: appetite." Support "skip", "go back" and "say that again".
-6. **Send, in his order** (his email asks for two separate messages): first the plan message (the carried blocks: macros, cardio protocol, and the full supplement list marking which he's taking), then the questionnaire with the collage, then the two videos. `/checkin/render` returns both texts. Review and send runs three share sheets in a row: `[text1]`, `[collageImage, text2]`, `[video1, video2]`. Gate G6 checks each lands as one WhatsApp message.
-7. **Fallback:** for the second step, share only the image, put the text on `UIPasteboard`, and show the banner "Paste the check-in text under the photo." Mark the draft `sentAt` when the last step completes.
+6. **Send, in his order** (his email asks for two separate messages): first the plan message (the carried blocks: macros, cardio protocol, and the full supplement list marking which he's taking), then the questionnaire text with the four full photos, then the two flagged videos. `/checkin/render` returns both texts. Review and send runs three share sheets in a row: `[text1]`, `[text2, photo1…photo4]`, `[video1, video2]`. Gate G6 checks each lands as one WhatsApp message.
+7. **Fallback:** if WhatsApp splits the text from the photos, send the photos first and the text right after, as two shares. Mark the draft `sentAt` when the last step completes.
 
 ### Check-in morning (conversational, hands-free)
 The whole check-in as one conversation on check-in morning, in Setecho's own voice, with the coach's exact wording for his questions. **Never a synthetic copy of the coach's voice.**
@@ -723,7 +723,7 @@ The whole check-in as one conversation on check-in morning, in Setecho's own voi
      - If today's weigh-in is already in, say it: "180.8, got it." It's in if Apple Health has it since 4 AM, or once Withings direct is built, from one fetch when the athlete says they're off.
      - Otherwise ask, "What did it say?"
   2. **Fasted glucose:** "Fasted glucose?"
-  3. **Photos:** "Set up your tripod for photos, and tell me when you're ready." The Photo session runs as it is, ending on the collage.
+  3. **Photos:** "Set up your tripod for photos, and tell me when you're ready." The Photo session runs as it is: four photos, hands-free, then back to the conversation.
   4. **The coach's questions:** every `.voice` or `.missing` field, in his order, with his label as the question and the measurements as one question. Drafted fields are read back for a yes: "Last refeed, Saturday the 24th?"
   5. **Review:** "That's everything. Want me to read it back, or open it to send?" Then Review and send. Sending to WhatsApp is the one tap.
 - **Every utterance goes to `/checkin/turn`.** The phone applies the answers, speaks the reply, and picks the next question itself: the first pending field in the coach's order. Spark understands; code decides.
@@ -836,6 +836,42 @@ Each phase ends with its checks passing, a commit, and a TestFlight build the hu
 - **Decided Oct 26** (§13): the spreadsheet arrives as a Google Sheets link; the check-in is due **Thursday morning**; the backend is on Fly.
 - **Untested:** every phone flow, in a real gym or at home.
 
+### Plan and priorities, Oct 27 evening (replaces the order above where they differ)
+Report after each numbered block: what passed, what didn't, the measured latencies, and what the human owes.
+
+**Block 1, Wednesday: Thursday's check-in, ready and rehearsed.** Check-in morning on TestFlight by Wed 6 PM; the human rehearses at 7 PM; fixes only from what he reports; final build by 10 PM. Targets: 1 s or less from end of speech to first audio on number answers, 2 s or less otherwise; report the measured numbers.
+- [ ] **Timing:** log every stage of a check-in turn (end of speech, upload, transcribe, Spark, validator, first audio) to the debug JSON; live stage timings and medians on the Probes screen.
+- [ ] **Warm backend:** Fly `min_machines_running = 1`, auto-stop off, the region nearest Wichita (dfw or ord); one keep-alive HTTP client for Meta; the app pings `/health` when Check-in morning or a session starts.
+- [ ] **Realtime transcription:** check-in turns stream mic audio through the backend to Voice Transcribe's realtime WebSocket, with Meta's endpointing deciding when a turn ends. File mode stays as the fallback.
+- [ ] **Number fast path:** a transcript that is only a number (or the three tape measurements) for the field just asked is parsed by code and answered from a template, with no Spark call. Spark handles everything else.
+- [ ] **Spark at its lowest reasoning effort** with small max tokens for `/checkin/turn`, `/voice/command` and `/spotter/line`.
+- [ ] **A soft sound** the moment a turn ends.
+- [ ] **Natural voice, `NaturalVoiceSpeaker`:** ElevenLabs Flash v2.5 or Cartesia Sonic (the human picks and puts the key in Fly secrets by Wed noon), behind a small provider adapter so either works. `/voice/speak` streams the audio; the phone plays chunks as they arrive. The coach's check-in questions and Setecho's fixed lines are pre-generated when Check-in morning starts and cached on the phone by a text hash. No audio within 700 ms: that line falls back to `SystemSpeaker`. The service gets only the text being spoken; the README names it as the one non-Meta piece; never a voice made to sound like the coach.
+- [ ] **Audio route:** AirPods out at full quality (A2DP, never call-quality Bluetooth); in from the DJI receiver when plugged in, else the iPhone mic; iOS 26 high-quality AirPods recording may be tried, falling back to the DJI/iPhone mic. The live route shows on the Probes screen. Check-in morning and sessions use the same route.
+- [ ] **Filming mode** (Settings, off by default): every line Setecho speaks saved as audio exactly as played (the voice service's stream, or `AVSpeechSynthesizer.write`), every utterance saved as its WAV, every file stamped from one clock; one SRT captions file per check-in or session; a slate on start (a white flash and a short beep, with its time logged); export by AirDrop from History; never uploaded, never committed; no change to timing or behaviour.
+- [ ] **Photos** as in §7: hands-free capture with the head-to-toe framing check and "retake front"; the collage, alignment and outline out of the flow; `/photos/segment` no longer called.
+- [ ] **Check-in morning** (§7 and P2) plus the three-step send `[plan message]`, `[questionnaire text + four photos]`, `[two videos]`, the weekly period, the free-meal draft, and "Current Goal(s)".
+- [ ] **Readiness, before the 6 PM build:** a scripted run in tests (a pause, a two-field answer, a correction, a question for the coach, every number from the transcript); a format check against a real past check-in in `backend/private/` (labels, order, carried blocks, the plan message as its own message), differences reported; a Facts screen (debug) with every data field and the raw values behind it; Rehearsal mode on Review and send (off by default) that sends all three steps to the athlete's own chat; a deadline guard: not sent by 8:40 AM Central, Review and send opens with what's ready and the missing fields can be typed.
+- [ ] **Today:** the cycle follows the day of the week when it is seven days long (Day 1 on Monday), with "Change day" as the override; a clean loading indicator wherever data is being read (Import, the check-in draft, Review and send).
+- Keep the current build working for the Wednesday workout (2–3 filmed sets for SAM data and timing).
+
+**Block 2, Thursday** (the first real check-in that morning).
+- [ ] P1b as above, plus **camera speed:** write the counting clip during recording (a second writer at 480p and 15 fps, cropped to the body-pose box) so nothing is exported at set end; clip window start − 1 s to end + 0.5 s; stage timings for export, upload, SAM and math; 30 s or less to the measured line.
+- [ ] P1c as above, plus the add-on as a general **PlanItem**: what (lifts, holds, cardio, supplement, meal or habit), when (cycle days, N per week, daily or set weekdays, plus an anchor: on waking, before, during or after the session, with meals, a clock time, before bed), the coach's quote, and tracking (by session, Apple Health, voice, or none). The import builds PlanItems from the sheet, the form's carried blocks and the email; items anchored to the session are spoken when it starts ("Intra-workout: EAAs, sodium, creatine").
+- [ ] **Default filming:** the tripod only for the top set of the day's 1–2 main lifts, everything else by voice; Today names which sets to film.
+- [ ] The coach reply loop (P2) on TestFlight by Thursday evening; his real reply is its first test.
+
+**Block 3, Friday** (the first full camera test in the gym): P4 as above.
+
+**Block 4, Saturday** (the rehearsal shoot): P5 tuning from Friday's and Saturday's debug data, plus:
+- [ ] Today shows the whole day's plan in time order.
+- [ ] Cardio and steps checked against Apple Health (workouts matched to cardio PlanItems, steps against their daily target); the check-in's cardio field uses these numbers.
+- [ ] Local notifications: a morning summary at wake time; one per PlanItem with a time or anchor ("Vacuums, on waking" starts the morning session; rest-day LISS clears itself once Apple Health shows the workout); wake time and bedtime in Settings; no notification for "with meals" items (session items are spoken); nothing while a session runs; a switch per kind; a rolling 7 days within iOS's 64 pending; no logging of meals or supplements.
+
+**Block 5, Sunday:** fixes only. **Feature freeze Sunday night.** Stretch items only if everything above is green before Sunday; realistically none, and that is accepted.
+
+**Mon Nov 2:** the main shoot, no code changes. **Tue Nov 3:** fixes only for pickups. **Wed Nov 4:** README final, `design/` purged from history with the human's go-ahead, repo public, submitted by 6 PM CT.
+
 ### Gates still open
 - [ ] **G1 organizers.** The human confirms in writing that the app isn't a "sports analyzer or coach": it counts reps from phone video and applies the coach's own rules to suggest the next set's weight, for a human coach. The next-set suggestions and the machine-taken swaps and reorders are asked about by name.
 - [ ] **G2 audio, G3 Apple Health, G6 share.** The human runs the probes from TestFlight (More → Probes). G6 also covers exporting one of the coach's voice notes out of WhatsApp.
@@ -874,7 +910,7 @@ Order matters. **Check-in morning ships to TestFlight by Wednesday evening,** be
 - [ ] Getting replies in: paste and audio file import first, then the `SetechoShare` share extension.
 - [ ] Voice cues: cutting, review, playback rules, `replayCue`, and the Settings switch.
 - [ ] **First:** Check-in morning (§7) with `/checkin/turn`, the App Shortcut, pause and resume, and the voice picker.
-- [ ] **Also before Thursday:** the send in his order (the plan message, then the questionnaire with the collage, then the videos), the check-in period since the last check-in, and the free-meal draft (§7, Check-in).
+- [ ] **Also before Thursday:** the send in his order (the plan message, then the questionnaire with the four photos, then the videos), the check-in period since the last check-in, the free-meal draft, and "Current Goal(s)" drafted from the last check-in if his form has it (§7, Check-in).
 - **Done when:** two of his past replies (one text, one voice note) produce the right changes and cues, and a simulated session plays the cue before the right exercise and never during a set. A scripted run of Check-in morning, with a pause, a two-field answer, a correction and a question for the coach, finishes with every number taken from the transcript.
 
 ### P3 — First real check-in (Thu Oct 29 morning)
@@ -965,7 +1001,7 @@ In the order above. Specs:
   - `/import/rules` on a hand-written email with the same kinds of rules returns each with a verbatim quote, moves a rule whose number isn't in its quote to `flags`, and returns no names, numbers or links
   - the render returns the plan message and the questionnaire as two messages, in that order
   - a hand-made sheet with the athlete's shape (an add-on tab first with a 4x-on-waking block and a 2x block, rest tabs with a cardio line, timed holds, top/back-down and rest-pause sets, a day-level rest period) imports with add-ons outside the cycle, rest days as `.rest`, and the right `seconds`, `role` and `totalReps`
-- **iOS:** `make ios-test`. Unit-test the adherence and day-type rules, PR detection, the set logging rules, undo, the collage layout math, the HealthKit aggregation, `RepCounter` on the shared series, the measured-count rules, each change kind's apply logic and plan revert, the `PlanState` and `repCount` migrations, the input rules in §7 (every start/end/reps precedence case), watch message decoding and clock conversion, cue playback timing (Ready only, once per session, never during a set), Check-in morning's step order, pause and resume after a relaunch, the rep-counting rules (SAM on time, late, low confidence, the phone fallback at 60 s), the effort map and its calibration, `RuleEngine` (every trigger, rounding, the step and 10% limits, double progression to the next session), suggestion decisions, the two-video ranking, and `TakenEngine` (his order, the fatigue check on a chest day and a leg day, no reorder with unconfirmed tags, a second taken machine, no barbell-to-dumbbell load conversion) with the Gym changes line, the cycle cursor (a missed day waits, a rest day passes with the calendar, the wrap), add-on days and catch-up, timed sets, rest-pause sets held open, role-scoped suggestions, warm-up classification and its voice fixes, the back-off load (the step nearest 22.5% lighter), the next-session steps, crop windows from `repTimes`, a two-week check-in period, and the quiet day, all with synthetic samples.
+- **iOS:** `make ios-test`. Unit-test the adherence and day-type rules, PR detection, the set logging rules, undo, the collage layout math, the HealthKit aggregation, `RepCounter` on the shared series, the measured-count rules, each change kind's apply logic and plan revert, the `PlanState` and `repCount` migrations, the input rules in §7 (every start/end/reps precedence case), watch message decoding and clock conversion, cue playback timing (Ready only, once per session, never during a set), Check-in morning's step order, pause and resume after a relaunch, the rep-counting rules (SAM on time, late, low confidence, the phone fallback at 60 s), the effort map and its calibration, `RuleEngine` (every trigger, rounding, the step and 10% limits, double progression to the next session), suggestion decisions, the two-video ranking, and `TakenEngine` (his order, the fatigue check on a chest day and a leg day, no reorder with unconfirmed tags, a second taken machine, no barbell-to-dumbbell load conversion) with the Gym changes line, the cycle cursor (a missed day waits, a rest day passes with the calendar, the wrap), add-on days and catch-up, timed sets, rest-pause sets held open, role-scoped suggestions, warm-up classification and its voice fixes, the back-off load (the step nearest 22.5% lighter), the next-session steps, crop windows from `repTimes`, the check-in period since the last sent check-in, the cycle following the weekday, and the quiet day, all with synthetic samples.
 - **Never** hit the live API in tests.
 
 ## 11. Privacy and repo hygiene (the repo becomes public)
@@ -984,7 +1020,7 @@ In the order above. Specs:
   - **Why:** it holds working files and references, not product code, and only work from after the kickoff cutoff (12:24 PM ET, Oct 26) belongs in the submitted repo.
   - **History:** the folder is already in history from `6fc246f`. In P9, before the first push and only with the human's go-ahead, purge it with `git filter-repo --invert-paths --path design/`, which keeps commit dates.
   - **The app's logo, wordmark and icon** in `ios/Setecho/Assets.xcassets` stay.
-- Photos go to Meta only through `/photos/segment`, set clips only through `/sets/count` (downscaled, no audio), and the coach's voice notes only through `/coach/reply`. All Standard tier: gyms have bystanders. Cut cue clips of the coach's voice stay on the phone, under `media/cues/`. Withings tokens live in the Keychain, never on the backend or in the repo. If a natural-voice service is used, it receives only the text to speak: no audio, no health data, and no name beyond the athlete's first name.
+- Photos never go to Meta (the framing check runs on the device); set clips go only through `/sets/count` (downscaled, no audio), and the coach's voice notes only through `/coach/reply`. Filming-mode exports stay on the phone and are never uploaded or committed. All Standard tier: gyms have bystanders. Cut cue clips of the coach's voice stay on the phone, under `media/cues/`. Withings tokens live in the Keychain, never on the backend or in the repo. If a natural-voice service is used, it receives only the text to speak: no audio, no health data, and no name beyond the athlete's first name.
 
 ## 12. Things only the human can do
 - Put `MODEL_API_KEY` in `~/.zshrc`, claim the $150 credits, and set a spend limit.
@@ -998,7 +1034,7 @@ In the order above. Specs:
 - Tell the agent your coach's load-adjustment rule if it isn't in the sheet, and check it with him.
 - Ask the organizers about the next-set suggestions and the machine-taken swaps in the same thread as G1.
 - On Import, confirm which days abs join and which mornings the vacuums go on.
-- Paste your coach's onboarding email into Import → His instructions and confirm each rule it finds. It already answers how hard top and back-off sets go (to failure) and the back-off load (20–25% lighter). Confirm whether check-ins are still every other week.
+- Paste your coach's onboarding email into Import → His instructions and confirm each rule it finds. It already answers how hard top and back-off sets go (to failure) and the back-off load (20–25% lighter). Check-ins are weekly.
 - Ask your coach what he wants when a machine's taken (the same lift on other equipment, move a later lift up, or wait), and whether his sheet's "or" options are the swaps he'd accept. During gym tests, say "it's taken" whenever it really happens.
 - Garmin setup (about an hour, only when the watch stretch item starts): install the Connect IQ SDK Manager, the SDK and the Venu 4 device files; generate a developer key outside the repo; install OpenMTP if the watch mounts as MTP; sideload the G8 probe.
 - Ask the coach whether his voice can play in your sessions, and appear in the demo.
@@ -1013,7 +1049,7 @@ In the order above. Specs:
 | Check-in day | **Decided Oct 26: Thursday morning**; reminder Wednesday 7 PM: "Tomorrow's check-in: say 'Hey Siri, start my Setecho check-in' when you're up" |
 | G1 organizers | **Decided Oct 26: not a sports analyzer or coach.** Human confirms in writing on Oct 27 |
 | Gates G2–G6 | **Decided Oct 26: build on the plan's defaults** and test on the phone from TestFlight, not from the Mac. The probe screens live behind the More menu until the P7 freeze (Mon Nov 2) |
-| Collage layout | 2×2: front, right / back, left |
+| Photos | The four full photos as taken, in his order; no collage (decided Oct 27 evening) |
 | "Current body weight" | Check-in morning weigh-in |
 | Rest time when the sheet has none | 150 s |
 | Macro tolerance | kcal ±5%; protein, carbs and fat ±10 g |
@@ -1037,4 +1073,4 @@ In the order above. Specs:
 | Back-off load from a 20–25% rule | The load step nearest 22.5% lighter than the top set actually done |
 | Rest after a top set | His rule (3–4 min) over the sheet's day range |
 | Warm-up classification | 8 reps or fewer with under 20% slowdown, before the first working set |
-| Check-in cadence | His email's: every other week, Thursday, by 9:00 AM Central, until the athlete changes it |
+| Check-in cadence | **Weekly** (decided Oct 27 evening): Thursday, by 9:00 AM Central, until the athlete changes it |
