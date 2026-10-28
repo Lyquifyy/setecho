@@ -11,6 +11,12 @@ import Observation
 final class AudioService {
     private(set) var isListening = false
     private(set) var isSpeaking = false
+    /// Check-in morning, the photo session and the wrap-up are one conversation: the music stays ducked
+    /// from start to end, and no line changes the session category. Oct 28: switching between duck and
+    /// mix around every line kept the mic closed for a moment after each one. Sessions leave it off.
+    var holdsDucking = false
+    /// The mic took audio again after a line: for "your turn" on screen, and the Probes timing.
+    private(set) var micOpenedAt: Date?
     private(set) var levelDB: Double = -120
     private(set) var noiseFloorDB: Double?
     private(set) var inputDescription = "—"
@@ -60,7 +66,7 @@ final class AudioService {
     /// .playAndRecord with mixing, A2DP output, the USB (DJI) input preferred. Never HFP.
     func configure() {
         do {
-            try AirPodsMic.shared.apply(to: session, ducking: false)
+            try AirPodsMic.shared.apply(to: session, ducking: holdsDucking)
             // The DJI receiver when it's plugged in, unless he asked for the AirPods mic.
             if !AirPodsMic.shared.isActive, let usb = session.availableInputs?.first(where: { $0.portType == .usbAudio }) {
                 try session.setPreferredInput(usb)
@@ -172,11 +178,13 @@ final class AudioService {
 
     private func speakNow(_ text: String) async {
         isSpeaking = true
-        do {
-            try AirPodsMic.shared.apply(to: session, ducking: true)
-            try session.setActive(true)
-        } catch {
-            lastError = "Duck: \(error.localizedDescription)"
+        if !holdsDucking {
+            do {
+                try AirPodsMic.shared.apply(to: session, ducking: true)
+                try session.setActive(true)
+            } catch {
+                lastError = "Duck: \(error.localizedDescription)"
+            }
         }
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = Self.preferredVoice()
@@ -185,13 +193,16 @@ final class AudioService {
             speechContinuation = continuation
             synth.speak(utterance)
         }
-        do {
-            try AirPodsMic.shared.apply(to: session, ducking: false)
-            try session.setActive(true)
-        } catch {
-            lastError = "Restore: \(error.localizedDescription)"
+        if !holdsDucking {
+            do {
+                try AirPodsMic.shared.apply(to: session, ducking: false)
+                try session.setActive(true)
+            } catch {
+                lastError = "Restore: \(error.localizedDescription)"
+            }
         }
         isSpeaking = false
+        micOpenedAt = .now
     }
 
     private func speechFinished() {
@@ -230,12 +241,17 @@ final class AudioService {
     func play(file url: URL) async {
         while isSpeaking { try? await Task.sleep(for: .milliseconds(100)) }
         isSpeaking = true
-        defer { isSpeaking = false }
-        do {
-            try AirPodsMic.shared.apply(to: session, ducking: true)
-            try session.setActive(true)
-        } catch {
-            lastError = "Duck: \(error.localizedDescription)"
+        defer {
+            isSpeaking = false
+            micOpenedAt = .now
+        }
+        if !holdsDucking {
+            do {
+                try AirPodsMic.shared.apply(to: session, ducking: true)
+                try session.setActive(true)
+            } catch {
+                lastError = "Duck: \(error.localizedDescription)"
+            }
         }
         if let player = try? AVAudioPlayer(contentsOf: url) {
             cuePlayer = player
@@ -245,11 +261,13 @@ final class AudioService {
         } else {
             lastError = "Couldn't play \(url.lastPathComponent)"
         }
-        do {
-            try AirPodsMic.shared.apply(to: session, ducking: false)
-            try session.setActive(true)
-        } catch {
-            lastError = "Restore: \(error.localizedDescription)"
+        if !holdsDucking {
+            do {
+                try AirPodsMic.shared.apply(to: session, ducking: false)
+                try session.setActive(true)
+            } catch {
+                lastError = "Restore: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -260,8 +278,9 @@ final class AudioService {
 
     /// Duck the music before a natural-voice line plays through its own engine, and restore after.
     func duck() async {
-        while isSpeaking { try? await Task.sleep(for: .milliseconds(50)) }
+        while isSpeaking { try? await Task.sleep(for: .milliseconds(20)) }
         isSpeaking = true
+        guard !holdsDucking else { return }
         do {
             try AirPodsMic.shared.apply(to: session, ducking: true)
             try session.setActive(true)
@@ -271,13 +290,22 @@ final class AudioService {
     }
 
     func restore() async {
-        do {
-            try AirPodsMic.shared.apply(to: session, ducking: false)
-            try session.setActive(true)
-        } catch {
-            lastError = "Restore: \(error.localizedDescription)"
+        if !holdsDucking {
+            do {
+                try AirPodsMic.shared.apply(to: session, ducking: false)
+                try session.setActive(true)
+            } catch {
+                lastError = "Restore: \(error.localizedDescription)"
+            }
         }
         isSpeaking = false
+        micOpenedAt = .now
+    }
+
+    /// How loud the room is right now above its quiet level, 0…1, for the "your turn" ring.
+    var inputLevel: Double {
+        guard let floor = noiseFloorDB else { return 0 }
+        return min(1, max(0, (levelDB - floor) / 30))
     }
 
     /// A soft system tick the moment a turn ends, so the athlete knows he was heard.

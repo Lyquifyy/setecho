@@ -39,6 +39,7 @@ final class PhotoSessionCoordinator {
     init(store: Store, api: APIClient = APIClient()) {
         self.store = store
         self.api = api
+        audio.holdsDucking = true
         self.natural = NaturalVoiceSpeaker(api: api, fallback: audio, cacheDirectory: store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
     }
 

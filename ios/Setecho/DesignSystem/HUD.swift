@@ -104,24 +104,36 @@ struct InputStatus: View {
 
 /// A cobalt-tint pulse shown whenever the mic is taking commands, so the athlete knows when they're heard.
 struct ListeningIndicator: View {
+    /// The mic level above the room, 0…1. Given, the ring follows his voice instead of pulsing.
+    var level: Double?
+    /// "Your turn" under the ring, read from the tripod (hands-free screens).
+    var label: String?
     @State private var pulsing = false
 
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(Theme.cobaltTint)
-                .frame(width: 36, height: 36)
-                .scaleEffect(pulsing ? 1.35 : 1)
-                .opacity(pulsing ? 0.4 : 1)
-            Image(systemName: "waveform")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(Theme.cobalt)
+        VStack(spacing: Theme.Space.xs) {
+            ZStack {
+                Circle()
+                    .fill(Theme.cobaltTint)
+                    .frame(width: 72, height: 72)
+                    .scaleEffect(level.map { 1 + 0.6 * $0 } ?? (pulsing ? 1.35 : 1))
+                    .opacity(level.map { 0.55 + 0.45 * $0 } ?? (pulsing ? 0.4 : 1))
+                    .animation(.easeOut(duration: 0.12), value: level ?? 0)
+                Image(systemName: "waveform")
+                    .font(.system(size: 30, weight: .semibold))
+                    .foregroundStyle(Theme.cobalt)
+            }
+            .frame(width: 96, height: 96)
+            if let label {
+                Text(label).font(.hudLabel.weight(.semibold)).foregroundStyle(Theme.cobalt)
+            }
         }
-        .frame(width: 48, height: 48)
         .onAppear {
+            guard level == nil else { return }
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { pulsing = true }
         }
-        .accessibilityLabel("Listening")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(label ?? "Listening")
     }
 }
 

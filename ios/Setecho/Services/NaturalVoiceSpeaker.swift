@@ -11,9 +11,10 @@ import Observation
 @MainActor
 @Observable
 final class NaturalVoiceSpeaker: Speaker {
-    /// The first audio of a live line must land within this, else the system voice says it. 700 ms
-    /// let a slow hop drop a line to the robotic voice mid-flow (Oct 28); the measured first byte is ~0.1 s.
-    static let fallbackMilliseconds = 1500
+    /// The first audio of a live line must land within this before a retry. Oct 28: one line still went
+    /// to the robotic voice at 1.5 s; a short pause in his own voice beats a change of voice.
+    static let fallbackMilliseconds = 2500
+    private var lastPrepare: Date = .distantPast
     static let sampleRate = 24_000.0
     private(set) var isConfigured = false
     private(set) var lastFallbackReason: String?
@@ -35,6 +36,7 @@ final class NaturalVoiceSpeaker: Speaker {
     /// Ask the backend whether a voice is configured, twice if the first ask fails on the way; the
     /// system voice carries on if not. One dropped request must not silence the voice for a whole flow.
     func prepare() async {
+        lastPrepare = .now
         var status: APIClient.SpeakStatus?
         var failure: String?
         for _ in 0..<2 where status == nil {
@@ -95,7 +97,10 @@ final class NaturalVoiceSpeaker: Speaker {
     }
 
     func speak(_ text: String) async {
+        // A status check that failed earlier (a dropped request at start) is asked again, at most every 10 s.
+        if !isConfigured, Date.now.timeIntervalSince(lastPrepare) > 10 { await prepare() }
         guard isConfigured else {
+            TurnTimings.shared.voiceLine(.fallback("no natural voice configured"))
             await fallback.speak(text)
             return
         }
@@ -129,8 +134,20 @@ final class NaturalVoiceSpeaker: Speaker {
             TurnTimings.shared.voiceLine(.live)
         } catch {
             pcmPlayer.cancel()
+            // One more try as a whole MP3 before the system voice: a slow start is usually one slow hop.
+            if let data = try? await api.speak(text: text, mode: "cache", firstByteWithin: .seconds(4), onChunk: nil) {
+                try? data.write(to: cacheURL(for: text), options: .atomic)
+                do {
+                    try await pcmPlayer.play(file: cacheURL(for: text))
+                    await fallback.restore()
+                    TurnTimings.shared.voiceLine(.cached)
+                    return
+                } catch {
+                    lastFallbackReason = "retry: \(error.localizedDescription)"
+                }
+            }
             await fallback.restore()
-            lastFallbackReason = error.localizedDescription
+            lastFallbackReason = lastFallbackReason ?? error.localizedDescription
             TurnTimings.shared.voiceLine(.fallback(error.localizedDescription))
             await fallback.speak(text)
         }

@@ -35,8 +35,9 @@ struct CheckInMorningView: View {
             if model.isPaused {
                 Text("Take your time. Just talk when you're ready.").font(.hudLabel).secondaryText()
                 ListeningIndicator().opacity(0.5)
-            } else if model.isListening {
-                ListeningIndicator()
+            } else if model.isListening, !model.audio.isSpeaking {
+                // The mic is open: say so plainly, and let the ring move with his voice.
+                ListeningIndicator(level: model.audio.inputLevel, label: model.audio.inputLevel > 0.25 ? "Hearing you" : "Your turn")
             }
             if let echo = model.echo {
                 VoiceEcho(text: echo)

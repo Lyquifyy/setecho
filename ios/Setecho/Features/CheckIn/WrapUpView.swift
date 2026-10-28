@@ -27,7 +27,9 @@ struct WrapUpView: View {
                 Text("Review and send is next.").font(.hudLabel).secondaryText()
             } else {
                 Text(model.questionText).font(.hudState).foregroundStyle(Theme.navy).multilineTextAlignment(.center)
-                if model.isListening { ListeningIndicator() }
+                if model.isListening, !model.audio.isSpeaking {
+                    ListeningIndicator(level: model.audio.inputLevel, label: model.audio.inputLevel > 0.25 ? "Hearing you" : "Your turn")
+                }
                 if let transcript = model.transcript {
                     Text("“\(transcript)”").font(.hudLabel).foregroundStyle(Theme.navy).multilineTextAlignment(.center)
                 }
@@ -80,6 +82,7 @@ final class WrapUpModel {
     init(coordinator: CheckInCoordinator) {
         self.coordinator = coordinator
         self.questions = coordinator.questions
+        audio.holdsDucking = true
         self.natural = NaturalVoiceSpeaker(api: api, fallback: audio,
                                            cacheDirectory: coordinator.store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
     }

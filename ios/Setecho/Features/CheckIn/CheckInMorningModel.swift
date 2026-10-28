@@ -214,6 +214,7 @@ final class CheckInMorningModel {
         self.api = api
         self.flow = CheckInMorningFlow(template: coordinator.template ?? CheckInTemplate(fields: [], carriedBlocks: []))
         let audio = AudioService()
+        audio.holdsDucking = true
         self.audio = audio
         let natural = NaturalVoiceSpeaker(api: api, fallback: audio, cacheDirectory: store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
         self.natural = natural
