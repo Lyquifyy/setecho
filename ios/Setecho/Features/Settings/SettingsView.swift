@@ -70,7 +70,7 @@ struct SettingsView: View {
                 Text("Your first name, for the spotter to use sparingly. It goes only in the line request.").font(.subheadline).secondaryText()
                 SettingsField(placeholder: "First name", text: $settings.athleteFirstName)
                 CardDivider()
-                Text("One voice everywhere: sessions, check-in morning and the wrap-up. Never your coach's.").font(.subheadline).secondaryText()
+                Text("The voice for sessions, and the fallback when the natural voice is slow or unavailable in Check-in morning and the wrap-up. Never your coach's.").font(.subheadline).secondaryText()
                 Picker("Voice", selection: $settings.voiceIdentifier) {
                     Text("Best installed (premium first)").tag("")
                     ForEach(AudioService.availableVoices(), id: \.identifier) { voice in

@@ -69,6 +69,8 @@ final class WrapUpModel {
     let coordinator: CheckInCoordinator
     let audio = AudioService()
     private let api = APIClient()
+    /// The natural voice when the backend has one; the system voice otherwise (HANDOFF.md §9, block 1).
+    let natural: NaturalVoiceSpeaker
     private var questions: [[FieldSpec]]
     private var busy = false
     private var weightAsked = false
@@ -76,7 +78,11 @@ final class WrapUpModel {
     init(coordinator: CheckInCoordinator) {
         self.coordinator = coordinator
         self.questions = coordinator.questions
+        self.natural = NaturalVoiceSpeaker(api: api, fallback: audio,
+                                           cacheDirectory: coordinator.store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
     }
+
+    private static let fixedLines = ["That's everything. Review and send is next.", "Skipped.", "Didn't catch that. Say it again?"]
 
     var progressText: String { "\(min(index + 1, max(questions.count, 1))) of \(questions.count)" }
 
@@ -112,12 +118,16 @@ final class WrapUpModel {
             status = CheckInCoordinator.weightMissingMessage
         }
         guard !questions.isEmpty || coordinator.weightMissingToday else { isDone = true; return }
+        await natural.prepare()
+        natural.pregenerate(Self.fixedLines + questions.map { Self.question(for: $0) })
+        // The first line is due in a moment: wait briefly for its cache so it does not race the live deadline.
+        await natural.warm(coordinator.weightMissingToday ? [CheckInCoordinator.weightMissingMessage + ". Carrying on."] : [questionText])
         _ = await audio.requestMicrophone()
         audio.configure()
         audio.onUtterance = { [weak self] utterance in Task { await self?.handle(utterance) } }
         audio.startListening()
         if coordinator.weightMissingToday {
-            await audio.speak(CheckInCoordinator.weightMissingMessage + ". Carrying on.")
+            await natural.speak(CheckInCoordinator.weightMissingMessage + ". Carrying on.")
         }
         await ask()
     }
@@ -142,14 +152,14 @@ final class WrapUpModel {
         if !questions.indices.contains(index) { await appendWeightQuestionIfStillMissing() }
         guard questions.indices.contains(index) else {
             isDone = true
-            await audio.speak("That's everything. Review and send is next.")
+            await natural.speak("That's everything. Review and send is next.")
             audio.stopListening()
             return
         }
         transcript = nil
         status = nil
         isListening = true
-        await audio.speak(questionText)
+        await natural.speak(questionText)
     }
 
     private func handle(_ utterance: VoiceDetector.Utterance) async {
@@ -177,14 +187,14 @@ final class WrapUpModel {
             }
             if control.hasPrefix("skip") || control == "next" {
                 index += 1
-                await audio.speak("Skipped.")
+                await natural.speak("Skipped.")
                 await ask()
                 return
             }
             let usable = response.answers.filter { $0.state != .missing }
             guard !usable.isEmpty else {
                 status = "Didn't catch that"
-                await audio.speak("Didn't catch that. Say it again?")
+                await natural.speak("Didn't catch that. Say it again?")
                 isListening = true
                 return
             }
@@ -192,7 +202,7 @@ final class WrapUpModel {
             index += 1
             let confirmation = Self.confirmation(for: group, answers: usable)
             let next = questions.indices.contains(index) ? " Next: \(Self.shortLabel(questions[index]))." : ""
-            await audio.speak(confirmation + next)
+            await natural.speak(confirmation + next)
             await ask()
         } catch {
             status = error.localizedDescription

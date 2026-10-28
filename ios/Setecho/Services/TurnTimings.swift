@@ -27,6 +27,33 @@ final class TurnTimings {
     }
 
     private(set) var turns: [Turn] = []
+
+    /// The natural voice, as the Probes screen reports it: whether the backend has one, and what
+    /// happened to each line (cached MP3, live stream, or the system voice with the reason).
+    enum VoiceLine { case cached, live, fallback(String) }
+    private(set) var voiceConfigured: Bool?
+    private(set) var voiceProvider: String?
+    private(set) var voiceStatusFailure: String?
+    private(set) var voiceCached = 0
+    private(set) var voiceLive = 0
+    private(set) var voiceFallbacks = 0
+    private(set) var voiceLastFallback: String?
+
+    func voice(configured: Bool, provider: String?, failure: String?) {
+        voiceConfigured = configured
+        voiceProvider = provider
+        voiceStatusFailure = failure
+    }
+
+    func voiceLine(_ line: VoiceLine) {
+        switch line {
+        case .cached: voiceCached += 1
+        case .live: voiceLive += 1
+        case .fallback(let reason):
+            voiceFallbacks += 1
+            voiceLastFallback = reason
+        }
+    }
     private var pending: (endOfSpeech: Date, sent: Date?, turn: Turn?)?
 
     func endOfSpeech(at: Date = .now) { pending = (at, nil, nil) }

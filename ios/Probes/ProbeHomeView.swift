@@ -102,10 +102,22 @@ private struct TurnTimingsCard: View {
                 LabeledRow("Round trip → first audio", "\(seconds(last.roundTrip)) → \(seconds(last.firstAudio))")
             }
             CardDivider()
+            LabeledRow("Natural voice", voiceState)
+            LabeledRow("Lines cached / live / system", "\(timings.voiceCached) / \(timings.voiceLive) / \(timings.voiceFallbacks)")
+            if let reason = timings.voiceLastFallback {
+                Text("Last fallback: \(reason)").font(.footnote).secondaryText()
+            }
+            CardDivider()
             LabeledRow("Audio route", route)
             LinkButton(title: "Refresh route", chevron: .none) { route = AudioService().routeDescription }
         }
         .onAppear { route = AudioService().routeDescription }
+    }
+
+    private var voiceState: String {
+        if let failure = timings.voiceStatusFailure { return "status failed: \(failure)" }
+        guard let configured = timings.voiceConfigured else { return "not asked yet" }
+        return configured ? (timings.voiceProvider ?? "configured") : "none configured, system voice"
     }
 
     private func seconds(_ value: Double?) -> String {

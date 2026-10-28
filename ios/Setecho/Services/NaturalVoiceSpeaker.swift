@@ -5,8 +5,9 @@ import Observation
 
 /// The natural voice (HANDOFF.md §9, block 1): a live line streams from /voice/speak as PCM 24 kHz
 /// and plays chunk by chunk as it arrives; the fixed lines are pre-generated as MP3 when Check-in
-/// morning starts and cached by a text hash. If no audio arrives within 700 ms the line falls back
-/// to the system voice. The service receives only the text; numbers become words on the backend.
+/// morning or the wrap-up starts and cached by a text hash. If no audio arrives within 700 ms the
+/// line falls back to the system voice. The service receives only the text; numbers become words
+/// on the backend. What happened to each line is counted on `TurnTimings` for the Probes screen.
 @MainActor
 @Observable
 final class NaturalVoiceSpeaker: Speaker {
@@ -18,7 +19,8 @@ final class NaturalVoiceSpeaker: Speaker {
     private let api: APIClient
     private let fallback: AudioService
     private let cacheDirectory: URL
-    private var inFlight: Set<String> = []
+    /// Cache fetches under way, by line, so a line about to be spoken can wait for its own fetch.
+    private var inFlight: [String: Task<Void, Never>] = [:]
     private let pcmPlayer = PCMStreamPlayer(sampleRate: sampleRate)
 
     init(api: APIClient, fallback: AudioService, cacheDirectory: URL) {
@@ -28,9 +30,16 @@ final class NaturalVoiceSpeaker: Speaker {
         try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
     }
 
-    /// Ask the backend once whether a voice is configured; the system voice carries on if not.
+    /// Ask the backend whether a voice is configured, twice if the first ask fails on the way; the
+    /// system voice carries on if not. One dropped request must not silence the voice for a whole flow.
     func prepare() async {
-        isConfigured = (try? await api.speakStatus())?.configured ?? false
+        var status: APIClient.SpeakStatus?
+        var failure: String?
+        for _ in 0..<2 where status == nil {
+            do { status = try await api.speakStatus() } catch { failure = error.localizedDescription }
+        }
+        isConfigured = status?.configured ?? false
+        TurnTimings.shared.voice(configured: isConfigured, provider: status?.provider, failure: status == nil ? failure : nil)
     }
 
     static func key(for text: String) -> String {
@@ -49,15 +58,31 @@ final class NaturalVoiceSpeaker: Speaker {
     /// Generate the fixed lines as MP3 in the background so they play at once.
     func pregenerate(_ lines: [String]) {
         guard isConfigured else { return }
-        for line in lines where !FileManager.default.fileExists(atPath: cacheURL(for: line).path) && !inFlight.contains(line) {
-            inFlight.insert(line)
-            Task { [weak self] in
-                guard let self else { return }
-                if let data = try? await self.api.speak(text: line, mode: "cache", firstByteWithin: nil, onChunk: nil) {
-                    try? data.write(to: self.cacheURL(for: line), options: .atomic)
-                }
-                self.inFlight.remove(line)
+        for line in lines { startCache(line) }
+    }
+
+    /// Start the fixed lines and wait, up to `limit`, for them to land: the opening line should be
+    /// cached before it is due, not racing the live deadline on a cold connection.
+    func warm(_ lines: [String], within limit: Duration = .seconds(1.5)) async {
+        guard isConfigured else { return }
+        for line in lines { startCache(line) }
+        let deadline = ContinuousClock.now + limit
+        while ContinuousClock.now < deadline, lines.contains(where: { inFlight[$0] != nil }) {
+            try? await Task.sleep(for: .milliseconds(40))
+        }
+    }
+
+    private func startCache(_ line: String) {
+        guard inFlight[line] == nil, cachedAudio(for: line) == nil else { return }
+        let url = cacheURL(for: line)
+        inFlight[line] = Task { [api] in
+            if let data = try? await api.speak(text: line, mode: "cache", firstByteWithin: nil, onChunk: nil) {
+                try? data.write(to: url, options: .atomic)
             }
+        }
+        Task { [weak self] in
+            await self?.inFlight[line]?.value
+            self?.inFlight[line] = nil
         }
     }
 
@@ -66,7 +91,11 @@ final class NaturalVoiceSpeaker: Speaker {
             await fallback.speak(text)
             return
         }
+        // A line whose cache fetch is still landing waits for it (within the live budget) rather than
+        // asking for the same audio twice.
+        if inFlight[text] != nil { await warm([text], within: .milliseconds(Self.fallbackMilliseconds)) }
         if let cached = cachedAudio(for: text) {
+            TurnTimings.shared.voiceLine(.cached)
             await fallback.play(file: cached)
             return
         }
@@ -79,10 +108,12 @@ final class NaturalVoiceSpeaker: Speaker {
             }
             await pcmPlayer.finish()
             await fallback.restore()
+            TurnTimings.shared.voiceLine(.live)
         } catch {
             pcmPlayer.cancel()
             await fallback.restore()
             lastFallbackReason = error.localizedDescription
+            TurnTimings.shared.voiceLine(.fallback(error.localizedDescription))
             await fallback.speak(text)
         }
     }

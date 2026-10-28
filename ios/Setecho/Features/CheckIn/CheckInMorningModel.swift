@@ -189,6 +189,8 @@ final class CheckInMorningModel {
         if coordinator.draft == nil { await coordinator.buildDraft() }
         await natural.prepare()
         pregenerate()
+        // The first line is due in a moment: wait briefly for its cache so it does not race the live deadline.
+        await natural.warm(["Morning. Step on the scale, and tell me when you're off.", "Welcome back."])
         if let filming {
             showSlate = true
             filming.slate()
