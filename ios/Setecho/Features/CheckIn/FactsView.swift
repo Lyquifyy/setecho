@@ -9,8 +9,7 @@ struct FactsView: View {
     let template: CheckInTemplate?
 
     var body: some View {
-        ScreenScaffold {
-            LinkButton(title: "Back", chevron: .leading) { dismiss() }
+        ScreenScaffold(onClose: { dismiss() }) {
             TitleBlock(eyebrow: "Debug", title: "Facts", subtitle: "What the check-in was built from. Numbers only, from Apple Health and the log.")
             if let facts {
                 SectionCard("Period · \(facts.weekStart) to \(facts.weekEnd)") {

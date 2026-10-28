@@ -48,6 +48,9 @@ struct ImportFlow: View {
     }
 }
 
+/// The X on every Import screen: leave the flow. What earlier steps saved stays saved.
+@MainActor private func closeImport() { AppRouter.shared.showImport = false }
+
 // MARK: - Input step
 
 private struct ImportInputView: View {
@@ -55,6 +58,7 @@ private struct ImportInputView: View {
     let step: Int
     let onDone: () -> Void
 
+    @Environment(\.dismiss) private var dismiss
     @State private var showFilePicker = false
     @State private var photoItem: PhotosPickerItem?
 
@@ -62,11 +66,10 @@ private struct ImportInputView: View {
     private var isRules: Bool { model.kind == .rules }
 
     var body: some View {
-        ScreenScaffold {
-            if step == 1 {
-                LinkButton(title: "Not now", chevron: .leading) { AppRouter.shared.showImport = false }
-            } else {
-                LinkButton(title: step == 3 ? "Skip for now" : "Back", chevron: .leading) { AppRouter.shared.showImport = false }
+        ScreenScaffold(onClose: closeImport) {
+            // Step 1 is the sheet's first screen: the X is its way out. Later steps go back one step.
+            if step > 1 {
+                LinkButton(title: "Back", chevron: .leading) { dismiss() }
             }
             TitleBlock(
                 eyebrow: "Import · step \(step) of 3",
@@ -199,7 +202,7 @@ private struct ProgramReviewView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ScreenScaffold {
+        ScreenScaffold(onClose: closeImport) {
             LinkButton(title: "Back", chevron: .leading) { dismiss() }
             if let program = model.program {
                 TitleBlock(
@@ -324,7 +327,7 @@ private struct FormReviewView: View {
     @State private var showCarried = false
 
     var body: some View {
-        ScreenScaffold {
+        ScreenScaffold(onClose: closeImport) {
             LinkButton(title: "Back", chevron: .leading) { dismiss() }
             if let template = model.template {
                 TitleBlock(
@@ -399,7 +402,7 @@ private struct RulesReviewView: View {
     private let weekdays = ["", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
     var body: some View {
-        ScreenScaffold {
+        ScreenScaffold(onClose: closeImport) {
             LinkButton(title: "Back", chevron: .leading) { dismiss() }
             if let rules = model.rules {
                 TitleBlock(

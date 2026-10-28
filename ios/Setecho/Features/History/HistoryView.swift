@@ -251,8 +251,7 @@ struct SentCheckInView: View {
     @State private var text: String?
 
     var body: some View {
-        ScreenScaffold {
-            LinkButton(title: "Back", chevron: .leading) { dismiss() }
+        ScreenScaffold(onClose: { dismiss() }) {
             TitleBlock(eyebrow: "Sent \(Format.shortDate(draft.sentAt ?? draft.weekEnd))", title: "Check-in")
             SectionCard("Message") {
                 if let text {

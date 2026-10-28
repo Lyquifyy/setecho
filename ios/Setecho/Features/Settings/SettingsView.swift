@@ -3,6 +3,7 @@ import SwiftUI
 
 /// Settings (More menu), top to bottom: about you, training, the check-in, sessions, the voice
 /// Setecho speaks with, and last, behind a switch, Developer (rehearsal, filming, data, probes).
+/// Every row is the control first and a `Note` under it; the X in the header closes the sheet.
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var settings = Settings.shared
@@ -33,26 +34,25 @@ struct SettingsView: View {
 
     var body: some View {
         @Bindable var settings = settings
-        ScreenScaffold {
-            LinkButton(title: "Done", chevron: .none) { dismiss() }
+        ScreenScaffold(onClose: { dismiss() }) {
             TitleBlock(title: "Settings", subtitle: "Only what the check-in can't read from Apple Health or the log.")
 
             SectionCard("You") {
-                Text("Your first name. Setecho uses it now and then.").font(.subheadline).secondaryText()
                 SettingsField(placeholder: "First name", text: $settings.athleteFirstName)
+                    .textContentType(.givenName)
+                Note("Setecho uses your first name now and then.")
                 CardDivider()
-                Toggle("In prep for a show", isOn: inPrep)
-                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+                SettingToggle("In prep for a show", isOn: inPrep)
                 if inPrep.wrappedValue {
                     DatePicker("Show day", selection: showDay, in: Date.now..., displayedComponents: .date)
                         .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
                 } else {
-                    Text("Weeks out goes to the coach as N/A.").font(.footnote).secondaryText()
+                    Note("Weeks out goes to the coach as N/A.")
                 }
             }
 
             SectionCard("Training") {
-                Text("Days the program schedules lifting. A day with a Setecho session always counts.").font(.subheadline).secondaryText()
+                RowLabel("Training days")
                 HStack(spacing: Theme.Space.xs) {
                     ForEach(weekdays, id: \.0) { day, name in
                         let on = settings.trainingWeekdays.contains(day)
@@ -67,90 +67,84 @@ struct SettingsView: View {
                         .accessibilityAddTraits(on ? .isSelected : [])
                     }
                 }
+                Note("The days your program schedules lifting. A day with a Setecho session always counts.")
                 CardDivider()
-                Text("Cardio protocol, in your coach's words, e.g. \"25 min LISS × 2 on rest days\". A coach reply that changes cardio updates this.").font(.subheadline).secondaryText()
-                SettingsField(placeholder: "Assigned cardio", text: $settings.cardioProtocol)
+                RowLabel("Cardio")
+                SettingsField(placeholder: "e.g. 25 min LISS × 2 on rest days", text: $settings.cardioProtocol)
+                Note("In your coach's words. A coach reply that changes cardio updates this.")
                 CardDivider()
-                Text("What you can load: the steps his rules round to.").font(.subheadline).secondaryText()
+                RowLabel("Load steps")
                 StepField(label: "Barbell", value: $settings.barbellStepLb)
-                CardDivider()
                 StepField(label: "Dumbbells", value: $settings.dumbbellStepLb)
-                CardDivider()
                 StepField(label: "Machines", value: $settings.machineStepLb)
+                Note("The smallest jump you can make on each. His rules round to these.")
             }
 
             SectionCard("Check-in") {
-                DatePicker("Check-in morning reminder", selection: wakeTime, displayedComponents: .hourAndMinute)
+                DatePicker("Morning reminder", selection: wakeTime, displayedComponents: .hourAndMinute)
                     .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
-                Text("On the due morning the check-in opens by itself the first time you open Setecho.").font(.footnote).secondaryText()
+                Note("On the due morning the check-in opens by itself the first time you open Setecho.")
                 CardDivider()
-                Toggle("Current weight is the 7-day average", isOn: $settings.useSevenDayAverageWeight)
-                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+                SettingToggle("Current weight is the 7-day average", isOn: $settings.useSevenDayAverageWeight)
+                Note("Off: your latest weigh-in.")
             }
 
             SectionCard("Sessions") {
-                Toggle("Coach's voice in sessions", isOn: $settings.coachVoiceInSessions)
-                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
-                Text("His cues from a reply play once before that exercise, never during a set.")
-                    .font(.footnote).secondaryText()
+                SettingToggle("Coach's voice in sessions", isOn: $settings.coachVoiceInSessions)
+                Note("His cues from a reply play once before that exercise, never during a set.")
                 CardDivider()
-                Toggle("Next-set suggestions", isOn: $settings.nextSetSuggestions)
-                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
-                Text("Only with a rule your coach wrote and you confirmed. You decide each one, and he sees it in the check-in.")
-                    .font(.footnote).secondaryText()
+                SettingToggle("Next-set suggestions", isOn: $settings.nextSetSuggestions)
+                Note("Only with a rule your coach wrote and you confirmed. You decide each one, and he sees it in the check-in.")
                 CardDivider()
-                Toggle("Start holds automatically", isOn: $settings.autoStartHolds)
-                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
-                Text("Vacuums and planks start after \u{201C}three, two, one\u{201D}, and the next one after its rest. Say \u{201C}go\u{201D} to start early, \u{201C}hold on\u{201D} to wait.")
-                    .font(.footnote).secondaryText()
+                SettingToggle("Start holds automatically", isOn: $settings.autoStartHolds)
+                Note("Vacuums and planks start after \u{201C}three, two, one\u{201D}, and the next one after its rest. Say \u{201C}go\u{201D} to start early, \u{201C}hold on\u{201D} to wait.")
                 CardDivider()
-                Toggle("Use AirPods mic", isOn: $settings.useAirPodsMic)
-                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
-                Text(AirPodsMic.shared.notice ?? "Off: AirPods only play, and the DJI receiver or the iPhone mic listens. On: AirPods record at full quality where iOS 26 supports it; if they can only do call quality, Setecho switches back by itself.")
-                    .font(.footnote).secondaryText()
+                SettingToggle("Use AirPods mic", isOn: $settings.useAirPodsMic)
+                Note(AirPodsMic.shared.notice ?? "On: AirPods listen as well as play, at full quality where iOS supports it, or Setecho switches back by itself. Off: the DJI receiver or the iPhone mic listens.")
             }
 
             SectionCard("Voice") {
-                Text("The voice Setecho speaks with, everywhere.").font(.subheadline).secondaryText()
-                Picker("Voice", selection: $settings.voiceIdentifier) {
-                    Text(AudioService.defaultVoice.map { "Default · \($0.name) (\(qualityName($0.quality)))" } ?? "Best installed").tag("")
-                    ForEach(AudioService.availableVoices(), id: \.identifier) { voice in
-                        Text("\(voice.name) · \(AudioService.qualityLabel(voice).lowercased())").tag(voice.identifier)
+                HStack {
+                    Text("Voice").font(.subheadline).foregroundStyle(Theme.navy)
+                    Spacer(minLength: Theme.Space.s)
+                    Picker("Voice", selection: $settings.voiceIdentifier) {
+                        Text(AudioService.defaultVoice.map { "Default · \($0.name) (\(qualityName($0.quality)))" } ?? "Best installed").tag("")
+                        ForEach(AudioService.availableVoices(), id: \.identifier) { voice in
+                            Text("\(voice.name) · \(AudioService.qualityLabel(voice).lowercased())").tag(voice.identifier)
+                        }
                     }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .tint(Theme.cobalt)
                 }
-                .pickerStyle(.menu)
-                .tint(Theme.cobalt)
-                if AudioService.defaultVoice == nil {
-                    Text("Download Ava (Premium): Settings → Accessibility → Read & Speak → Voices → English")
-                        .font(.footnote).secondaryText()
-                }
+                .frame(minHeight: 44)
+                Note(AudioService.defaultVoice == nil
+                     ? "The voice Setecho speaks with, everywhere. For the best one, download Ava (Premium): Settings → Accessibility → Read & Speak → Voices → English."
+                     : "The voice Setecho speaks with, everywhere.")
                 CardDivider()
-                Toggle("Use my Personal Voice", isOn: Binding(get: { usingPersonalVoice }, set: { on in Task { await usePersonalVoice(on) } }))
-                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
-                Text(personalVoiceNote ?? "Your own voice, made on this iPhone in Settings → Accessibility → Personal Voice. It runs on the phone like the others.")
-                    .font(.footnote).secondaryText()
+                SettingToggle("Use my Personal Voice", isOn: Binding(get: { usingPersonalVoice }, set: { on in Task { await usePersonalVoice(on) } }))
+                Note(personalVoiceNote ?? "Your own voice, made on this iPhone in Settings → Accessibility → Personal Voice. It runs on the phone like the others.")
             }
 
             SectionCard("Voice tone", accessory: {
                 LinkButton(title: "Reset", chevron: .none) { settings.setTone(VoiceTone(), for: AudioService.currentVoiceId) }
             }) {
-                Text("For \(AudioService.voiceDescription). Saved for this voice.").font(.subheadline).secondaryText()
+                Note("For \(AudioService.voiceDescription). Saved for this voice.")
                 ToneSlider(label: "Speed", value: tone(\.rate), range: SpokenText.rateRange, step: 0.01, format: "%.2f")
                 ToneSlider(label: "Pitch", value: tone(\.pitch), range: VoiceTone.pitchRange, step: 0.01, format: "%.2f")
                 ToneSlider(label: "Warmth", value: tone(\.warmthDB), range: VoiceTone.warmthRange, step: 0.5, format: "%+.1f dB")
                 ToneSlider(label: "Clarity", value: tone(\.clarityDB), range: VoiceTone.clarityRange, step: 0.5, format: "%+.1f dB")
-                LinkButton(title: "Play sample", chevron: .none) { VoiceSample.play() }
+                Button("Play sample", systemImage: "play.fill") { VoiceSample.play() }
+                    .buttonStyle(.setechoOutline)
             }
 
             SectionCard("Developer") {
-                Toggle("Developer tools", isOn: $settings.developerTools)
-                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
-                Text("Rehearsals, filming, session data and the phone probes. Off for everyday use.")
-                    .font(.footnote).secondaryText()
+                SettingToggle("Developer tools", isOn: $settings.developerTools)
+                Note("Rehearsals, filming, session data and the phone probes. Off for everyday use.")
                 if settings.developerTools {
                     CardDivider()
                     NavigationLink {
-                        DeveloperView()
+                        DeveloperView(onClose: { dismiss() })
                     } label: {
                         HStack(spacing: Theme.Space.xxs) {
                             Text("Open developer tools")
@@ -222,6 +216,43 @@ struct SettingsField: View {
     }
 }
 
+
+/// A setting's switch: its name in navy, the cobalt switch, and a `Note` under it saying what it does.
+private struct SettingToggle: View {
+    let title: String
+    @Binding var isOn: Bool
+
+    init(_ title: String, isOn: Binding<Bool>) {
+        self.title = title
+        self._isOn = isOn
+    }
+
+    var body: some View {
+        Toggle(title, isOn: $isOn)
+            .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+            .frame(minHeight: 44)
+    }
+}
+
+/// The name above a group of controls in a card: "Training days", "Load steps".
+private struct RowLabel: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.navy)
+    }
+}
+
+/// The line under a setting saying what it does, always below the control it explains.
+private struct Note: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text).font(.footnote).secondaryText().fixedSize(horizontal: false, vertical: true)
+    }
+}
 
 private func qualityName(_ quality: AVSpeechSynthesisVoiceQuality) -> String {
     switch quality {

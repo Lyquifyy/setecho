@@ -24,8 +24,7 @@ struct CoachReplyView: View {
 
     private func content(_ model: CoachReplyModel) -> some View {
         let reply = model.reply
-        return ScreenScaffold {
-            LinkButton(title: "Back", chevron: .leading) { dismiss() }
+        return ScreenScaffold(onClose: { dismiss() }) {
             TitleBlock(eyebrow: reply.map { Format.shortDate($0.receivedAt) }, title: "Coach reply",
                        subtitle: reply?.summary(duration: model.audioDuration))
             if let reply {
@@ -89,7 +88,7 @@ struct CoachReplyView: View {
             }
         }
         .sheet(isPresented: $handEdit) {
-            SettingsView()
+            NavigationStack { SettingsView() }.tint(Theme.cobalt).environment(store)
         }
     }
 

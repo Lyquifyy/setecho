@@ -58,11 +58,17 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 
 **Built** (`ios/Setecho/DesignSystem/`):
 - `ScreenScaffold`, `BrandHeader`, `TitleBlock`, `SectionCard`, `CardDivider`, `VerticalCardDivider`, `FooterBar`
-- `.setechoPrimary`, `.setechoOutline`, `LinkButton`, `PlayButton`
+- `.setechoPrimary`, `.setechoOutline`, `LinkButton`, `PlayButton`, `CloseButton`
 - `TargetTag`, `LoadRepsText`, `MetricText`, `SetThumbnail`, `Format`
 - `.setechoTonal` / `.setechoTonalWide` (the in-card action: cobalt text on a cobalt-tint fill, with an icon; use it instead of a bare text link when a card offers something to do), `IconButton` (44 pt round tonal icon, always labeled)
 - `SegmentTabs` (tabs inside a screen; the selected tab is cobalt; a count badge goes yellow only when that count is waiting on the athlete), `TileCard` (a half-width card that is one tappable thing; two side by side), `MeterBar` (a thin cobalt progress bar), `DisclosureChevron`
 - `ExerciseDisclosureRow` (one exercise as a single line, "Bench press · 4 × 8", that opens to the sheet's details)
+
+**Leaving a sheet or cover:**
+- **The first screen of every sheet or cover** gets the X: `ScreenScaffold(onClose: { dismiss() })` puts a `CloseButton` in the header's top-right, where the More menu sits on a tab. There's no "Back", "Cancel" or "Done" link at the top of the content.
+- **A screen pushed inside a sheet** (Import steps 2–3 and its reviews, Settings → Developer) keeps a "‹ Back" or "‹ Settings" `LinkButton` to go back one screen, plus the same X to leave the whole flow.
+- **The X only leaves.** Anything that commits (Confirm, Save, Apply N changes, Send) is the footer's primary button. Changes that save as you make them (Settings, video picks) need no Done.
+- **Hands-free covers** (Session, Wrap-up, Check-in morning, Photo session) keep "Hold to stop" / "Hold to cancel", so a bumped phone mid-set never ends anything.
 
 **To add** (same folder, tokens only, each with a preview):
 

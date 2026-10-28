@@ -12,8 +12,7 @@ struct AddCoachReplyView: View {
     @State private var showFilePicker = false
 
     var body: some View {
-        ScreenScaffold {
-            LinkButton(title: "Cancel", chevron: .leading) { dismiss() }
+        ScreenScaffold(onClose: { dismiss() }) {
             TitleBlock(title: "Add coach reply", subtitle: "His WhatsApp text or voice note. Nothing changes until you approve it.")
             SectionCard("Paste his text") {
                 TextEditor(text: $text)

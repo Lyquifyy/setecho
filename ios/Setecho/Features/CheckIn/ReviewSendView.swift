@@ -78,8 +78,7 @@ struct ReviewSendView: View {
     private var collage: UIImage? { photoURLs.first.flatMap { UIImage(contentsOfFile: $0.path) } }
 
     var body: some View {
-        ScreenScaffold {
-            LinkButton(title: "Back to check-in", chevron: .leading) { dismiss() }
+        ScreenScaffold(onClose: { dismiss() }) {
             TitleBlock(title: "Review and send", subtitle: "Exactly what your coach receives, in his format.")
             // Turned on in Settings → Developer; shown here only while it's on, so a rehearsal is never mistaken for the real send.
             if settings.rehearsalMode {
@@ -347,8 +346,8 @@ private struct VideoPickerSheet: View {
     @State private var importError: String?
 
     var body: some View {
-        ScreenScaffold {
-            LinkButton(title: "Done", chevron: .leading) { dismiss() }
+        ScreenScaffold(onClose: { dismiss() }) {
+            TitleBlock(title: "Pick two", subtitle: "Two movements you'd like his eyes on. Each is cropped to the reps. Your picks are kept as you tap.")
             SectionCard("From your camera roll") {
                 Text("Goes out exactly as you trimmed it. It counts as one of the two.").font(.footnote).secondaryText()
                 PhotosPicker(selection: $rollItem, matching: .videos) {
@@ -358,7 +357,6 @@ private struct VideoPickerSheet: View {
                 .disabled(importing)
                 if let importError { Text(importError).font(.footnote).foregroundStyle(Theme.navy) }
             }
-            TitleBlock(title: "Pick two", subtitle: "Two movements you'd like his eyes on. Each is cropped to the reps.")
             ForEach(sessions.sorted { $0.startedAt > $1.startedAt }) { session in
                 let sets = session.sets.filter { $0.clipFile != nil && !$0.isWarmup }
                 if !sets.isEmpty {

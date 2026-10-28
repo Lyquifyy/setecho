@@ -138,7 +138,8 @@ struct PhotoReviewView: View {
     let onDone: () -> Void
 
     var body: some View {
-        ScreenScaffold {
+        // The set is saved before this screen opens: the X and Done both just leave.
+        ScreenScaffold(onClose: onDone) {
             TitleBlock(eyebrow: Format.shortDate(photoSet.takenAt), title: "Check-in photos",
                        subtitle: "Exactly as taken, full resolution, in your coach's order. Nothing is cropped or changed.")
             SectionCard("This week") {

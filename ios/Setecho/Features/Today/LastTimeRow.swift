@@ -57,7 +57,7 @@ private struct LastTimeForm: View {
     }
 
     var body: some View {
-        ScreenScaffold {
+        ScreenScaffold(onClose: { dismiss() }) {
             TitleBlock(eyebrow: exercise.name, title: "Last time", subtitle: "\(role == .top ? "Your last top set" : "Your last set"), from your logbook. Setecho says it before the top set.")
             SectionCard("Weight × reps") {
                 HStack(spacing: Theme.Space.s) {

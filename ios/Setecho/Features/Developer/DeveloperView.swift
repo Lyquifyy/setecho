@@ -9,12 +9,14 @@ struct DeveloperView: View {
     @State private var exportFile: FileExport?
     @State private var exportError: String?
     @State private var rehearsingSession = false
+    /// Closes the whole Settings sheet from here; "‹ Settings" goes back one screen.
+    var onClose: (() -> Void)?
 
     var body: some View {
         @Bindable var settings = settings
         let takes = FilmingRecorder.takes(in: store.mediaDirectory)
         let sessions = store.sessions.filter { !$0.sets.isEmpty }.sorted { $0.startedAt > $1.startedAt }
-        ScreenScaffold {
+        ScreenScaffold(onClose: onClose) {
             LinkButton(title: "Settings", chevron: .leading) { dismiss() }
             TitleBlock(title: "Developer", subtitle: "For testing and tuning. Everything here stays on the phone unless you share it.")
 

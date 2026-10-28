@@ -157,8 +157,7 @@ struct FieldEditSheet: View {
     }
 
     var body: some View {
-        ScreenScaffold {
-            LinkButton(title: "Back", chevron: .leading) { dismiss() }
+        ScreenScaffold(onClose: { dismiss() }) {
             TitleBlock(eyebrow: field.prompt, title: field.label)
             // An unanswered or drafted field is the next thing waiting on the athlete: the one yellow tag.
             SectionCard("Answer", accessory: { if waitingOnAthlete { TargetTag(text: "Your answer") } }) {
