@@ -84,7 +84,12 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 
 ## Screens
 
-Tabs: **Today / History / Check-in.** Settings, Connections and imports live in the More menu. Settings gains "Coach's voice in sessions" (on), "Next-set suggestions" (on), "Machine-taken help" (on, stretch), the voice picker, and what you can load (barbell, dumbbell and machine steps).
+Tabs: **Today / History / Check-in.** The More menu has two sections: from your coach (Import program and form, Add coach reply; Connections when built) and Settings.
+
+### Settings (More menu)
+- **Cards, in order:** You (first name, show date) · Training (training days, cardio protocol, what you can load) · Check-in (morning reminder, 7-day average weight) · Sessions ("Coach's voice in sessions" on, "Next-set suggestions" on, "Machine-taken help" on (stretch), AirPods mic) · Voice (the voice picker, Personal Voice) · Voice tone (speed, pitch, warmth, clarity, "Play sample") · Developer.
+- **Developer:** a "Developer tools" switch (off). On, it adds "Open developer tools" and the Facts link on the Check-in tab. Nothing for testing or tuning appears on the everyday screens otherwise.
+- **Developer tools screen:** Rehearsal (your own WhatsApp number, "Send check-ins to my own chat", "Rehearse check-in morning") · Filming (filming mode and its takes, to AirDrop) · Session data (each session's tuning JSON, to share) · Diagnostics (the phone probes and turn timings).
 
 ### Today (tab)
 - **Purpose:** the home base. What's planned today, and where the current check-in stands.
@@ -176,7 +181,7 @@ Tabs: **Today / History / Check-in.** Settings, Connections and imports live in 
 - **Videos for your coach:** the sets the athlete flagged ("flag that"), two at most from two different movements, each cropped to just the reps. One `VideoPickRow` each, with "Swap"; with none flagged, "Pick two". No verdicts, scores or form labels anywhere.
 - **Adjustments:** the week's accepted suggestions, one line each, as they'll appear in the message.
 - **Gym changes** (stretch): the week's swaps and reorders, one `DeviationRow` each, all checked. Untick one to leave it out.
-- **Footer:** "Send to WhatsApp", in his order as three steps, one share sheet each: the plan message (macros, cardio, supplements), the check-in text with the four photos, then the two videos. The footer names the next step ("Next: the check-in"). If WhatsApp splits the text from the photos, the photos go first and the text right after. A "Rehearsal" switch (off) sends every step to the athlete's own chat.
+- **Footer:** "Send to WhatsApp", in his order as three steps, one share sheet each: the plan message (macros, cardio, supplements), the check-in text with the four photos, then the two videos. The footer names the next step ("Next: the check-in"). If WhatsApp splits the text from the photos, the photos go first and the text right after. While rehearsal is on (Settings → Developer), a "Rehearsal" card at the top says so and every step goes to the athlete's own chat.
 
 ### Coach reply
 - **Purpose:** see exactly what the coach changed before anything changes.

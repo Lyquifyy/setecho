@@ -55,6 +55,7 @@ uv run python -m scripts.import_probe program.xlsx form.txt            # G5: Pro
 
 Probe output lands in `backend/private/` (gitignored). `--fixture` copies raw model output into
 `backend/tests/fixtures/`; use it only on synthetic inputs. G2 audio, G3 Apple Health and G6
-WhatsApp share run on the phone from the `Probes` scheme; see `ios/Probes/README.md`.
+WhatsApp share run on the phone from the `Probes` scheme, or in the app under Settings → Developer
+(turn on Developer tools first); see `ios/Probes/README.md`.
 
 `DESIGN.md` covers the design system and the screen specs. `AGENTS.md` has the repo rules.

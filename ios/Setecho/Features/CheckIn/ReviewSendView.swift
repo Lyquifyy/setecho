@@ -81,13 +81,14 @@ struct ReviewSendView: View {
         ScreenScaffold {
             LinkButton(title: "Back to check-in", chevron: .leading) { dismiss() }
             TitleBlock(title: "Review and send", subtitle: "Exactly what your coach receives, in his format.")
-            SectionCard("Rehearsal") {
-                Toggle("Send to my own chat, not his", isOn: Bindable(settings).rehearsalMode)
-                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
-                Text(settings.rehearsalMode
-                     ? "Each share opens your own WhatsApp chat\(settings.ownWhatsAppNumber.isEmpty ? " once your number is in Settings" : ""). Nothing reaches your coach."
-                     : "Off: the shares go wherever you pick in the share sheet.")
-                    .font(.footnote).secondaryText()
+            // Turned on in Settings → Developer; shown here only while it's on, so a rehearsal is never mistaken for the real send.
+            if settings.rehearsalMode {
+                SectionCard("Rehearsal") {
+                    Toggle("Send to my own chat, not his", isOn: Bindable(settings).rehearsalMode)
+                        .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+                    Text("Each share opens your own WhatsApp chat\(settings.ownWhatsAppNumber.isEmpty ? " once your number is in Settings → Developer" : ""). Nothing reaches your coach.")
+                        .font(.footnote).secondaryText()
+                }
             }
             if let banner {
                 SectionCard {

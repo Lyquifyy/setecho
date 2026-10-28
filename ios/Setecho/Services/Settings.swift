@@ -48,6 +48,8 @@ final class Settings {
     var ownWhatsAppNumber: String { didSet { defaults.set(ownWhatsAppNumber, forKey: "ownWhatsAppNumber") } }
     /// Filming mode (off): save every spoken line and utterance with one clock, plus captions.
     var filmingMode: Bool { didSet { defaults.set(filmingMode, forKey: "filmingMode") } }
+    /// Developer tools (off): Settings → Developer, plus the Facts link on the Check-in tab.
+    var developerTools: Bool { didSet { defaults.set(developerTools, forKey: "developerTools") } }
     /// iOS 26 high-quality AirPods recording (HANDOFF.md §9, block 1). Off: AirPods are output only,
     /// over A2DP, and the DJI receiver or the iPhone mic records. A change clears an earlier fallback.
     var useAirPodsMic: Bool {
@@ -87,6 +89,7 @@ final class Settings {
         rehearsalMode = defaults.bool(forKey: "rehearsalMode")
         ownWhatsAppNumber = defaults.string(forKey: "ownWhatsAppNumber") ?? ""
         filmingMode = defaults.bool(forKey: "filmingMode")
+        developerTools = defaults.bool(forKey: "developerTools")
         useAirPodsMic = defaults.bool(forKey: "useAirPodsMic")
         checkInWakeTime = defaults.string(forKey: "checkInWakeTime") ?? "06:30"
         lastMorningAutoStart = defaults.string(forKey: "lastMorningAutoStart") ?? ""

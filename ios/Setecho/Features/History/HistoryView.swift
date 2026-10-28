@@ -6,8 +6,6 @@ struct HistoryView: View {
     @Environment(Store.self) private var store
     @State private var openCheckIn: CheckInDraft?
     @State private var comparePhotos = false
-    @State private var exportFile: FileExport?
-    @State private var exportError: String?
 
     private var weekStart: Date { CheckInSchedule().week(endingBefore: CheckInSchedule().nextDue(from: .now)).start }
 
@@ -23,7 +21,7 @@ struct HistoryView: View {
                 } else {
                     ForEach(Array(thisWeek.enumerated()), id: \.element.id) { index, session in
                         if index > 0 { CardDivider() }
-                        SessionRow(session: session) { share(session) }
+                        SessionRow(session: session)
                     }
                 }
             }
@@ -33,7 +31,7 @@ struct HistoryView: View {
                 } else {
                     ForEach(Array(previous.prefix(20).enumerated()), id: \.element.id) { index, session in
                         if index > 0 { CardDivider() }
-                        SessionRow(session: session) { share(session) }
+                        SessionRow(session: session)
                     }
                 }
             }
@@ -48,20 +46,6 @@ struct HistoryView: View {
                             Text("Sent \(Format.shortDate(draft.sentAt!))").font(.body).foregroundStyle(Theme.navy)
                             Spacer()
                             LinkButton(title: "Open") { openCheckIn = draft }
-                        }
-                    }
-                }
-            }
-            let takes = FilmingRecorder.takes(in: store.mediaDirectory)
-            if !takes.isEmpty {
-                SectionCard("Filming takes") {
-                    Text("Every line and answer as audio, with captions. Stays on the phone until you AirDrop it.").font(.footnote).secondaryText()
-                    ForEach(takes, id: \.self) { take in
-                        CardDivider()
-                        HStack {
-                            Text(take.lastPathComponent).font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
-                            Spacer()
-                            LinkButton(title: "AirDrop", chevron: .none) { exportFile = FileExport(url: take) }
                         }
                     }
                 }
@@ -111,25 +95,8 @@ struct HistoryView: View {
                 }
             }
         }
-        .sheet(item: $exportFile) { file in
-            ShareSheet(image: nil, text: nil, files: [file.url]) { _ in }
-        }
-        .alert("Couldn't export the session", isPresented: Binding { exportError != nil } set: { if !$0 { exportError = nil } }) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(exportError ?? "")
-        }
         .sheet(item: $openCheckIn) { draft in
             SentCheckInView(draft: draft).environment(store)
-        }
-    }
-
-    /// The session's debug JSON for tuning (`SessionDebug`): AirDrop it into backend/private/sessions/.
-    private func share(_ session: Session) {
-        do {
-            exportFile = FileExport(url: try SessionDebug.export(session: session, store: store))
-        } catch {
-            exportError = error.userMessage
         }
     }
 
@@ -159,8 +126,6 @@ struct HistoryView: View {
 struct SessionRow: View {
     @Environment(Store.self) private var store
     let session: Session
-    /// Share the session's debug JSON.
-    var onShare: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
@@ -170,9 +135,6 @@ struct SessionRow: View {
                 Text(sessionName).font(.subheadline).secondaryText()
                 Spacer()
                 Text("\(session.workingSets.count) sets").font(.subheadline).monospacedDigit().secondaryText()
-                if let onShare {
-                    LinkButton(title: "Share", chevron: .none, action: onShare)
-                }
             }
             ForEach(session.sets) { set in
                 HStack(spacing: Theme.Space.s) {
@@ -238,10 +200,4 @@ struct SentCheckInView: View {
             }
         }
     }
-}
-
-/// A file to share: a filming take's folder, or a session's debug JSON.
-private struct FileExport: Identifiable {
-    let url: URL
-    var id: String { url.path }
 }

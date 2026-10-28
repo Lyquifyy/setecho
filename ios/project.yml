@@ -24,7 +24,7 @@ targets:
     platform: iOS
     sources:
       - Setecho
-      # Temporary until M6: the M0 gate probes ship inside the app, behind the More menu.
+      # Temporary until M6: the M0 gate probes ship inside the app, under Settings → Developer.
       - path: Probes
         excludes: [ProbesApp.swift, Info.plist, Probes.entitlements, README.md]
     settings:
@@ -51,7 +51,7 @@ targets:
         # The Connect IQ SDK is Objective-C with categories; it needs -ObjC to link.
         OTHER_LDFLAGS: "$(inherited) -ObjC"
         INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Setecho talks to your Garmin watch through Garmin Connect."
-        # The probes screen shows app-only cards (turn timings) behind this flag; the standalone Probes app lacks them.
+        # The probes screen shows app-only cards (turn timings, the back link) behind this flag; the standalone Probes app lacks them.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SETECHO_APP"
     dependencies:
       # The share extension needs the App Group registered on the team's App IDs, which only Xcode's

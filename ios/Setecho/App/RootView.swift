@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Tabs: Today / History / Check-in. Settings and imports live in the More menu.
+/// Tabs: Today / History / Check-in. Imports, coach replies and Settings live in the More menu;
+/// everything for testing and tuning lives in Settings → Developer.
 struct RootView: View {
     @Environment(Store.self) private var store
 
@@ -21,8 +22,8 @@ struct RootView: View {
         .sheet(isPresented: $router.showImport) {
             ImportFlow().environment(store)
         }
-        .sheet(isPresented: $router.showSettings) {
-            SettingsView()
+        .sheet(isPresented: $router.showSettings, onDismiss: router.settingsDismissed) {
+            NavigationStack { SettingsView() }.tint(Theme.cobalt).environment(store)
         }
         .sheet(isPresented: $router.showAddReply) {
             AddCoachReplyView().environment(store)
@@ -49,10 +50,6 @@ struct RootView: View {
             store.refreshCycle()
             startMorningIfDue()
             Task { await ShareInbox.drain(into: store) }
-        }
-        .sheet(isPresented: Bindable(ProbesPresenter.shared).isShown) {
-            NavigationStack { ProbeHomeView() }
-                .tint(Theme.cobalt)
         }
     }
 }

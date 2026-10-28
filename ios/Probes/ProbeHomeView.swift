@@ -2,11 +2,14 @@ import AVKit
 import SwiftUI
 
 struct ProbeHomeView: View {
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
         ScreenScaffold {
-            if ProbesPresenter.shared.isShown {
-                LinkButton(title: "Close probes", chevron: .leading) { ProbesPresenter.shared.isShown = false }
-            }
+            #if SETECHO_APP
+            // In the app this is pushed from Settings → Developer; the standalone Probes app opens on it.
+            LinkButton(title: "Developer", chevron: .leading) { dismiss() }
+            #endif
             TitleBlock(
                 eyebrow: "M0 · Tuesday's gates",
                 title: "Probes",

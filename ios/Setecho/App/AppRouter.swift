@@ -18,6 +18,22 @@ final class AppRouter {
     var showCheckInMorning = false
     /// A rehearsal from the top: the unsent draft and today's photos are set aside first.
     var morningFresh = false
+    /// Settings → Developer → "Rehearse check-in morning": opens once the Settings sheet is gone.
+    var rehearseAfterSettings = false
     /// "Hey Siri, start my Setecho morning": the on-waking add-on's own session.
     var showMorningSession = false
+
+    /// Close Settings, then run Check-in morning from the top with nothing sent to the coach.
+    func rehearseCheckInMorning() {
+        rehearseAfterSettings = true
+        showSettings = false
+    }
+
+    /// Settings' onDismiss: a full-screen cover can only open once the sheet has gone.
+    func settingsDismissed() {
+        guard rehearseAfterSettings else { return }
+        rehearseAfterSettings = false
+        morningFresh = true
+        showCheckInMorning = true
+    }
 }

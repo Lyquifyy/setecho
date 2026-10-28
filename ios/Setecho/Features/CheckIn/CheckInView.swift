@@ -99,7 +99,9 @@ struct CheckInView: View {
                     LinkButton(title: "Start 2-minute wrap-up") { showWrapUp = true }
                         .disabled(coordinator.questions.isEmpty)
                     Spacer()
-                    LinkButton(title: "Facts", chevron: .none) { showFacts = true }
+                    if Settings.shared.developerTools {
+                        LinkButton(title: "Facts", chevron: .none) { showFacts = true }
+                    }
                     LinkButton(title: "Refresh", chevron: .none) { Task { await coordinator.buildDraft() } }
                 }
             }

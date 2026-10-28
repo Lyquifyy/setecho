@@ -1,8 +1,8 @@
 import Foundation
 
 /// One session's tuning record (HANDOFF.md §7, Set detection; §9 P5). Beside the session's media:
-/// the detector's series (`SetDetector`) and every /sets/count answer with its latency. History →
-/// session → Share bundles both with the logged session and its plan day into one JSON file for
+/// the detector's series (`SetDetector`) and every /sets/count answer with its latency. Settings →
+/// Developer → Session data bundles both with the logged session and its plan day into one JSON file for
 /// `backend/private/sessions/`. Numbers only: no video, audio or words.
 enum SessionDebug {
     /// One /sets/count attempt for a set: SAM's answer, or why there was none.

@@ -154,15 +154,8 @@ struct TodayView: View {
                     LinkButton(title: "Start check-in") { AppRouter.shared.showCheckInMorning = true }
                     Text("Or say \"Hey Siri, start my Setecho check-in\"").font(.footnote).secondaryText()
                 } else {
-                    HStack {
-                        LinkButton(title: "Open check-in") { AppRouter.shared.tab = .checkIn }
-                        Spacer()
-                        // The morning flow on any other day: same screens, nothing sent to him.
-                        LinkButton(title: "Rehearse", chevron: .none) {
-                            AppRouter.shared.morningFresh = true
-                            AppRouter.shared.showCheckInMorning = true
-                        }
-                    }
+                    // Rehearsing the morning on another day lives in Settings → Developer.
+                    LinkButton(title: "Open check-in") { AppRouter.shared.tab = .checkIn }
                 }
             } else {
                 Text("Import your coach's check-in form to see what fills itself.")

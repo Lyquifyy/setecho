@@ -24,11 +24,15 @@ struct BrandHeader: View {
 
     private var moreMenu: some View {
         Menu {
-            Button("Import program and form", systemImage: "doc.text.viewfinder") {
-                AppRouter.shared.showImport = true
+            Section("From your coach") {
+                Button("Import program and form", systemImage: "doc.text.viewfinder") {
+                    AppRouter.shared.showImport = true
+                }
+                Button("Add coach reply", systemImage: "text.bubble") { AppRouter.shared.showAddReply = true }
             }
-            Button("Add coach reply", systemImage: "text.bubble") { AppRouter.shared.showAddReply = true }
-            Button("Settings", systemImage: "gearshape") { AppRouter.shared.showSettings = true }
+            Section {
+                Button("Settings", systemImage: "gearshape") { AppRouter.shared.showSettings = true }
+            }
         } label: {
                 Image(systemName: "ellipsis")
                     .font(.body.weight(.semibold))
