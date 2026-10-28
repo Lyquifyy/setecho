@@ -25,7 +25,7 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 11. **Every number shows where it came from.** A check-in answer filled from data carries a `SourceChip`. The model never produces a number; numbers come from Apple Health, the training log or what the athlete said. A logged rep count shows how it was counted: Plan, Watch, Phone, Measured or You said.
 12. **The athlete's words stay theirs.** Spoken answers are tidied, not rewritten. Casual stays casual.
 13. **Never coach on Setecho's own authority.** No form judgments, no nutrition advice, no rules Setecho invents. A next-set suggestion always names the coach's rule it came from, the athlete decides, and the coach sees it in the check-in. A machine-taken swap stays within the same lift or his own alternates, and every swap and reorder reaches him in the check-in. The coach's plan is shown as the coach's plan.
-14. **Every voice action is echoed on screen and out loud, and can be undone by saying "undo".** A low-confidence transcription is asked back ("Did you say 215?"), never acted on silently.
+14. **Every voice action is echoed on screen and out loud, and can be undone by saying "undo".** A low-confidence command is asked back as the action ("Twelve reps on set 2?"), never acted on silently; chatter and other people's voices are never answered, only shown ("Heard: …").
 15. Hit targets are at least 44 pt, and icon-only buttons carry an `accessibilityLabel`. The app is light mode only.
 16. **Nothing from the coach's reply changes the plan until the athlete approves it.** Every proposed change shows the coach's exact words beside it, and an applied reply can be reverted from History.
 

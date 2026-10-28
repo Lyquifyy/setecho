@@ -307,7 +307,8 @@ Base URL comes from `SETECHO_API_BASE` (`ios/Config/Local.xcconfig`). All bodies
 | `POST /import/program` | multipart: `file` (`.csv`, `.xlsx` or an image) **or** `text` | `Program` with `flags`, its `addOns` and each day's `kind`, plus drafted `rules`, and each exercise's drafted `tags` and `alternates` | Spark, structured output |
 | `POST /import/form` | `{text}` or multipart `file` (screenshot) | `{template: CheckInTemplate, targets: MacroTargets, cardioProtocol}` | Spark, structured output |
 | `POST /import/rules` | `{text}`: his written instructions, e.g. the onboarding email, pasted once | `{rules: [ProgressionRule], roleTargets, restRules, warmups, checkInSchedule, quietDays, flags}`, each with his quote, nothing confirmed | Spark, structured output, then a validator |
-| `POST /voice/command` | multipart: `audio` (WAV) + `context` JSON | `{transcript, intent: VoiceIntent}` | Transcribe, then Spark structured output |
+| `POST /voice/command` | multipart: `audio` (WAV) + `context` JSON | `{transcript, intent: VoiceIntent, classifiedBy}` | Transcribe, then the rules, then Spark structured output (never Spark during a set) |
+| `POST /voice/command/text` | `{transcript, context: SessionContext}` (the realtime stream's words) | `{transcript, intent: VoiceIntent, classifiedBy}` | the rules, then Spark structured output (never Spark during a set) |
 | `POST /sets/count` | multipart: `video` (MP4, 720p, 15 fps, no audio) + `context` JSON `{exerciseId, equipment, plannedReps, phoneReps, setRole}` | `{reps, repTimes, repSpeeds, velocityLossPct, confidence, trackFound, frames}` | SAM 3.1 video |
 | `POST /photos/segment` | multipart: `image` (JPEG) | `{width, height, box: [x,y,w,h], maskPng: base64}` | SAM 3.1 image |
 | `POST /checkin/draft` | `{template, facts: WeekFacts, notes: [VoiceNote], training: TrainingSummary, lastCheckIn?: CheckInDraft, styleExamples: [String]}` | `CheckInDraft` | Spark tool calling, then a validator |
@@ -334,11 +335,12 @@ The numbers above are illustrative. Never commit the athlete's real values; see 
 **`VoiceIntent`** is the structured output for every spoken command:
 
 ```json
-{ "intent": "rpe | reps | setLoad | loadDelta | skipSet | nextExercise | note | undo | pause | resume | endSession | starting | endSet | replayCue | yes | no | acceptSuggestion | keepLoad | equipmentTaken | equipmentFree | otherOption | wait | swapTo | topSet | warmup | flagSet | answer | unknown",
-  "number": 9, "text": "digestion's been off since Wednesday", "fieldId": null, "exerciseId": null, "urgent": false, "confidence": 0.0 }
+{ "intent": "rpe | reps | setLoad | loadDelta | skipSet | nextExercise | note | undo | pause | resume | endSession | starting | endSet | replayCue | yes | no | answer | topSet | warmup | addAddOn | skipAddOn | changeDay | flagSet | acceptSuggestion | keepLoad | chatter | question | choose | skipExercise | logbook | equipmentTaken | equipmentFree | swapTo | unknown",
+  "number": 9, "reps": null, "setNumber": null, "text": "digestion's been off since Wednesday",
+  "topic": "next | restLeft | lastSet | lastTime | load | setsLeft | effort | coachNotes | outOfScope | null", "fieldId": null, "confidence": 0.0 }
 ```
 
-If `confidence` is under 0.7, or the intent is `unknown`, the app asks back ("Did you say 215?") and does nothing yet.
+`SessionContext` carries the state, the target, and for Spark the open ask (`pendingAsk`), the app's last line (`lastSpoken`), `exercisesAhead` and `addOnNames`. A bare number is reps (his coach uses no RPE); RPE needs "felt like", "RPE", "a/an N" or "out of ten". During a set (`state: recording`) only the rules' `endSet`, `reps` and `topSet` count; everything else comes back `chatter`. Confidence 0.7 and over acts; 0.4–0.7 is asked back as the action ("Twelve reps on set 2?"); `chatter`, `unknown` and anything under 0.4 are silent (§7, The between-set conversation). The phone decodes an intent it doesn't know as `unknown`.
 
 `exerciseId` is a per-request enum of today's exercise ids, or null: "incline's taken" names incline press, and "the bench is taken" with nothing named means the next exercise up. `urgent` is true only for a `note` about pain or an injury (§7, Machine taken).
 
@@ -592,6 +594,32 @@ A session never requires the tripod. The camera and the athlete's voice feed the
 - **HUD:** the state line shows which inputs are live (camera, watch), so the athlete can tell at a glance (DESIGN.md, `InputStatus`).
 - **An input dropping out never stops the session.** A lost watch shows "Watch off" and the session carries on with camera and voice.
 
+### The between-set conversation (Oct 28)
+Everything he says between sets is heard, does the right thing and gets a sensible answer, or is ignored if it was just talk. Nothing he says can corrupt the log or end the session by accident. `SessionConversation` is the coordinator's voice path; `ConversationTests` drive it.
+- **Hearing:** the session VAD (`VoiceDetector.Config.session`: 0.2 s onset so a one-word "go" counts, 0.8 s hangover, 10 s maximum; an utterance that hits the maximum is noise, discarded, and the floor is re-learned; under 0.2 s is a clank). A realtime stream opens per utterance on speech start, and its words go to `/voice/command/text`; the WAV goes to `/voice/command` when the stream has none. Utterances are queued and handled in order, none dropped. An 8 s timeout; on failure the HUD says "Didn't catch that" and nothing is spoken. The soft chime plays when a command is heard (not for chatter). Each utterance is saved in the session debug JSON: seconds, transcript, intent, who read it, and the seconds from end of speech to transcript, intent and first audio.
+- **During a set** the mic stays open, and only the rule layer's "done" (with or without a number), counts and "top set" act. Spark is never called. With the camera on duty a spoken "done" still ends the set at once, keeping the phone's count and the clip for SAM.
+- **Counts** (`routeCount`): during a set it is the set's. In rest after set S, a count corrects S; "done, N" more than 20 s after S is a new set (the rest was cut short). In Ready, a count logs a **new** set for the current target when the camera is off duty, the set is voice-only, or it was "done, N"; with the camera on duty a bare "that was N" corrects the last set only if it's the same exercise and ended under 3 minutes ago, else "Twelve for set 2 of flyes?". "Done" with no number and no phone count logs the set and asks "How many?"; no answer by the end of rest keeps the plan's reps (chip Plan). A count never edits a set of another exercise unless it is named ("set 3 of incline was 7").
+- **One open ask** (`SessionEngine.Ask`): count confirm, suggestion, How many?, end session, count for, clarify, note offer, log plan sets. The latest owns yes, no, numbers and the choices; opening another lets the older one lapse with its default (a suggestion is kept, a count stays). A question, a note, an RPE or chatter leaves it standing ("what's the back-off?" then "go with it"). End session, clarify, count-for and note offers expire after 30 s.
+- **Ending by voice** ("end session", "I'm done", "that's it for today") asks "End the session? Six sets logged."; only a yes ends it. The long-press End stays immediate.
+- **Chatter** (exclamations, other people, music) and `unknown` are silent: "Heard: …" on the HUD for 3 seconds.
+- **Questions**, every answer a template from the log: next, rest left ("One forty left."), last set ("Set 2: 8 reps, measured." or "Still counting."), last time (the logbook line), load (the target or the pending suggestion), sets left ("Two more of these, then cable incline flyes."), effort (the measured fact, or "No measure on that one."), coach notes ("His note: …"), out of scope ("That's one for your coach. Want me to note it for Thursday?", a yes makes it a note).
+- **Notes** about how something felt become a note with "Noted for Thursday."
+- **"Next exercise" with sets left** asks "Log the other 2 sets of flyes from the plan?" Yes logs them with source Plan; no skips them.
+- **"Skip the flyes"** skips that exercise today, logged as a `PlanDeviation`.
+- **"Top set"** answers "Top set. Last time 145 for 9. Beat the logbook." (the cold open).
+- **Last time:** each lift's last top set, typed from his paper logbook on Today and History (`LastTimeRow`), or said in Ready ("last time I did 145 for 9"). Saved as a `LogbookEntry`; `Store.lastSets` reads it beneath the log, so a set logged in the app wins.
+- **Machine taken, so far:** with no confirmed `takenRule` (not built yet), "the bench is taken" answers "Bench's taken. The rest keeps running. Say what you'll do instead, or wait." "Doing dumbbells instead" (`swapTo`) is logged as a `PlanDeviation` with "Noted for Thursday.", the swapped sets carry `doneAs`, and the load is asked ("Weight for these?"), never converted. "It's free" goes back to the plan. The options in his order, the catalog, reorders, the `TakenCard` and the check-in lines are still to build (§9).
+- **Developer → Rehearse a session:** today's plan with the camera and mic off; typed lines go through the real backend and are spoken back; nothing is logged.
+
+### Add-ons in a session (Oct 28)
+- **Holds run themselves** (Settings → "Start holds automatically", on): after the intro and when a rest ends, "Three." "Two." "One." "Hold." each on its own second; a new timed exercise after another gets five seconds: "Plank, sixty seconds. Starting in five." The countdown is from the wall clock (`holdStartedAt`), "10 seconds." on a hold of 30 s or more, the last three counted aloud, then "Time." and the rest (the sheet's, else 30 s). No "Go." before a hold. "Go", "ready" or "start" starts a lead-in early; "hold on" delays it; "done" or "stop" ends a hold early.
+- **One name:** a morning add-on whose exercise has its name says it once: "Stomach vacuums: four holds of twenty seconds." The HUD shows it once.
+- **No camera** for an all-timed session.
+- **Warm-ups** belong to the day's own lifts: never an add-on's exercises, never bodyweight ones. A set with no top or back-off role asks "Weight for these?".
+- **Add-on sets go by voice:** the camera neither starts nor ends them and SAM never counts them. "Done, 12" logs one; "done" alone asks "How many?". A set with no load shows "12 reps".
+- `SpokenText.clean` reads a slash between words as "or" ("Hanging or Lying Leg Raises").
+- **The screen stays awake** for the whole session. Still to test: with the phone locked by hand in a pocket, that background audio keeps the mic, the voice and the clock running.
+
 ### Measured effort and the coach's rules
 Setecho never invents a load change. It measures how hard a set was, compares that with the coach's target, and applies the coach's own rule. The athlete decides, and the coach sees every adjustment.
 
@@ -659,7 +687,7 @@ A busy gym means the bench is taken. Setecho offers what the coach would accept,
 The athlete should feel like he's talking with a training partner, not a machine. It has one consistent personality, and it's never the coach's voice.
 - **What it says:**
   - The set-end callout is instant and templated, with a few variants rotated so it never repeats back to back.
-  - Rest-time lines come from `/spotter/line`, written by Spark from the facts: "Big set. Eight, and that last one was a grind."
+  - Rest-time lines are templates, said the moment SAM answers (Oct 28: `/spotter/line` is off the session path; Spark-written lines are out). The endpoint and its validator stay in the backend, unused by sessions.
   - It remembers the session: PRs, "third set in a row at the top of your range", and what he said earlier.
   - It uses his first name sparingly, and never comments on form or food.
 - **When:** it's quiet during sets, answers a voice command within about a second, and never talks over the athlete.
@@ -844,6 +872,14 @@ Each phase ends with its checks passing, a commit, and a TestFlight build the hu
   - The athlete's real sheet needs the cycle, rest days, add-ons, timed sets and set roles (P1c), before his gym tests.
 - **Decided Oct 26** (§13): the spreadsheet arrives as a Google Sheets link; the check-in is due **Thursday morning**; the backend is on Fly.
 - **Untested:** every phone flow, in a real gym or at home.
+
+### Sessions, Oct 28 afternoon (the between-set conversation and add-ons)
+- [x] **P0 before Friday's Day 5 gym test:** voice during a set (rules only), pocket sets and count routing, the classifier fixes (each with a test), the end-session yes, one open ask, silent chatter and the ask-back as the action, the utterance queue and 8 s timeout, `/voice/command/text` with the realtime stream and the session VAD, rest lines as templates only, the logbook line on "top set" and Last time entry (§7, The between-set conversation).
+- [x] **P0 add-ons:** vacuums said and shown once, holds that run themselves, the screen kept awake, no camera for an all-timed session, no warm-ups on add-ons or bodyweight lifts, "Weight for these?", abs by voice and never to SAM, "12 reps" with no load, the slash read as "or" (§7, Add-ons in a session).
+- [x] **P1:** questions and notes; "next exercise" with sets left; `swapTo` / `equipmentTaken` / `equipmentFree` logged as `PlanDeviation` (the minimal Machine taken above).
+- [x] **P2:** `backend/tests/fixtures/conversations/` (scenarios A–L), read through the real rules by `test_voice.py` and driven end to end by `ConversationTests`; Developer → Rehearse a session.
+- **Still to build:** Machine taken's options (`takenRule` asked once in the rules review, `ExerciseFamilies.json`, reorders with the fatigue check, the `TakenCard`); moving "Adjustments" and "Gym changes" into his form's notes field (`flow.notesField`) with untick on Review and send; the tempo line (P1 §14: `tempo` at import, `repPhases` from `/sets/count`); the AirPods mic by default in sessions with the live input on the HUD; SAM speed (the counting clip written during recording).
+- **Waiting on the human:** one morning of vacuums run hands-free; the phone locked in a pocket during a session (mic, voice and clock keep running); Friday's Day 5 session with the debug JSON exported (nothing lost, nothing misfiled, nothing said to chatter). The backend on Fly needs a deploy for `/voice/command/text` and the new intents.
 
 ### What's left (Oct 28)
 Everything ticked below is built; "untested" still applies to every phone flow until it has run in the gym or at home.
