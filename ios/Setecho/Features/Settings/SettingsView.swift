@@ -57,6 +57,11 @@ struct SettingsView: View {
                 CardDivider()
                 StepField(label: "Machines", value: $settings.machineStepLb)
             }
+            SectionCard("Check-in morning") {
+                Text("On the due morning the check-in starts itself the first time you open Setecho, until the 8:40 guard. A notification at this time opens it; a Shortcuts automation at the same time (\"Start my Setecho check-in\", run immediately) makes it fully hands-free.")
+                    .font(.subheadline).secondaryText()
+                SettingsField(placeholder: "06:30", text: $settings.checkInWakeTime)
+            }
             SectionCard("Rehearsal and filming") {
                 Text("Your own WhatsApp number, digits only, so a rehearsal can send to you and never to him.").font(.subheadline).secondaryText()
                 SettingsField(placeholder: "1316…", text: $settings.ownWhatsAppNumber)

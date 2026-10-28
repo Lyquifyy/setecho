@@ -102,6 +102,7 @@ struct TodayView: View {
                 if await Reminders.requestPermission() {
                     Reminders.scheduleEveReminder(schedule: schedule)
                     Reminders.scheduleDeadlineGuard(schedule: schedule)
+                    Reminders.scheduleMorningStart(schedule: schedule, wakeTime: Settings.shared.checkInWakeTime)
                 }
             }
             if Reminders.deadlinePassed(schedule: schedule), store.lastSentCheckIn.map({ !Calendar.current.isDateInToday($0.sentAt ?? .distantPast) }) ?? true {

@@ -35,6 +35,10 @@ final class Settings {
     var ownWhatsAppNumber: String { didSet { defaults.set(ownWhatsAppNumber, forKey: "ownWhatsAppNumber") } }
     /// Filming mode (off): save every spoken line and utterance with one clock, plus captions.
     var filmingMode: Bool { didSet { defaults.set(filmingMode, forKey: "filmingMode") } }
+    /// When the due-day notification fires ("06:30"); opening the app from it starts the morning flow.
+    var checkInWakeTime: String { didSet { defaults.set(checkInWakeTime, forKey: "checkInWakeTime") } }
+    /// The day (DayKey) Check-in morning last started itself, so it starts once per due day.
+    var lastMorningAutoStart: String { didSet { defaults.set(lastMorningAutoStart, forKey: "lastMorningAutoStart") } }
 
     var loadSteps: RuleEngine.LoadSteps {
         RuleEngine.LoadSteps(barbell: barbellStepLb, dumbbell: dumbbellStepLb, machine: machineStepLb, cable: machineStepLb)
@@ -60,6 +64,8 @@ final class Settings {
         rehearsalMode = defaults.bool(forKey: "rehearsalMode")
         ownWhatsAppNumber = defaults.string(forKey: "ownWhatsAppNumber") ?? ""
         filmingMode = defaults.bool(forKey: "filmingMode")
+        checkInWakeTime = defaults.string(forKey: "checkInWakeTime") ?? "06:30"
+        lastMorningAutoStart = defaults.string(forKey: "lastMorningAutoStart") ?? ""
     }
 
     var showDateOrNil: String? { showDate.trimmingCharacters(in: .whitespaces).isEmpty ? nil : showDate }

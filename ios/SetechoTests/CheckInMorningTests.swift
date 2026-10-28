@@ -62,6 +62,20 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     #expect(CheckInMorningFlow.isNo("Nope") && !CheckInMorningFlow.isNo("no idea"))
 }
 
+@Test func theMorningStartsItselfOnceOnTheDueMorningBeforeTheGuard() {
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = TimeZone(identifier: "America/Chicago")!
+    let thursday = cal.date(from: DateComponents(year: 2026, month: 10, day: 29, hour: 6, minute: 45))!
+    let weekly = CheckInSchedule(dueWeekday: 5, everyWeeks: 1, dueBy: "09:00", lastSentAt: nil)
+    #expect(MorningStart.shouldStart(schedule: weekly, lastSentAt: nil, lastStartedDay: "", now: thursday, calendar: cal))
+    #expect(!MorningStart.shouldStart(schedule: weekly, lastSentAt: nil, lastStartedDay: "2026-10-29", now: thursday, calendar: cal))
+    #expect(!MorningStart.shouldStart(schedule: weekly, lastSentAt: thursday, lastStartedDay: "", now: thursday, calendar: cal))
+    let wednesday = cal.date(byAdding: .day, value: -1, to: thursday)!
+    #expect(!MorningStart.shouldStart(schedule: weekly, lastSentAt: nil, lastStartedDay: "", now: wednesday, calendar: cal))
+    let late = cal.date(bySettingHour: 8, minute: 45, second: 0, of: thursday)!
+    #expect(!MorningStart.shouldStart(schedule: weekly, lastSentAt: nil, lastStartedDay: "", now: late, calendar: cal))
+}
+
 @Test func theIntroductionNamesTheAthleteTheDayAndWhatIsComing() {
     #expect(CheckInMorningFlow.intro(firstName: "Zander", dueDay: "Thursday", isDueMorning: true)
             == "Morning, Zander. Your Thursday check-in: weight, glucose, four photos, then the coach's questions.")

@@ -40,16 +40,33 @@ struct RootView: View {
                 MorningNothingDueView()
             }
         }
-        .task { await ShareInbox.drain(into: store) }
+        .task {
+            startMorningIfDue()
+            await ShareInbox.drain(into: store)
+        }
         .onOpenURL { url in WatchService.shared.handle(url: url) }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             store.refreshCycle()
+            startMorningIfDue()
             Task { await ShareInbox.drain(into: store) }
         }
         .sheet(isPresented: Bindable(ProbesPresenter.shared).isShown) {
             NavigationStack { ProbeHomeView() }
                 .tint(Theme.cobalt)
         }
+    }
+}
+
+extension RootView {
+    /// Check-in morning with no tap on the due morning (MorningStart), once per day.
+    fileprivate func startMorningIfDue() {
+        let settings = Settings.shared
+        let schedule = CheckInSchedule(plan: store.plan, lastSentAt: store.lastSentCheckIn?.sentAt)
+        guard MorningStart.shouldStart(schedule: schedule, lastSentAt: store.lastSentCheckIn?.sentAt,
+                                       lastStartedDay: settings.lastMorningAutoStart) else { return }
+        settings.lastMorningAutoStart = DayKey.string(.now)
+        AppRouter.shared.tab = .today
+        AppRouter.shared.showCheckInMorning = true
     }
 }
 

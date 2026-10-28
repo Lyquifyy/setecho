@@ -60,6 +60,27 @@ enum Reminders {
         return now >= guardTime
     }
 
+    static let morningId = "checkin-morning"
+
+    /// The wake-time notification on the due day ("06:30" → 6:30 AM): opening the app from it
+    /// starts Check-in morning with no tap (MorningStart). Replaces any earlier one.
+    static func scheduleMorningStart(schedule: CheckInSchedule, wakeTime: String, now: Date = .now, calendar: Calendar = .current) {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [morningId])
+        let parts = wakeTime.split(separator: ":").compactMap { Int($0) }
+        guard let hour = parts.first, (0...23).contains(hour) else { return }
+        let minute = parts.count > 1 ? min(max(parts[1], 0), 59) : 0
+        let due = schedule.nextDue(from: now, calendar: calendar)
+        guard let at = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: due), at > now else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Your \(due.formatted(.dateTime.weekday(.wide))) check-in"
+        content.body = "Open Setecho and it starts. Or say \"Hey Siri, start my Setecho check-in\"."
+        content.sound = .default
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: at)
+        center.add(UNNotificationRequest(identifier: morningId, content: content, trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)),
+                   withCompletionHandler: nil)
+    }
+
     static func clearWaiting() {
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [waitingId])
     }
@@ -68,4 +89,17 @@ enum Reminders {
 extension Notification.Name {
     /// Posted when the app comes to the foreground past the deadline guard with the check-in unsent.
     static let checkInDeadline = Notification.Name("setecho.checkInDeadline")
+}
+
+/// Check-in morning starts itself (Oct 27 rehearsal): the first time the app is in front on the
+/// due morning, before the deadline guard, with nothing sent that day, the flow opens with no tap.
+/// Once per day, so closing it does not bring it straight back.
+enum MorningStart {
+    static func shouldStart(schedule: CheckInSchedule, lastSentAt: Date?, lastStartedDay: String,
+                            now: Date = .now, calendar: Calendar = .current) -> Bool {
+        guard schedule.isCheckInMorning(on: now, calendar: calendar) else { return false }
+        guard !Reminders.deadlinePassed(schedule: schedule, now: now, calendar: calendar) else { return false }
+        if let lastSentAt, calendar.isDate(lastSentAt, inSameDayAs: now) { return false }
+        return lastStartedDay != DayKey.string(now, calendar: calendar)
+    }
 }
