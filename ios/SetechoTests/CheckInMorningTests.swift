@@ -121,9 +121,9 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
 
 @Test func theIntroductionNamesTheAthleteTheDayAndWhatIsComing() {
     #expect(CheckInMorningFlow.intro(firstName: "Zander", dueDay: "Thursday", isDueMorning: true)
-            == "Morning, Zander. Your Thursday check-in: weight, glucose, four photos, then the coach's questions.")
+            == "Morning, Zander. Your Thursday check-in: weight, glucose, photos, then the coach's questions.")
     #expect(CheckInMorningFlow.intro(firstName: " ", dueDay: "Thursday", isDueMorning: false)
-            == "Morning. A rehearsal of your Thursday check-in: weight, glucose, four photos, then the coach's questions.")
+            == "Morning. Rehearsing your Thursday check-in: weight, glucose, photos, then the coach's questions.")
 }
 
 @Test @MainActor func aScriptedMorningSavesEveryAnswerAndPicksTheNextQuestionItself() async throws {
@@ -140,18 +140,18 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     let fresh = CheckInCoordinator(store: store)
     let m = CheckInMorningModel(coordinator: fresh, store: store, speak: { spoken.append($0) })
     await m.resume(opening: true)
-    #expect(m.step == .weight && spoken.last == "Step on the scale, and tell me when you're off.")
+    #expect(m.step == .weight && spoken.last == "Step on the scale. Tell me when you're off.")
     // The introduction is spoken by start(), before the draft builds; its words come from the flow.
     #expect(m.intro.hasPrefix("Morning") && m.intro.contains("check-in"))
     // "Give me a couple of minutes": a pause keeps listening and asks nothing.
-    await m.apply(turn(.pause, "give me a couple of minutes", reply: "No worries, just tell me whenever you're ready."))
-    #expect(m.isPaused && m.isListening && spoken.last == "No worries, just tell me whenever you're ready.")
+    await m.apply(turn(.pause, "give me a couple of minutes", reply: "No rush. Tell me when you're ready."))
+    #expect(m.isPaused && m.isListening && spoken.last == "No rush. Tell me when you're ready.")
     // Any answer resumes and counts: one utterance answers two fields.
     await m.apply(turn(.answer, "180.8, and glucose was 91", answers: [answer(weight.id, "180.8"), answer(glucose.id, "91")], reply: "Weight 180.8 and glucose 91, got it."))
     #expect(!m.isPaused)
     #expect(fresh.answer(for: weight)?.text == "180.8" && fresh.answer(for: glucose)?.text == "91")
     #expect(store.checkIns.first?.answers.count == 2)   // saved after the answer
-    #expect(m.step == .photos && m.question == "Set up your tripod for photos, and tell me when you're ready.")
+    #expect(m.step == .photos && m.question == "Tripod up for photos. Tell me when you're ready.")
     // A correction names a field already answered and stays on the current question.
     await m.apply(turn(.correction, "wait, it was 180.6", answers: [answer(weight.id, "180.6")], reply: "Changed to 180.6."))
     #expect(fresh.answer(for: weight)?.text == "180.6" && m.step == .photos && m.echo?.contains("180.6") == true)

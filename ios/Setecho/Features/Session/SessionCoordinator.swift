@@ -10,6 +10,8 @@ import Observation
 final class SessionCoordinator {
     let engine: SessionEngine
     let audio = AudioService()
+    /// The one voice (HANDOFF.md §7): callouts are built from the moment, so they are spoken live.
+    @ObservationIgnored private let voice: SystemSpeaker
     let detector: SetDetector
     private(set) var echo: String?
     private(set) var askBack: String?
@@ -49,6 +51,7 @@ final class SessionCoordinator {
                                     athleteName: settings.athleteFirstName.isEmpty ? nil : settings.athleteFirstName)
         self.store = store
         self.api = api
+        self.voice = SystemSpeaker(audio: audio, cacheDirectory: store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
         self.detector = SetDetector(mediaDirectory: store.mediaDirectory, sessionId: engine.session.id)
         if settings.coachVoiceInSessions {
             engine.cues = Dictionary(store.cues.filter(\.approved).map { ($0.exerciseId, $0) }, uniquingKeysWith: { a, _ in a })
@@ -377,6 +380,6 @@ final class SessionCoordinator {
 
     private func speak(_ text: String) async {
         filming?.spoke(text, voice: AudioService.preferredVoice())
-        await audio.speak(text)
+        await voice.speak(text)
     }
 }

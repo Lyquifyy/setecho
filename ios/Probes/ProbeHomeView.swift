@@ -108,10 +108,10 @@ private struct TurnTimingsCard: View {
             }
             LabeledRow("Heard", timings.heardCounts.isEmpty ? "—" : timings.heardCounts.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", "))
             LabeledRow("Unclear turns", timings.unclearCount == 0 ? "0" : "\(timings.unclearCount) · " + timings.unclearReasons.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", "))
-            LabeledRow("Natural voice", voiceState)
-            LabeledRow("Lines cached / live / system", "\(timings.voiceCached) / \(timings.voiceLive) / \(timings.voiceFallbacks)")
-            if let reason = timings.voiceLastFallback {
-                Text("Last fallback: \(reason)").font(.footnote).secondaryText()
+            LabeledRow("Voice", voiceState)
+            LabeledRow("Lines pre-rendered / live", "\(timings.voicePrerendered) / \(timings.voiceLive)")
+            if let reason = timings.voiceLastFailure {
+                Text("Last file that wouldn't play: \(reason)").font(.footnote).secondaryText()
             }
             CardDivider()
             LabeledRow("Audio route", route)
@@ -127,10 +127,10 @@ private struct TurnTimingsCard: View {
         .onAppear { route = AudioService().routeDescription }
     }
 
+    /// "Ava · Premium": the on-device voice every line uses.
     private var voiceState: String {
-        if let failure = timings.voiceStatusFailure { return "status failed: \(failure)" }
-        guard let configured = timings.voiceConfigured else { return "not asked yet" }
-        return configured ? (timings.voiceProvider ?? "configured") : "none configured, system voice"
+        guard let voice = AudioService.preferredVoice() else { return "none installed" }
+        return "\(voice.name) · \(voice.quality == .premium ? "Premium" : voice.quality == .enhanced ? "Enhanced" : "Default")"
     }
 
     private func seconds(_ value: Double?) -> String {

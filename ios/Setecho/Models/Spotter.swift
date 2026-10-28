@@ -54,11 +54,8 @@ extension APIClient {
     }
 }
 
-/// One voice everywhere (HANDOFF.md §7, The spotter voice): the system voice by default; a
-/// natural-voice service only if the human picks one after the voice test.
+/// One voice everywhere (HANDOFF.md §7, The spotter voice): `SystemSpeaker`, Apple's on-device
+/// speech with his chosen Premium voice. No voice service: every runtime model is Meta's.
 protocol Speaker: AnyObject {
     func speak(_ text: String) async
 }
-
-/// `AVSpeechSynthesizer` with the best installed voice, premium first: the default `Speaker`.
-extension AudioService: Speaker {}

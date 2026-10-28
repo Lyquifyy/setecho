@@ -28,8 +28,8 @@ final class PhotoSessionCoordinator {
 
     let capture = PhotoCapture()
     let audio = AudioService()
-    /// The natural voice when the backend has one; the system voice otherwise.
-    let natural: NaturalVoiceSpeaker
+    /// The one voice, with the pose cues and fixed lines pre-rendered.
+    let voice: SystemSpeaker
     private let store: Store
     private let api: APIClient
     private var loop: Task<Void, Never>?
@@ -40,10 +40,10 @@ final class PhotoSessionCoordinator {
         self.store = store
         self.api = api
         audio.holdsDucking = true
-        self.natural = NaturalVoiceSpeaker(api: api, fallback: audio, cacheDirectory: store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
+        self.voice = SystemSpeaker(audio: audio, cacheDirectory: store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
     }
 
-    /// Every line the session can say, generated once and cached.
+    /// Every line the session can say, rendered once when it starts.
     private static let fixedLines = ["Got it", "All four. Say retake and a pose, or you're done.", "Step into frame", "Step back a little",
                                      "Move left", "Move right", "Hold it there.", "Hold still for a second.", "Taking it now."]
 
@@ -78,9 +78,8 @@ final class PhotoSessionCoordinator {
         }
         _ = await audio.requestMicrophone()
         audio.configure()
-        await natural.prepare()
-        natural.pregenerate(Pose.allCases.map(\.spokenCue) + Self.fixedLines)
-        await natural.warm([Pose.allCases[0].spokenCue])
+        voice.prerender(Pose.allCases.map(\.spokenCue) + Self.fixedLines)
+        await voice.warm([Pose.allCases[0].spokenCue])
         capture.start()
         if let error = capture.lastError {
             phase = .failed(error)
@@ -93,7 +92,7 @@ final class PhotoSessionCoordinator {
         cancelled = true
         loop?.cancel()
         capture.stop()
-        natural.stop()
+        voice.stop()
     }
 
     private func run() async {
@@ -101,13 +100,13 @@ final class PhotoSessionCoordinator {
             guard !cancelled else { return }
             phase = .posing(pose)
             capture.resetStillness()
-            await natural.speak(pose.spokenCue)
+            await voice.speak(pose.spokenCue)
             guard await waitUntilStill(poseCueAt: .now, pose: pose) else { return }
             do {
                 let data = try await capture.capture()
                 captured[pose] = data
                 thumbnails[pose] = UIImage(data: data).map { Self.thumbnail($0) }
-                await natural.speak("Got it")
+                await voice.speak("Got it")
             } catch {
                 phase = .failed("Capture failed: \(error.localizedDescription)")
                 return
@@ -125,12 +124,12 @@ final class PhotoSessionCoordinator {
             capture.start()
             phase = .posing(pose)
             capture.resetStillness()
-            await natural.speak(pose.spokenCue)
+            await voice.speak(pose.spokenCue)
             guard await waitUntilStill(poseCueAt: .now, pose: pose) else { return }
             if let data = try? await capture.capture() {
                 captured[pose] = data
                 thumbnails[pose] = UIImage(data: data).map { Self.thumbnail($0) }
-                await natural.speak("Got it")
+                await voice.speak("Got it")
             }
             capture.stop()
             await save()
@@ -161,7 +160,7 @@ final class PhotoSessionCoordinator {
         photoSet = set
         phase = .review
         loop = nil
-        await natural.speak("All four. Say retake and a pose, or you're done.")
+        await voice.speak("All four. Say retake and a pose, or you're done.")
     }
 
     /// Guidance that sounds like a person at the camera. Four seconds to get into position after the
@@ -196,12 +195,12 @@ final class PhotoSessionCoordinator {
                 if capture.stillness.isStill { return true }
                 if !saidHold, now.timeIntervalSince(poseCueAt) >= 1.5 {
                     saidHold = true
-                    await natural.speak("Hold it there.")
+                    await voice.speak("Hold it there.")
                 } else if !saidStill, framedFor >= 4 {
                     saidStill = true
-                    await natural.speak("Hold still for a second.")
+                    await voice.speak("Hold still for a second.")
                 } else if framedFor >= 7 {
-                    await natural.speak("Taking it now.")
+                    await voice.speak("Taking it now.")
                     return true
                 }
                 continue
@@ -214,7 +213,7 @@ final class PhotoSessionCoordinator {
                 lastPoseCue = now
                 lastSpoken = nil
                 capture.resetStillness()
-                await natural.speak(pose.spokenCue)
+                await voice.speak(pose.spokenCue)
                 continue
             }
             guard let line = framing.spoken,
@@ -225,7 +224,7 @@ final class PhotoSessionCoordinator {
             guard now.timeIntervalSince(lastCueAt) >= gap else { continue }
             lastSpoken = framing
             lastCueAt = now
-            await natural.speak(line)
+            await voice.speak(line)
         }
         return false
     }
@@ -280,7 +279,7 @@ final class PhotoSessionCoordinator {
         photoSet = set
         collage = collageImage
         phase = .review
-        await natural.speak("Done. Your collage is ready.")
+        await voice.speak("Done. All four are saved.")
     }
 
     private static func thumbnail(_ image: UIImage) -> UIImage {

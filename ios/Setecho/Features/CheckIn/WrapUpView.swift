@@ -73,8 +73,8 @@ final class WrapUpModel {
     let coordinator: CheckInCoordinator
     let audio = AudioService()
     private let api = APIClient()
-    /// The natural voice when the backend has one; the system voice otherwise (HANDOFF.md §9, block 1).
-    let natural: NaturalVoiceSpeaker
+    /// The one voice, with the fixed lines pre-rendered (HANDOFF.md §7).
+    let voice: SystemSpeaker
     private var questions: [[FieldSpec]]
     private var busy = false
     private var weightAsked = false
@@ -83,8 +83,7 @@ final class WrapUpModel {
         self.coordinator = coordinator
         self.questions = coordinator.questions
         audio.holdsDucking = true
-        self.natural = NaturalVoiceSpeaker(api: api, fallback: audio,
-                                           cacheDirectory: coordinator.store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
+        self.voice = SystemSpeaker(audio: audio, cacheDirectory: coordinator.store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
     }
 
     private static let fixedLines = ["That's everything. Review and send is next.", "Skipped.", "Didn't catch that. Say it again?"]
@@ -123,16 +122,15 @@ final class WrapUpModel {
             status = CheckInCoordinator.weightMissingMessage
         }
         guard !questions.isEmpty || coordinator.weightMissingToday else { isDone = true; return }
-        await natural.prepare()
-        natural.pregenerate(Self.fixedLines + questions.map { Self.question(for: $0) })
-        // The first line is due in a moment: wait briefly for its cache so it does not race the live deadline.
-        await natural.warm(coordinator.weightMissingToday ? [CheckInCoordinator.weightMissingMessage + ". Carrying on."] : [questionText])
+        voice.prerender(Self.fixedLines + questions.map { Self.question(for: $0) })
+        // The first line is due in a moment: wait briefly for its file.
+        await voice.warm(coordinator.weightMissingToday ? [CheckInCoordinator.weightMissingMessage + ". Carrying on."] : [questionText])
         _ = await audio.requestMicrophone()
         audio.configure()
         audio.onUtterance = { [weak self] utterance in Task { await self?.handle(utterance) } }
         audio.startListening()
         if coordinator.weightMissingToday {
-            await natural.speak(CheckInCoordinator.weightMissingMessage + ". Carrying on.")
+            await voice.speak(CheckInCoordinator.weightMissingMessage + ". Carrying on.")
         }
         await ask()
     }
@@ -157,14 +155,14 @@ final class WrapUpModel {
         if !questions.indices.contains(index) { await appendWeightQuestionIfStillMissing() }
         guard questions.indices.contains(index) else {
             isDone = true
-            await natural.speak("That's everything. Review and send is next.")
+            await voice.speak("That's everything. Review and send is next.")
             audio.stopListening()
             return
         }
         transcript = nil
         status = nil
         isListening = true
-        await natural.speak(questionText)
+        await voice.speak(questionText)
     }
 
     private func handle(_ utterance: VoiceDetector.Utterance) async {
@@ -192,14 +190,14 @@ final class WrapUpModel {
             }
             if control.hasPrefix("skip") || control == "next" {
                 index += 1
-                await natural.speak("Skipped.")
+                await voice.speak("Skipped.")
                 await ask()
                 return
             }
             let usable = response.answers.filter { $0.state != .missing }
             guard !usable.isEmpty else {
                 status = "Didn't catch that"
-                await natural.speak("Didn't catch that. Say it again?")
+                await voice.speak("Didn't catch that. Say it again?")
                 isListening = true
                 return
             }
@@ -207,7 +205,7 @@ final class WrapUpModel {
             index += 1
             let confirmation = Self.confirmation(for: group, answers: usable)
             let next = questions.indices.contains(index) ? " Next: \(Self.shortLabel(questions[index]))." : ""
-            await natural.speak(confirmation + next)
+            await voice.speak(confirmation + next)
             await ask()
         } catch {
             status = error.userMessage

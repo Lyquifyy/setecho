@@ -19,6 +19,8 @@ final class Settings {
     var coachVoiceInSessions: Bool { didSet { defaults.set(coachVoiceInSessions, forKey: "coachVoiceInSessions") } }
     /// The voice Setecho speaks with everywhere; empty means the best installed voice, premium first.
     var voiceIdentifier: String { didSet { defaults.set(voiceIdentifier, forKey: "voiceIdentifier") } }
+    /// The speaking rate of every line, 0.42–0.55 (Settings → Voice); 0.49 by default.
+    var voiceRate: Double { didSet { defaults.set(voiceRate, forKey: "voiceRate") } }
     /// Next-set suggestions (P4). On by default; only with a confirmed coach's rule.
     var nextSetSuggestions: Bool { didSet { defaults.set(nextSetSuggestions, forKey: "nextSetSuggestions") } }
     /// What the athlete can load (§13): barbell 5 lb, dumbbells 5 lb, machines from here.
@@ -63,6 +65,7 @@ final class Settings {
         useSevenDayAverageWeight = defaults.bool(forKey: "useSevenDayAverageWeight")
         coachVoiceInSessions = defaults.object(forKey: "coachVoiceInSessions") as? Bool ?? true
         voiceIdentifier = defaults.string(forKey: "voiceIdentifier") ?? ""
+        voiceRate = defaults.object(forKey: "voiceRate") as? Double ?? SpokenText.defaultRate
         nextSetSuggestions = defaults.object(forKey: "nextSetSuggestions") as? Bool ?? true
         barbellStepLb = defaults.object(forKey: "barbellStepLb") as? Double ?? 5
         dumbbellStepLb = defaults.object(forKey: "dumbbellStepLb") as? Double ?? 5

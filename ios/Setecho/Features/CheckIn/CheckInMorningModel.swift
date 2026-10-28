@@ -124,8 +124,8 @@ struct CheckInMorningFlow: Equatable {
     static func intro(firstName: String, dueDay: String, isDueMorning: Bool) -> String {
         let name = firstName.trimmingCharacters(in: .whitespaces)
         let greeting = name.isEmpty ? "Morning." : "Morning, \(name)."
-        let which = isDueMorning ? "Your \(dueDay) check-in" : "A rehearsal of your \(dueDay) check-in"
-        return "\(greeting) \(which): weight, glucose, four photos, then the coach's questions."
+        let which = isDueMorning ? "Your \(dueDay) check-in" : "Rehearsing your \(dueDay) check-in"
+        return "\(greeting) \(which): weight, glucose, photos, then the coach's questions."
     }
 
     static func isYes(_ transcript: String) -> Bool { yesWords.contains(normalize(transcript)) }
@@ -187,9 +187,8 @@ final class CheckInMorningModel {
 
     static let silenceMinutes: TimeInterval = 10 * 60
 
-    /// The natural voice when the backend has one configured; the system voice otherwise, and for
-    /// any line whose audio does not arrive within 700 ms (HANDOFF.md §9, block 1).
-    let natural: NaturalVoiceSpeaker
+    /// The one voice: fixed lines pre-rendered when the flow starts, the rest live (HANDOFF.md §7).
+    let voice: SystemSpeaker
     /// Filming mode: every line and utterance saved with one clock, off the speaking path.
     private(set) var filming: FilmingRecorder?
     /// Realtime transcription: opened the moment speech starts; file mode is the fallback.
@@ -207,30 +206,30 @@ final class CheckInMorningModel {
         let audio = AudioService()
         audio.holdsDucking = true
         self.audio = audio
-        let natural = NaturalVoiceSpeaker(api: api, fallback: audio, cacheDirectory: store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
-        self.natural = natural
+        let voice = SystemSpeaker(audio: audio, cacheDirectory: store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
+        self.voice = voice
         let filming = Settings.shared.filmingMode ? FilmingRecorder(root: store.mediaDirectory, kind: "checkin") : nil
         self.filming = filming
         self.speak = speak ?? { text in
-            filming?.spoke(text, audio: natural.cachedAudio(for: text), voice: AudioService.preferredVoice())
-            await natural.speak(text)
+            filming?.spoke(text, audio: voice.cachedAudio(for: text), voice: AudioService.preferredVoice())
+            await voice.speak(text)
             TurnTimings.shared.firstAudio()
         }
     }
 
-    /// The coach's questions and the fixed lines, generated once and cached by a text hash.
-    private func pregenerate() {
-        var lines = ["Step on the scale, and tell me when you're off.", "What did it say?", "Fasted glucose?",
-                     "Set up your tripod for photos, and tell me when you're ready.", "Got the photos.",
-                     "That's everything. Want me to read it back, or open it to send?", "No worries, just tell me whenever you're ready.",
+    /// The coach's questions and the fixed lines, rendered once and kept by a hash of the line and voice.
+    private func prerender() {
+        var lines = ["Step on the scale. Tell me when you're off.", "What did it say?", "Fasted glucose?",
+                     "Tripod up for photos. Tell me when you're ready.", "Got the photos.",
+                     "That's everything. Read it back, or open it to send?", "No rush. Tell me when you're ready.",
                      "Welcome back.", "Sorry, say that again?", "Skipped.", "Got it.", "Added to your notes.", "Okay, leaving it out.",
                      "Take your time.", "What should it say?"]
         lines += questionGroups.map { flow.prompt(for: $0, draft: draft) }
-        // The data read-back, each line as it will be said, so they play in the natural voice at once.
+        // The data read-back, each line as it will be said, so they play at once.
         lines += flow.readBackFields(draft: draft).enumerated().map { index, item in
             CheckInMorningFlow.readBackPrompt(item.field, item.answer, first: index == 0)
         }
-        natural.pregenerate([intro] + lines)
+        voice.prerender([intro] + lines)
     }
 
     var stepIndex: Int { step.rawValue }
@@ -261,8 +260,7 @@ final class CheckInMorningModel {
         // The draft (Apple Health, the log, Spark for the notes) takes seconds: build it under the
         // introduction, which needs none of it, so the voice is heard the moment the screen opens.
         let draft = Task { [coordinator] in if coordinator.draft == nil { await coordinator.buildDraft() } }
-        await natural.prepare()
-        await natural.warm([intro])
+        await voice.warm([intro])
         TurnTimings.shared.stage("voice")
         if let filming {
             showSlate = true
@@ -284,9 +282,9 @@ final class CheckInMorningModel {
         await draft.value
         TurnTimings.shared.stage("draft")
         await coordinator.refreshWeightToday()
-        if let known = coordinator.weightTodayText { await natural.warm([Self.weightOffer(known)], within: .seconds(1)) }
+        if let known = coordinator.weightTodayText { await voice.warm([Self.weightOffer(known)], within: .seconds(1)) }
         status = nil
-        pregenerate()
+        prerender()
         await resume(opening: true)
         TurnTimings.shared.stage("first question")
     }
@@ -296,7 +294,7 @@ final class CheckInMorningModel {
         silenceTask?.cancel()
         realtime.cancel()
         audio.stopListening()
-        natural.stop()
+        voice.stop()
         isListening = false
         if !isDone { isPaused = true }
     }
@@ -332,11 +330,11 @@ final class CheckInMorningModel {
                 return
             }
             awaitingWeightReading = false
-            await ask("Step on the scale, and tell me when you're off.")
+            await ask("Step on the scale. Tell me when you're off.")
         case .glucose:
             await ask("Fasted glucose?")
         case .photos:
-            await ask("Set up your tripod for photos, and tell me when you're ready.")
+            await ask("Tripod up for photos. Tell me when you're ready.")
         case .questions:
             await askCurrentQuestion()
         case .review:
@@ -355,7 +353,7 @@ final class CheckInMorningModel {
                 return
             }
             isDone = true
-            await ask("That's everything. Want me to read it back, or open it to send?")
+            await ask("That's everything. Read it back, or open it to send?")
         }
     }
 
@@ -564,7 +562,7 @@ final class CheckInMorningModel {
         case .pause:
             isPaused = true
             isListening = true
-            await say(response.reply.isEmpty ? "No worries, just tell me whenever you're ready." : response.reply)
+            await say(response.reply.isEmpty ? "No rush. Tell me when you're ready." : response.reply)
         case .resume:
             await say(response.reply.isEmpty ? "Welcome back." : response.reply)
             await resume()
@@ -648,14 +646,14 @@ final class CheckInMorningModel {
         }
     }
 
-    /// "Apple Health has 180.8. Use that, or tell me the number." (Oct 27 rehearsal: he wants to say it.)
+    /// "Apple Health says 180.8. Use that, or say the number." (Oct 27 rehearsal: he wants to say it.)
     private func offerWeight(_ known: String) async {
         offeredWeight = known
         awaitingWeightReading = false
         await ask(Self.weightOffer(known))
     }
 
-    static func weightOffer(_ known: String) -> String { "Apple Health has \(known). Use that, or tell me the number." }
+    static func weightOffer(_ known: String) -> String { "Apple Health says \(known). Use that, or say the number." }
 
     /// After an answer: the next pending step or question, by the draft, never by the model.
     private func advance() async {

@@ -106,19 +106,27 @@ struct SettingsView: View {
                 Text(AirPodsMic.shared.notice ?? "Off: AirPods only play, and the DJI receiver or the iPhone mic listens. On: AirPods record at full quality where iOS 26 supports it; if they can only do call quality, Setecho switches back by itself.")
                     .font(.footnote).secondaryText()
                 CardDivider()
-                Text("The voice for sessions. In the check-in it only fills in when the natural voice is slow.").font(.subheadline).secondaryText()
+                Text("The voice Setecho speaks with, everywhere.").font(.subheadline).secondaryText()
                 Picker("Voice", selection: $settings.voiceIdentifier) {
-                    Text("Best installed").tag("")
+                    Text(AudioService.defaultVoice == nil ? "Best installed" : "Evan (Enhanced)").tag("")
                     ForEach(AudioService.availableVoices(), id: \.identifier) { voice in
                         Text("\(voice.name) · \(qualityName(voice.quality))").tag(voice.identifier)
                     }
                 }
                 .pickerStyle(.menu)
                 .tint(Theme.cobalt)
-                if !AudioService.hasNaturalVoice {
-                    Text("For a better session voice, download a premium one in Settings → Accessibility → Spoken Content → Voices.")
+                if AudioService.defaultVoice == nil {
+                    Text("Download Evan (Enhanced): Settings → Accessibility → Read & Speak → Voices → English")
                         .font(.footnote).secondaryText()
                 }
+                CardDivider()
+                HStack {
+                    Text("Speed").font(.subheadline).foregroundStyle(Theme.navy)
+                    Spacer()
+                    Text(String(format: "%.2f", settings.voiceRate)).font(.subheadline).monospacedDigit().secondaryText()
+                }
+                Slider(value: $settings.voiceRate, in: SpokenText.rateRange, step: 0.01).tint(Theme.cobalt)
+                LinkButton(title: "Play sample", chevron: .none) { VoiceSample.play() }
             }
             SectionCard("Behind the scenes") {
                 Toggle("Filming mode", isOn: $settings.filmingMode)
@@ -176,5 +184,17 @@ private struct StepField: View {
             .fixedSize()
         }
         .frame(minHeight: 44)
+    }
+}
+
+/// "Play sample": one check-in line in the chosen voice and speed, the way every line is said.
+@MainActor
+private enum VoiceSample {
+    static let synth = AVSpeechSynthesizer()
+
+    static func play() {
+        synth.stopSpeaking(at: .immediate)
+        synth.speak(SpokenText.utterance("Apple Health says 180.8. Use that, or say the number.", voice: AudioService.preferredVoice(),
+                                           rate: Settings.shared.voiceRate))
     }
 }

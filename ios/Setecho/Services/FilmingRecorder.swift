@@ -7,8 +7,7 @@ import UIKit
 /// the athlete's utterances saved as its WAV, each stamped from one clock; one SRT captions file
 /// per check-in or session; a slate at the start. Everything stays on the phone under
 /// media/filming/<take>/ and is exported by AirDrop from History. It never changes timing: the
-/// system voice is rendered to a file off the speaking path, and the natural voice's cached MP3
-/// is copied as received.
+/// line's pre-rendered file is copied as played, and any other line is rendered off the speaking path.
 @MainActor
 @Observable
 final class FilmingRecorder {
@@ -43,14 +42,15 @@ final class FilmingRecorder {
         save()
     }
 
-    /// A line Setecho spoke. With `audio` the natural voice's MP3 is copied; without it the system
-    /// voice renders the same utterance to a file, off the speaking path.
+    /// A line Setecho spoke. With `audio` its pre-rendered file is copied as played; without it the
+    /// same utterance is rendered to a file, off the speaking path.
     func spoke(_ text: String, at now: Date = .now, audio: URL? = nil, voice: AVSpeechSynthesisVoice? = nil) {
+        let rate = Settings.shared.voiceRate
         index += 1
         let name = String(format: "%03d-setecho", index)
         var line = Line(at: stamp(now), duration: nil, speaker: "setecho", text: text, file: nil)
         if let audio {
-            let dest = directory.appendingPathComponent("\(name).mp3")
+            let dest = directory.appendingPathComponent("\(name).\(audio.pathExtension)")
             try? FileManager.default.copyItem(at: audio, to: dest)
             line.file = dest.lastPathComponent
             if let player = try? AVAudioPlayer(contentsOf: dest) { line.duration = player.duration }
@@ -64,7 +64,7 @@ final class FilmingRecorder {
         let position = lines.count - 1
         save()
         Task.detached(priority: .utility) {
-            let seconds = await Self.render(text: text, voice: voice, to: dest)
+            let seconds = await SpokenText.render(text, voice: voice, rate: rate, to: dest)
             await MainActor.run {
                 if self.lines.indices.contains(position) { self.lines[position].duration = seconds }
                 self.save()
@@ -86,36 +86,6 @@ final class FilmingRecorder {
         if let i = lines.lastIndex(where: { $0.speaker == "athlete" && $0.text.isEmpty }) {
             lines[i].text = transcript
             save()
-        }
-    }
-
-    /// Render the utterance with the same voice to a CAF file; returns its seconds.
-    nonisolated private static func render(text: String, voice: AVSpeechSynthesisVoice?, to url: URL) async -> TimeInterval? {
-        await withCheckedContinuation { continuation in
-            let synth = AVSpeechSynthesizer()
-            let utterance = AVSpeechUtterance(string: text)
-            utterance.voice = voice
-            var file: AVAudioFile?
-            var frames: AVAudioFramePosition = 0
-            var rate: Double = 0
-            var resumed = false
-            synth.write(utterance) { buffer in
-                guard let pcm = buffer as? AVAudioPCMBuffer else { return }
-                if pcm.frameLength == 0 {
-                    if !resumed {
-                        resumed = true
-                        continuation.resume(returning: rate > 0 ? Double(frames) / rate : nil)
-                    }
-                    return
-                }
-                if file == nil {
-                    file = try? AVAudioFile(forWriting: url, settings: pcm.format.settings)
-                    rate = pcm.format.sampleRate
-                }
-                try? file?.write(from: pcm)
-                frames += AVAudioFramePosition(pcm.frameLength)
-            }
-            _ = synth
         }
     }
 

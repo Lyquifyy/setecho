@@ -186,9 +186,7 @@ final class AudioService {
                 lastError = "Duck: \(error.localizedDescription)"
             }
         }
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = Self.preferredVoice()
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        let utterance = SpokenText.utterance(text, voice: Self.preferredVoice(), rate: Settings.shared.voiceRate)
         await withCheckedContinuation { continuation in
             speechContinuation = continuation
             synth.speak(utterance)
@@ -211,9 +209,10 @@ final class AudioService {
     }
 
     /// One voice everywhere (HANDOFF.md §7, The spotter voice): the athlete's pick from Settings,
-    /// else the best installed English voice, premium first, then enhanced. Never the coach's.
+    /// else Evan (Enhanced), else the best installed English voice, premium first. Never the coach's.
     static func preferredVoice(identifier: String = Settings.shared.voiceIdentifier) -> AVSpeechSynthesisVoice? {
         if !identifier.isEmpty, let chosen = AVSpeechSynthesisVoice(identifier: identifier) { return chosen }
+        if let evan = defaultVoice { return evan }
         let english = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("en") }
         let ranked = english.sorted { a, b in
             if a.quality != b.quality { return a.quality.rawValue > b.quality.rawValue }
@@ -231,9 +230,13 @@ final class AudioService {
         }
     }
 
-    /// True when no premium or enhanced voice is installed: first run suggests downloading one.
-    static var hasNaturalVoice: Bool {
-        AVSpeechSynthesisVoice.speechVoices().contains { $0.language.hasPrefix("en") && $0.quality != .default }
+    /// The default voice: Evan (Enhanced), found by name (usually com.apple.voice.enhanced.en-US.Evan),
+    /// US English first. Nil until it is downloaded; Settings says where.
+    static var defaultVoice: AVSpeechSynthesisVoice? {
+        AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.name == "Evan" && $0.quality == .enhanced && $0.language.hasPrefix("en") }
+            .sorted { ($0.language == "en-US" ? 0 : 1) < ($1.language == "en-US" ? 0 : 1) }
+            .first
     }
 
     /// Play one audio file (a coach cue) with the music ducked, then restore mixing. Serialized
@@ -276,7 +279,7 @@ final class AudioService {
         synth.stopSpeaking(at: .immediate)
     }
 
-    /// Duck the music before a natural-voice line plays through its own engine, and restore after.
+    /// Duck the music before a pre-rendered line plays through its own engine, and restore after.
     func duck() async {
         while isSpeaking { try? await Task.sleep(for: .milliseconds(20)) }
         isSpeaking = true
