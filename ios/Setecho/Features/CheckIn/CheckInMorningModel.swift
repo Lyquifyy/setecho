@@ -58,14 +58,24 @@ struct CheckInMorningFlow: Equatable {
         return groups
     }
 
+    /// A weight he said himself this morning counts as done without a confirmation.
+    private func spokenWeight(draft: CheckInDraft?) -> Bool {
+        guard let weightField, let answer = draft?.answers.first(where: { $0.fieldId == weightField.id }) else { return false }
+        return answer.provenance.contains { $0.source.hasPrefix("You said") }
+    }
+
     func isAnswered(_ field: FieldSpec?, draft: CheckInDraft?) -> Bool {
         guard let field, let answer = draft?.answers.first(where: { $0.fieldId == field.id }) else { return false }
         return answer.state == .filled || answer.state == .confirmed
     }
 
-    /// Where to pick up: the first step with something still pending.
+    /// Where to pick up: the first step with something still pending. The weight is done only once
+    /// he confirms Apple Health's number or says his own; a value filled from data is offered first.
     func nextStep(draft: CheckInDraft?, photosTakenToday: Bool) -> CheckInMorningStep {
-        if weightField != nil, !isAnswered(weightField, draft: draft) { return .weight }
+        if let weightField {
+            let state = draft?.answers.first { $0.fieldId == weightField.id }?.state
+            if state != .confirmed, !(state == .filled && spokenWeight(draft: draft)) { return .weight }
+        }
         if glucoseField != nil, !isAnswered(glucoseField, draft: draft) { return .glucose }
         if !photosTakenToday { return .photos }
         if !questionGroups(draft: draft).isEmpty { return .questions }
@@ -130,6 +140,8 @@ final class CheckInMorningModel {
     var showReview = false
     private(set) var pendingForCoach: String?
     private(set) var awaitingWeightReading = false
+    /// Apple Health's weigh-in on offer: a yes takes it, a number replaces it, a no asks for the reading.
+    private(set) var offeredWeight: String?
     private(set) var questionIndex = 0
     /// A fresh rehearsal: today's photo set is set aside until a new one is taken.
     private var ignorePhotosToday = false
@@ -211,7 +223,7 @@ final class CheckInMorningModel {
         TurnTimings.shared.opened()
         Task { [api] in _ = try? await api.health() } // warm the backend before the first turn
         if fresh {
-            coordinator.discardDraft()
+            coordinator.resetSpokenAnswers()
             ignorePhotosToday = true
         }
         // The draft (Apple Health, the log, Spark for the notes) takes seconds: build it under the
@@ -281,10 +293,8 @@ final class CheckInMorningModel {
         switch step {
         case .weight:
             if !coordinator.weightMissingToday, let known = coordinator.weightTodayText {
-                // Today's weigh-in is already in Apple Health: say it and move on.
-                if let field = flow.weightField { coordinator.set(field.id, text: known, state: .filled) }
-                await say("\(known), got it.")
-                await resume()
+                // Today's weigh-in is in Apple Health: offer it; he can say the number instead.
+                await offerWeight(known)
                 return
             }
             awaitingWeightReading = false
@@ -406,6 +416,26 @@ final class CheckInMorningModel {
                 return
             }
         }
+        if step == .weight, let known = offeredWeight {
+            if CheckInMorningFlow.isYes(response.transcript) {
+                offeredWeight = nil
+                if let field = flow.weightField {
+                    coordinator.set(field.id, text: known, state: .confirmed,
+                                    provenance: [Provenance(source: "Apple Health", detail: "This morning's weigh-in, \(known) lb")])
+                }
+                echo = "Weight → \(known) lb · Apple Health"
+                await say("Got it.")
+                await resume()
+                return
+            }
+            if CheckInMorningFlow.isNo(response.transcript) {
+                offeredWeight = nil
+                awaitingWeightReading = true
+                await ask("What did it say?")
+                return
+            }
+            if response.intent == .answer || response.intent == .correction, !response.answers.isEmpty { offeredWeight = nil }
+        }
         if step == .questions, let group = currentGroup, group.count == 1, let drafted = coordinator.answer(for: group[0]), drafted.state == .drafted {
             if CheckInMorningFlow.isYes(response.transcript) {
                 coordinator.confirm(group[0].id)
@@ -486,10 +516,7 @@ final class CheckInMorningModel {
         case .weight:
             await coordinator.refreshWeightToday()
             if !coordinator.weightMissingToday, let known = coordinator.weightTodayText {
-                if let field = flow.weightField { coordinator.set(field.id, text: known, state: .filled) }
-                echo = "Weight → \(known) lb · Apple Health"
-                await say("\(known), got it.")
-                await resume()
+                await offerWeight(known)
             } else {
                 awaitingWeightReading = true
                 await ask("What did it say?")
@@ -503,6 +530,13 @@ final class CheckInMorningModel {
             await say("Go ahead.")
             isListening = true
         }
+    }
+
+    /// "Apple Health has 180.8. Use that, or tell me the number." (Oct 27 rehearsal: he wants to say it.)
+    private func offerWeight(_ known: String) async {
+        offeredWeight = known
+        awaitingWeightReading = false
+        await ask("Apple Health has \(known). Use that, or tell me the number.")
     }
 
     /// After an answer: the next pending step or question, by the draft, never by the model.

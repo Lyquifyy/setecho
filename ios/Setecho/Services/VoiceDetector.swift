@@ -11,9 +11,10 @@ final class VoiceDetector {
         /// 13 dB over the room and 350 ms of it before a turn starts: a dog at the water bowl is not a turn.
         var thresholdAboveFloorDB = 13.0
         var onsetMs = 350
-        var hangoverMs = 700
+        /// 1.2 s of quiet ends a turn: a breath mid-answer is not the end (Oct 27 rehearsal: he felt cut off at 700 ms).
+        var hangoverMs = 1200
         var preRollMs = 300
-        var maxUtteranceSeconds = 10.0
+        var maxUtteranceSeconds = 25.0
         /// A floor this quiet means the mic is dead or muted; the threshold still needs a sane minimum.
         var minimumThresholdDB = -45.0
     }

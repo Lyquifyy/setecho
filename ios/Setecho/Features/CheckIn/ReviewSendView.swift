@@ -1,3 +1,5 @@
+import AVFoundation
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -285,7 +287,14 @@ struct ReviewSendView: View {
         exporting = true
         defer { exporting = false }
         for pick in picks where videoFiles[pick.setId] == nil {
-            guard let set = periodSessions.flatMap(\.sets).first(where: { $0.id == pick.setId }), let clip = set.clipFile else { continue }
+            let clip: String
+            if let source = pick.sourceFile {
+                clip = source
+            } else if let set = periodSessions.flatMap(\.sets).first(where: { $0.id == pick.setId }), let file = set.clipFile {
+                clip = file
+            } else {
+                continue
+            }
             let url = store.mediaDirectory.appendingPathComponent(clip)
             if let name = try? await VideoCropper.export(clip: url, pick: pick, into: store.mediaDirectory) { videoFiles[pick.setId] = name }
         }
@@ -302,7 +311,8 @@ struct VideoPickRow: View {
             SetThumbnail(width: 96, height: 58)
             VStack(alignment: .leading, spacing: Theme.Space.xxs) {
                 Text(pick.caption).font(.body.weight(.semibold)).foregroundStyle(Theme.navy)
-                Text("\(Format.duration(pick.cropEnd - pick.cropStart)) · just the reps").font(.footnote).monospacedDigit().secondaryText()
+                Text("\(Format.duration(pick.cropEnd - pick.cropStart)) · \(pick.sourceFile == nil ? "just the reps" : "from your camera roll")")
+                    .font(.footnote).monospacedDigit().secondaryText()
             }
             Spacer()
             LinkButton(title: "Swap", chevron: .none, action: onSwap)
@@ -314,13 +324,26 @@ struct VideoPickRow: View {
 /// "Pick two": the period's sets by exercise. Tapping one swaps it in; two at most, two movements.
 private struct VideoPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(Store.self) private var store
     let sessions: [Session]
     @Binding var picks: [VideoPick]
     let names: (String) -> String
+    @State private var rollItem: PhotosPickerItem?
+    @State private var importing = false
+    @State private var importError: String?
 
     var body: some View {
         ScreenScaffold {
             LinkButton(title: "Done", chevron: .leading) { dismiss() }
+            SectionCard("From your camera roll") {
+                Text("A video you filmed yourself goes out whole, at 720p. It counts as one of the two.").font(.footnote).secondaryText()
+                PhotosPicker(selection: $rollItem, matching: .videos) {
+                    Text(importing ? "Importing…" : "Choose a video").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.cobalt)
+                        .frame(minHeight: 44)
+                }
+                .disabled(importing)
+                if let importError { Text(importError).font(.footnote).foregroundStyle(Theme.navy) }
+            }
             TitleBlock(title: "Pick two", subtitle: "Two movements you'd like his eyes on. Each is cropped to the reps.")
             ForEach(sessions.sorted { $0.startedAt > $1.startedAt }) { session in
                 let sets = session.sets.filter { $0.clipFile != nil && !$0.isWarmup }
@@ -346,6 +369,29 @@ private struct VideoPickerSheet: View {
                     }
                 }
             }
+        }
+        .onChange(of: rollItem) { _, item in
+            if let item { Task { await importFromRoll(item) } }
+        }
+    }
+
+    /// Copy the chosen video into the media folder and add it as a pick, whole.
+    private func importFromRoll(_ item: PhotosPickerItem) async {
+        importing = true
+        defer { importing = false; rollItem = nil }
+        do {
+            guard let movie = try await item.loadTransferable(type: MovieFile.self) else { return }
+            let name = "roll-\(UUID().uuidString.prefix(8)).mov"
+            let destination = store.mediaDirectory.appendingPathComponent(name)
+            try? FileManager.default.removeItem(at: destination)
+            try FileManager.default.moveItem(at: movie.url, to: destination)
+            let seconds = (try? await AVURLAsset(url: destination).load(.duration).seconds) ?? 0
+            if picks.count >= 2 { picks.removeFirst() }
+            picks.append(VideoPick(setId: UUID(), caption: "From your camera roll · \(Format.shortDate(.now))", cropStart: 0,
+                                   cropEnd: max(0.5, seconds), sourceFile: name))
+            importError = nil
+        } catch {
+            importError = "Couldn't import that video: \(error.localizedDescription)"
         }
     }
 
@@ -381,4 +427,18 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+/// A video from the Photos picker, copied to a temporary file.
+struct MovieFile: Transferable {
+    let url: URL
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .movie) { SentTransferredFile($0.url) } importing: { received in
+            let copy = FileManager.default.temporaryDirectory.appendingPathComponent("roll-\(UUID().uuidString.prefix(8)).mov")
+            try? FileManager.default.removeItem(at: copy)
+            try FileManager.default.copyItem(at: received.file, to: copy)
+            return MovieFile(url: copy)
+        }
+    }
 }

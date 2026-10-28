@@ -7,7 +7,7 @@ import HealthKit
 /// sample each morning in pounds; sleep per night as the asleep stages ending that morning;
 /// LISS as walking, elliptical, stair climbing or cycling workouts.
 @MainActor
-final class HealthService {
+final class HealthService: @unchecked Sendable {
     struct DayReading: Equatable {
         var date: Date
         var kcal: Double?
@@ -67,7 +67,21 @@ final class HealthService {
         return ((try? await query.result(for: store))?.isEmpty == false)
     }
 
-    /// Readings for every day from `start` (midnight) up to `end`.
+    /// Today's weigh-in in pounds, if there is one since `hour`: the one value Check-in morning offers.
+    func weighInLb(sinceHour hour: Int, now: Date = .now) async -> Double? {
+        let since = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: now) ?? calendar.startOfDay(for: now)
+        let query = HKSampleQueryDescriptor(
+            predicates: [.quantitySample(type: HKQuantityType(.bodyMass), predicate: HKQuery.predicateForSamples(withStart: since, end: now))],
+            sortDescriptors: [SortDescriptor(\.startDate, order: .reverse)], limit: 1
+        )
+        return (try? await query.result(for: store))?.first?.quantity.doubleValue(for: .pound())
+    }
+
+    private struct SumRow: Sendable { var identifier: String; var day: Date; var value: Double; var sources: [String] }
+    private struct SampleRow: Sendable { var start: Date; var end: Date; var value: Double; var source: String; var name: String }
+
+    /// Readings for every day from `start` (midnight) up to `end`. The eight queries run at the
+    /// same time; the read took longest in the Oct 27 rehearsal when they ran one after another.
     func read(from start: Date, to end: Date) async throws -> Week {
         let startDay = calendar.startOfDay(for: start)
         let dayCount = max(1, (calendar.dateComponents([.day], from: startDay, to: end).day ?? 0) + 1)
@@ -81,77 +95,98 @@ final class HealthService {
             return days.indices.contains(d) ? d : nil
         }
 
-        for (identifier, unit, label) in Self.dailySums {
-            let descriptor = HKStatisticsCollectionQueryDescriptor(
-                predicate: .quantitySample(
-                    type: HKQuantityType(identifier),
-                    predicate: HKQuery.predicateForSamples(withStart: startDay, end: end)
-                ),
-                options: [.cumulativeSum, .separateBySource],
-                anchorDate: startDay,
-                intervalComponents: DateComponents(day: 1)
-            )
-            for stats in try await descriptor.result(for: store).statistics() {
-                guard let i = index(stats.startDate), let sum = stats.sumQuantity() else { continue }
-                let value = sum.doubleValue(for: unit)
-                switch identifier {
-                case .dietaryEnergyConsumed: days[i].kcal = value
-                case .dietaryProtein: days[i].proteinG = value
-                case .dietaryCarbohydrates: days[i].carbsG = value
-                case .dietaryFatTotal: days[i].fatG = value
-                case .stepCount: days[i].steps = value
-                default: break
-                }
-                for source in stats.sources ?? [] { sources[label, default: []].insert(source.name) }
-            }
-        }
+        async let sumRows = readSums(startDay: startDay, end: end)
+        async let weightRows = readWeights(startDay: startDay, end: end)
+        async let sleepRows = readSleep(startDay: startDay, end: end)
+        async let workoutRows = readWorkouts(startDay: startDay, end: end)
+        let (sums, weights, sleeps, workouts) = try await (sumRows, weightRows, sleepRows, workoutRows)
 
-        let weight = HKSampleQueryDescriptor(
-            predicates: [.quantitySample(
-                type: HKQuantityType(.bodyMass),
-                predicate: HKQuery.predicateForSamples(withStart: startDay, end: end)
-            )],
+        for row in sums {
+            guard let i = index(row.day) else { continue }
+            switch HKQuantityTypeIdentifier(rawValue: row.identifier) {
+            case .dietaryEnergyConsumed: days[i].kcal = row.value
+            case .dietaryProtein: days[i].proteinG = row.value
+            case .dietaryCarbohydrates: days[i].carbsG = row.value
+            case .dietaryFatTotal: days[i].fatG = row.value
+            case .stepCount: days[i].steps = row.value
+            default: break
+            }
+            let label = Self.dailySums.first { $0.0.rawValue == row.identifier }?.2 ?? row.identifier
+            for source in row.sources { sources[label, default: []].insert(source) }
+        }
+        for row in weights {
+            guard let i = index(row.start) else { continue }
+            if days[i].weighInLb == nil { days[i].weighInLb = row.value }
+            sources["weight", default: []].insert(row.source)
+        }
+        for row in sleeps {
+            guard let i = index(row.end) else { continue }
+            days[i].sleepHours = (days[i].sleepHours ?? 0) + row.end.timeIntervalSince(row.start) / 3600
+            sources["sleep", default: []].insert(row.source)
+        }
+        for row in workouts {
+            guard let i = index(row.start) else { continue }
+            days[i].liss.append(LissSession(type: row.name, minutes: Int(row.value / 60)))
+            sources["workouts", default: []].insert(row.source)
+        }
+        return Week(days: days, sources: sources.mapValues { $0.sorted().joined(separator: ", ") })
+    }
+
+    private func readSums(startDay: Date, end: Date) async throws -> [SumRow] {
+        try await withThrowingTaskGroup(of: [SumRow].self) { group in
+            for (identifier, unit, _) in Self.dailySums {
+                group.addTask { [store] in
+                    let descriptor = HKStatisticsCollectionQueryDescriptor(
+                        predicate: .quantitySample(type: HKQuantityType(identifier), predicate: HKQuery.predicateForSamples(withStart: startDay, end: end)),
+                        options: [.cumulativeSum, .separateBySource], anchorDate: startDay, intervalComponents: DateComponents(day: 1)
+                    )
+                    return try await descriptor.result(for: store).statistics().compactMap { stats -> SumRow? in
+                        guard let sum = stats.sumQuantity() else { return nil }
+                        return SumRow(identifier: identifier.rawValue, day: stats.startDate, value: sum.doubleValue(for: unit),
+                                      sources: (stats.sources ?? []).map(\.name))
+                    }
+                }
+            }
+            var rows: [SumRow] = []
+            for try await part in group { rows += part }
+            return rows
+        }
+    }
+
+    private func readWeights(startDay: Date, end: Date) async throws -> [SampleRow] {
+        let query = HKSampleQueryDescriptor(
+            predicates: [.quantitySample(type: HKQuantityType(.bodyMass), predicate: HKQuery.predicateForSamples(withStart: startDay, end: end))],
             sortDescriptors: [SortDescriptor(\.startDate, order: .forward)]
         )
-        for sample in try await weight.result(for: store) {
-            guard let i = index(sample.startDate) else { continue }
-            if days[i].weighInLb == nil {
-                days[i].weighInLb = sample.quantity.doubleValue(for: .pound())
-            }
-            sources["weight", default: []].insert(sample.sourceRevision.source.name)
+        return try await query.result(for: store).map {
+            SampleRow(start: $0.startDate, end: $0.endDate, value: $0.quantity.doubleValue(for: .pound()), source: $0.sourceRevision.source.name, name: "")
         }
+    }
 
+    private func readSleep(startDay: Date, end: Date) async throws -> [SampleRow] {
         let asleep: Set<Int> = [
-            HKCategoryValueSleepAnalysis.asleepCore.rawValue,
-            HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
-            HKCategoryValueSleepAnalysis.asleepREM.rawValue,
-            HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue,
+            HKCategoryValueSleepAnalysis.asleepCore.rawValue, HKCategoryValueSleepAnalysis.asleepDeep.rawValue,
+            HKCategoryValueSleepAnalysis.asleepREM.rawValue, HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue,
         ]
         let sleepStart = calendar.date(byAdding: .hour, value: -12, to: startDay) ?? startDay
-        let sleep = HKSampleQueryDescriptor(
-            predicates: [.categorySample(
-                type: HKCategoryType(.sleepAnalysis),
-                predicate: HKQuery.predicateForSamples(withStart: sleepStart, end: end)
-            )],
+        let query = HKSampleQueryDescriptor(
+            predicates: [.categorySample(type: HKCategoryType(.sleepAnalysis), predicate: HKQuery.predicateForSamples(withStart: sleepStart, end: end))],
             sortDescriptors: []
         )
-        for sample in try await sleep.result(for: store) where asleep.contains(sample.value) {
-            guard let i = index(sample.endDate) else { continue }
-            days[i].sleepHours = (days[i].sleepHours ?? 0) + sample.endDate.timeIntervalSince(sample.startDate) / 3600
-            sources["sleep", default: []].insert(sample.sourceRevision.source.name)
+        return try await query.result(for: store).filter { asleep.contains($0.value) }.map {
+            SampleRow(start: $0.startDate, end: $0.endDate, value: 0, source: $0.sourceRevision.source.name, name: "")
         }
+    }
 
-        let workouts = HKSampleQueryDescriptor(
+    private func readWorkouts(startDay: Date, end: Date) async throws -> [SampleRow] {
+        let query = HKSampleQueryDescriptor(
             predicates: [.workout(HKQuery.predicateForSamples(withStart: startDay, end: end))],
             sortDescriptors: [SortDescriptor(\.startDate, order: .forward)]
         )
-        for workout in try await workouts.result(for: store) where Self.lissTypes.contains(workout.workoutActivityType) {
-            guard let i = index(workout.startDate) else { continue }
-            days[i].liss.append(LissSession(type: Self.name(workout.workoutActivityType), minutes: Int(workout.duration / 60)))
-            sources["workouts", default: []].insert(workout.sourceRevision.source.name)
+        return try await query.result(for: store).filter { Self.lissTypes.contains($0.workoutActivityType) }.map {
+            SampleRow(start: $0.startDate, end: $0.endDate, value: $0.duration, source: $0.sourceRevision.source.name,
+                      name: Self.name($0.workoutActivityType))
         }
-
-        return Week(days: days, sources: sources.mapValues { $0.sorted().joined(separator: ", ") })
     }
 
     static func name(_ type: HKWorkoutActivityType) -> String {

@@ -29,11 +29,11 @@ private func detector() -> VoiceDetector {
     #expect(d.noiseFloorDB != nil && d.noiseFloorDB! < -50)
     out += d.process(tone(seconds: 1.0, amplitude: 0.3))
     #expect(out.isEmpty && d.isSpeaking)         // still speaking: no hangover yet
-    out += d.process(noise(seconds: 1.0, amplitude: 0.001))
+    out += d.process(noise(seconds: 1.5, amplitude: 0.001))
     #expect(out.count == 1 && !d.isSpeaking)
     let u = out[0]
-    // 300 ms pre-roll + 1 s word + 700 ms hangover.
-    #expect(abs(u.seconds - 2.0) < 0.05)
+    // 300 ms pre-roll + 1 s word + 1.2 s hangover.
+    #expect(abs(u.seconds - 2.5) < 0.05)
     #expect(u.peakDB > -15)
 }
 
@@ -45,12 +45,12 @@ private func detector() -> VoiceDetector {
     #expect(out.isEmpty && !d.isSpeaking)
 }
 
-@Test func longSpeechIsCappedAtTenSeconds() {
+@Test func longSpeechIsCappedAtTwentyFiveSeconds() {
     let d = detector()
     _ = d.process(noise(seconds: 2.5, amplitude: 0.001))
-    let out = d.process(tone(seconds: 12, amplitude: 0.3))
+    let out = d.process(tone(seconds: 27, amplitude: 0.3))
     #expect(out.count == 1)
-    #expect(abs(out[0].seconds - 10.0) < 0.05)
+    #expect(abs(out[0].seconds - 25.0) < 0.05)
 }
 
 @Test func aNoisyGymRaisesTheThreshold() {
@@ -61,11 +61,11 @@ private func detector() -> VoiceDetector {
     #expect(loud.thresholdDB! > quiet.thresholdDB! + 20)
     // A word at the quiet room's level is not heard over gym noise…
     var out = loud.process(tone(seconds: 1.0, amplitude: 0.02))
-    out += loud.process(noise(seconds: 1.0, amplitude: 0.05))
+    out += loud.process(noise(seconds: 1.5, amplitude: 0.05))
     #expect(out.isEmpty)
     // …but a louder one is.
     out = loud.process(tone(seconds: 1.0, amplitude: 0.5))
-    out += loud.process(noise(seconds: 1.0, amplitude: 0.05))
+    out += loud.process(noise(seconds: 1.5, amplitude: 0.05))
     #expect(out.count == 1)
 }
 

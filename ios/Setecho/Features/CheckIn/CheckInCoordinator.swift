@@ -190,6 +190,7 @@ final class CheckInCoordinator {
 
     /// Today's weigh-in from Apple Health, as the check-in writes it ("180.8"), once it is in.
     var weightTodayText: String? {
+        if let lb = todayWeighInLb { return Format.number((lb * 10).rounded() / 10) }
         guard let facts, let today = facts.daily.last(where: { $0.weighInLb != nil && $0.date == DayKey.string(.now) }),
               let lb = today.weighInLb else { return nil }
         return Format.number((lb * 10).rounded() / 10)
@@ -208,15 +209,33 @@ final class CheckInCoordinator {
     private(set) var weightMissingToday = false
     static let weightMissingMessage = "Open Withings once to sync today's weight"
 
-    /// Re-queried when the wrap-up starts and when Setecho comes back to the foreground.
+    /// Today's weigh-in from Apple Health, read on its own (one query) so a step change never
+    /// rebuilds the whole draft: before Oct 27 every resume re-read the week and called Spark.
+    private(set) var todayWeighInLb: Double?
+
+    /// Re-queried at every step of Check-in morning and when Setecho comes back to the foreground.
     func refreshWeightToday() async {
         guard health.isAvailable else { weightMissingToday = false; return }
-        weightMissingToday = await !health.hasWeighIn(sinceHour: 4)
-        if !weightMissingToday, let draft, let template,
-           let field = template.fields.first(where: { $0.source.key == .currentWeight }),
-           draft.answers.first(where: { $0.fieldId == field.id })?.state != .confirmed {
-            await buildDraft()
+        todayWeighInLb = await health.weighInLb(sinceHour: 4)
+        weightMissingToday = todayWeighInLb == nil
+    }
+
+    /// A rehearsal from the top without a rebuild: everything spoken goes back to unanswered, the
+    /// weight is offered again, the data-filled fields and Spark's drafts stay, the photos are set aside.
+    func resetSpokenAnswers() {
+        guard var current = draft, let template else { return }
+        let spoken = Set(template.fields.filter { $0.source.type == .voice || $0.source.key == .currentWeight }.map(\.id))
+        current.answers = current.answers.map { answer in
+            guard spoken.contains(answer.fieldId) || answer.provenance.contains(where: { $0.source.hasPrefix("You said") }) else { return answer }
+            var reset = answer
+            reset.text = ""
+            reset.state = .missing
+            reset.provenance = []
+            return reset
         }
+        current.photoSetId = nil
+        draft = current
+        store.upsert(checkIn: current)
     }
 
     /// The last wrap-up question when the weigh-in never arrived: "Today's weight?"

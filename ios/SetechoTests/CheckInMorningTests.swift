@@ -38,7 +38,10 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     #expect(weight.id.contains("weight") && glucose.label.lowercased().contains("glucose"))
     var draft = CheckInDraft(id: UUID(), weekStart: .now, weekEnd: .now, answers: [], photoSetId: nil, sentAt: nil)
     #expect(flow.nextStep(draft: draft, photosTakenToday: false) == .weight)
-    draft.answers.append(answer(weight.id, "180.8"))
+    draft.answers.append(FieldAnswer(fieldId: weight.id, text: "180.8", state: .filled,
+                                     provenance: [Provenance(source: "Withings via Apple Health", detail: "180.8")]))
+    #expect(flow.nextStep(draft: draft, photosTakenToday: false) == .weight)   // filled from Apple Health: offered first
+    draft.answers[draft.answers.count - 1].state = .confirmed
     #expect(flow.nextStep(draft: draft, photosTakenToday: false) == .glucose)
     draft.answers.append(answer(glucose.id, "91"))
     #expect(flow.nextStep(draft: draft, photosTakenToday: false) == .photos)
@@ -74,6 +77,27 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     #expect(!MorningStart.shouldStart(schedule: weekly, lastSentAt: nil, lastStartedDay: "", now: wednesday, calendar: cal))
     let late = cal.date(bySettingHour: 8, minute: 45, second: 0, of: thursday)!
     #expect(!MorningStart.shouldStart(schedule: weekly, lastSentAt: nil, lastStartedDay: "", now: late, calendar: cal))
+}
+
+@Test @MainActor func aFreshRehearsalResetsWhatWasSpokenAndKeepsTheData() async throws {
+    let store = makeStore()
+    store.saveTemplate(try template())
+    let flow = CheckInMorningFlow(template: try template())
+    let weight = try #require(flow.weightField)
+    let energy = try #require(flow.template.fields.first { $0.id.contains("energy") })
+    let dataField = try #require(flow.template.fields.first { $0.source.type != .voice && $0.id != weight.id && $0.source.type != .photo })
+    var spokenEnergy = answer(energy.id, "7/10")
+    spokenEnergy.provenance = [Provenance(source: "You said · 2026-10-27", detail: "seven")]
+    let fromData = FieldAnswer(fieldId: dataField.id, text: "2,340", state: .filled,
+                               provenance: [Provenance(source: "Apple Health", detail: "the week")])
+    store.upsert(checkIn: currentDraft(answers: [answer(weight.id, "180.8"), spokenEnergy, fromData]))
+    let coordinator = CheckInCoordinator(store: store)
+    coordinator.resetSpokenAnswers()
+    let answers = try #require(coordinator.draft?.answers)
+    #expect(answers.first { $0.fieldId == energy.id }?.state == .missing)
+    #expect(answers.first { $0.fieldId == weight.id }?.state == .missing)
+    #expect(answers.first { $0.fieldId == dataField.id }?.text == "2,340")
+    #expect(coordinator.draft?.photoSetId == nil)
 }
 
 @Test func theIntroductionNamesTheAthleteTheDayAndWhatIsComing() {

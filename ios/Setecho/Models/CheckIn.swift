@@ -49,6 +49,8 @@ struct VideoPick: Codable, Equatable, Identifiable {
     /// Seconds into the clip: just the reps.
     var cropStart: Double
     var cropEnd: Double
+    /// A video from the camera roll instead of a logged set: the imported file in the media folder, sent whole.
+    var sourceFile: String?
     var id: UUID { setId }
 }
 
