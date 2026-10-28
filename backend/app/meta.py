@@ -84,22 +84,44 @@ def data_url(data: bytes, mime: str) -> str:
     return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
 
 
-def spark_json(system: str, user: UserContent, schema_name: str, schema: dict[str, Any]) -> tuple[dict, Any]:
+def spark_json(
+    system: str,
+    user: UserContent,
+    schema_name: str,
+    schema: dict[str, Any],
+    *,
+    effort: str | None = None,
+    max_tokens: int | None = None,
+) -> tuple[dict, Any]:
     """One Chat Completions call with a strict JSON-schema response.
 
     `user` is plain text, or a content list for image input:
     [{"type": "text", "text": ...}, {"type": "image_url", "image_url": {"url": data_url}}].
     Returns the parsed JSON and the raw response (for usage and ids). Keep `system` and
     `schema` byte-identical across calls so prompt caching applies.
+
+    `effort` ("low") and `max_tokens` keep the quick calls quick (/checkin/turn, /voice/command,
+    /spotter/line). If the server rejects the effort parameter, the call is retried without it.
     """
-    resp = client().chat.completions.create(
-        model=SPARK_MODEL,
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        response_format={
+    kwargs: dict[str, Any] = {
+        "model": SPARK_MODEL,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "response_format": {
             "type": "json_schema",
             "json_schema": {"name": schema_name, "strict": True, "schema": schema},
         },
-    )
+    }
+    if max_tokens is not None:
+        kwargs["max_tokens"] = max_tokens
+    if effort is not None:
+        kwargs["extra_body"] = {"reasoning_effort": effort}
+    try:
+        resp = client().chat.completions.create(**kwargs)
+    except OpenAIError as e:
+        if effort is None or "reasoning" not in str(e).lower():
+            raise
+        kwargs.pop("extra_body", None)
+        resp = client().chat.completions.create(**kwargs)
     content = resp.choices[0].message.content or ""
     return json.loads(content), resp
 

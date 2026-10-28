@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, File, Form, UploadFile
@@ -72,6 +73,10 @@ class TurnResponse(StrictModel):
     answers: list[checkin.FieldAnswer]
     reply: str
     confidence: float
+    timings: dict[str, float] = Field(
+        default_factory=dict, description="Seconds per stage: transcribe, spark, validate"
+    )
+    fastPath: bool = Field(default=False, description="Code answered a plain number; Spark was not called")
 
 
 SYSTEM = (
@@ -205,6 +210,91 @@ def _answer(spec: FieldSpec, a: TurnAnswerOut, transcript: str, when: str) -> ch
 
 
 # ---------------------------------------------------------------------------
+# The number fast path (HANDOFF.md §9, block 1): a plain number for the field just asked
+# ---------------------------------------------------------------------------
+
+_FILLER = re.compile(
+    r"\b(uh|um|it'?s|it was|was|about|like|around|roughly|pounds?|lbs?|lb|out of ten|out of 10|inches|inch|in|and a|"
+    r"and|a|an|the|so|yeah|ok|okay|that'?s|i'?m at|i was|weight|glucose|is|at)\b",
+    re.IGNORECASE,
+)
+_NUMBER_WORDS = (
+    set(voice._UNITS) | set(voice._TENS) | {"hundred", "point", "half", "quarter", "quarters", "three"}
+)
+
+
+def _only_numbers(text: str) -> bool:
+    cleaned = _FILLER.sub(" ", text.lower())
+    cleaned = re.sub(r"[^\w.\s]", " ", cleaned)
+    words = [w for w in cleaned.split() if w.strip(".")]
+    return bool(words) and all(re.fullmatch(r"\d+(?:\.\d+)?", w) or w in _NUMBER_WORDS for w in words)
+
+
+def fast_turn(transcript: str, context: TurnContext) -> TurnResponse | None:
+    """A transcript that is only a number (or the three tape measurements) for the field just
+    asked: code parses it and replies from a template. Everything else goes to Spark."""
+    fields = {f.id: f for f in context.template.fields}
+    asked = fields.get(context.askedFieldId or "")
+    if asked is None or not _only_numbers(transcript):
+        return None
+    when = f"You said · {checkin._mdy(context.askedOn)}" if context.askedOn else "You said"
+    chunks = [
+        c
+        for c in re.split(r"[,;]|\band\b(?!\s+(?:a\s+)?(?:half|quarter|three))", transcript.lower())
+        if c.strip()
+    ]
+    numbers = [voice.parse_number(c) for c in chunks]
+    numbers = [n for n in numbers if n is not None]
+    if asked.kind == "measurement" and "weight" not in asked.label.lower():
+        # The three tape measurements as one question: waist, bicep, thigh, in the order asked.
+        tape = [asked] + [
+            fields[i]
+            for i in context.pending
+            if i in fields and fields[i].kind == "measurement" and i != asked.id
+        ]
+        tape = tape[: len(numbers)]
+        if not numbers:
+            return None
+        answers = [
+            checkin.FieldAnswer(fieldId=f.id, text=f"{_fmt_in(n)} in", state="filled",
+                                provenance=[checkin.Provenance(source=when, detail=transcript)])
+            for f, n in zip(tape, numbers, strict=False)
+        ]  # fmt: skip
+        reply = (
+            ", ".join(f"{_short(f.label)} {_fmt_in(n)}" for f, n in zip(tape, numbers, strict=False)) + "."
+        )
+        return TurnResponse(
+            transcript=transcript,
+            intent="answer",
+            answers=answers,
+            reply=reply,
+            confidence=0.95,
+            fastPath=True,
+        )
+    if len(numbers) != 1:
+        return None
+    n = numbers[0]
+    if asked.kind == "scale10":
+        if not 0 <= n <= 10:
+            return None
+        text = f"{checkin._fmt(n)}/10"
+    else:
+        text = checkin._fmt(n)
+    answer = checkin.FieldAnswer(fieldId=asked.id, text=text, state="filled",
+                                 provenance=[checkin.Provenance(source=when, detail=transcript)])  # fmt: skip
+    return TurnResponse(transcript=transcript, intent="answer", answers=[answer], reply=f"{checkin._fmt(n)}, got it.",
+                        confidence=0.95, fastPath=True)  # fmt: skip
+
+
+def _short(label: str) -> str:
+    lower = label.lower()
+    for part in ("waist", "bicep", "thigh", "calf", "chest", "hips", "arm"):
+        if part in lower:
+            return part.capitalize()
+    return label
+
+
+# ---------------------------------------------------------------------------
 # The call
 # ---------------------------------------------------------------------------
 
@@ -232,9 +322,14 @@ def read_turn(transcript: str, context: TurnContext) -> TurnResponse:
         f"Examples of how the athlete writes:\n{examples}\n"
         f"The athlete said: {transcript!r}"
     )
-    raw, _ = meta.spark_json(SYSTEM, user, "CheckInTurn", schema_for(field_ids))
+    t0 = time.monotonic()
+    raw, _ = meta.spark_json(SYSTEM, user, "CheckInTurn", schema_for(field_ids), effort="low", max_tokens=300)
+    spark_s = time.monotonic() - t0
+    t1 = time.monotonic()
     out = TurnOut.model_validate(raw)
-    return validate_turn(out, transcript, context)
+    response = validate_turn(out, transcript, context)
+    response.timings = {"spark": round(spark_s, 3), "validate": round(time.monotonic() - t1, 3)}
+    return response
 
 
 @router.post("/checkin/turn", response_model=TurnResponse)
@@ -250,11 +345,19 @@ async def checkin_turn(
         audio.check_transcribe_wav(data)
     except ValueError as e:
         raise importing.ImportError_(str(e)) from e
+    t0 = time.monotonic()
     result = await run_in_threadpool(meta.transcribe_wav, data)
+    transcribe_s = round(time.monotonic() - t0, 3)
     transcript = (result.get("transcript") or "").strip()
     if not transcript:
-        return TurnResponse(transcript="", intent="unclear", answers=[], reply=UNCLEAR_REPLY, confidence=0.0)
-    return await run_in_threadpool(read_turn, transcript, ctx)
+        return TurnResponse(transcript="", intent="unclear", answers=[], reply=UNCLEAR_REPLY, confidence=0.0,
+                            timings={"transcribe": transcribe_s})  # fmt: skip
+    if (fast := fast_turn(transcript, ctx)) is not None:
+        fast.timings = {"transcribe": transcribe_s, "spark": 0.0, "validate": 0.0}
+        return fast
+    response = await run_in_threadpool(read_turn, transcript, ctx)
+    response.timings = {"transcribe": transcribe_s, **response.timings}
+    return response
 
 
 def turn_context_json(context: TurnContext) -> str:

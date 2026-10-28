@@ -551,6 +551,15 @@ def build_draft(req: DraftRequest, agent: Any = None) -> CheckInDraft:
             answers.append(FieldAnswer(fieldId=field.id, text=text, state="drafted",
                                        provenance=[Provenance(source=f"You said · {_mdy(n.at[:10])}", detail=n.transcript) for n in notes]))  # fmt: skip
             continue
+        if "goal" in field.label.lower() and req.lastCheckIn is not None:
+            # "Current Goal(s)": drafted from the last check-in's answer and read back for a yes (§7 table).
+            last_answer = next(
+                (a for a in req.lastCheckIn.answers if a.fieldId == field.id and a.text.strip()), None
+            )
+            if last_answer is not None:
+                answers.append(FieldAnswer(fieldId=field.id, text=last_answer.text, state="drafted",
+                                           provenance=[Provenance(source="Last check-in", detail=last_answer.text)]))  # fmt: skip
+                continue
         answers.append(FieldAnswer(fieldId=field.id, text="", state="missing", provenance=[]))
 
     return CheckInDraft(

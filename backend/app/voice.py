@@ -325,7 +325,9 @@ def classify_with_spark(transcript: str, context: SessionContext) -> VoiceIntent
         f"{context.plannedLoadLb or '?'} lb for {context.plannedReps or '?'} reps.\n"
         f"Transcript: {transcript!r}"
     )
-    raw, _ = meta.spark_json(SYSTEM_PROMPT, user, "VoiceIntent", VOICE_INTENT_SCHEMA)
+    raw, _ = meta.spark_json(
+        SYSTEM_PROMPT, user, "VoiceIntent", VOICE_INTENT_SCHEMA, effort="low", max_tokens=160
+    )
     intent = VoiceIntent.model_validate(raw)
     if (
         intent.number is not None

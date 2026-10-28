@@ -318,3 +318,18 @@ def test_request_validation_errors_use_the_error_contract():
     r = TestClient(app).post("/checkin/draft", json={"template": {}})
     assert r.status_code == 422
     assert r.json()["error"].startswith("template.fields") or "facts" in r.json()["error"]
+
+
+def test_current_goals_is_drafted_from_the_last_check_in():
+    goal = next((f for f in TEMPLATE.fields if "goal" in f.label.lower()), None)
+    if goal is None:
+        return  # his form has no goals field
+    last = checkin.CheckInDraft(id="old", weekStart="2026-10-16", weekEnd="2026-10-22",
+                                answers=[checkin.FieldAnswer(fieldId=goal.id, text="Get to 175 by the show", state="filled", provenance=[])])  # fmt: skip
+    a = by_id(checkin.build_draft(request(lastCheckIn=last), agent=lambda r, f: {}))[goal.id]
+    assert (
+        a.text == "Get to 175 by the show"
+        and a.state == "drafted"
+        and a.provenance[0].source == "Last check-in"
+    )
+    assert by_id(checkin.build_draft(request(), agent=lambda r, f: {}))[goal.id].state == "missing"

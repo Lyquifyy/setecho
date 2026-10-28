@@ -80,3 +80,15 @@ def test_schemas_are_strict():
     assert_strict(spotter.LINE_SCHEMA)
     assert_strict(strict_schema(ProgramOut))
     assert "rules" in strict_schema(ProgramOut)["properties"]
+
+
+def test_quick_calls_ask_spark_for_low_effort(monkeypatch):
+    seen = {}
+
+    def fake(system, user, schema_name, schema, **kw):
+        seen[schema_name] = kw
+        return {"text": "Eight, and done."}, None
+
+    monkeypatch.setattr(meta, "spark_json", fake)
+    spotter.write_line(spotter.LineRequest(moment="restAfterSet", facts=facts()))
+    assert seen["SpotterLine"] == {"effort": "low", "max_tokens": 120}

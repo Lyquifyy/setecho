@@ -106,7 +106,7 @@ def test_every_intent_is_in_the_schema():
 def test_spark_fallback_strips_numbers_the_athlete_did_not_say(monkeypatch):
     seen = {}
 
-    def fake(system, user, name, schema):
+    def fake(system, user, name, schema, **kw):
         seen["user"] = user
         return ({"intent": "setLoad", "number": 300, "text": None, "fieldId": None, "confidence": 0.9}, None)
 
@@ -119,7 +119,7 @@ def test_spark_fallback_strips_numbers_the_athlete_did_not_say(monkeypatch):
 def test_spark_fallback_keeps_numbers_the_athlete_said(monkeypatch):
     monkeypatch.setattr(
         meta, "spark_json",
-        lambda *a: ({"intent": "answer", "number": 6, "text": "six", "fieldId": None, "confidence": 0.8}, None),
+        lambda *a, **kw: ({"intent": "answer", "number": 6, "text": "six", "fieldId": None, "confidence": 0.8}, None),
     )  # fmt: skip
     result = voice.classify("six I guess", CONTEXT)
     assert result.number == 6 and result.confidence == 0.8

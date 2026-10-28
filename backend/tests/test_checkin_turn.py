@@ -170,7 +170,7 @@ def test_turn_endpoint(monkeypatch):
         meta, "transcribe_wav", lambda data, **k: {"transcript": "one eighty point eight", "sessionId": "s"}
     )
 
-    def fake(system, user, schema_name, schema):
+    def fake(system, user, schema_name, schema, **kw):
         seen["user"] = user
         seen["enum"] = schema["properties"]["answers"]["items"]["properties"]["fieldId"]["enum"]
         return {"intent": "answer", "answers": [{"fieldId": WEIGHT, "text": "", "number": 180.8, "measurements": None}],
@@ -195,3 +195,49 @@ def test_turn_endpoint(monkeypatch):
         "/checkin/turn", files={"audio": ("u.wav", wav_bytes(), "audio/wav")}, data={"context": ctx}
     )
     assert r.json()["intent"] == "unclear" and r.json()["reply"] == "Sorry, say that again?"
+
+
+def test_a_plain_number_is_answered_by_code_without_spark():
+    ctx = context(step="weight", asked=WEIGHT, pending=[GLUCOSE])
+    r = checkin_turn.fast_turn("one eighty point eight", ctx)
+    assert r is not None and r.fastPath and r.answers[0].text == "180.8" and r.reply == "180.8, got it."
+    r = checkin_turn.fast_turn("uh, 91", context(step="glucose", asked=GLUCOSE))
+    assert r is not None and r.answers[0].fieldId == GLUCOSE and r.answers[0].text == "91"
+    r = checkin_turn.fast_turn("six", context(asked=ENERGY))
+    assert r is not None and r.answers[0].text == "6/10" and r.reply == "6, got it."
+    # Words beyond a number go to Spark; so does a number for no field; so does a scale out of range.
+    assert checkin_turn.fast_turn("six, energy was good", context(asked=ENERGY)) is None
+    assert checkin_turn.fast_turn("91", context(step="photos")) is None
+    assert checkin_turn.fast_turn("eleven", context(asked=ENERGY)) is None
+    assert checkin_turn.fast_turn("give me a couple of minutes", context(asked=WEIGHT)) is None
+    assert (
+        checkin_turn.fast_turn("180.8, and glucose was 91", context(asked=WEIGHT, pending=[GLUCOSE])) is None
+    )
+
+
+def test_the_three_tape_measurements_are_one_fast_answer():
+    waist, bicep, thigh = field("waist"), field("bicep"), field("thigh")
+    r = checkin_turn.fast_turn(
+        "thirty one, sixteen, twenty four and three quarters", context(asked=waist, pending=[bicep, thigh])
+    )
+    assert r is not None and r.fastPath
+    assert [(a.fieldId, a.text) for a in r.answers] == [
+        (waist, "31 in"),
+        (bicep, "16 in"),
+        (thigh, "24 3/4 in"),
+    ]
+    assert r.reply == "Waist 31, Bicep 16, Thigh 24 3/4."
+    r = checkin_turn.fast_turn("31", context(asked=waist, pending=[bicep, thigh]))
+    assert r is not None and len(r.answers) == 1
+
+
+def test_turn_endpoint_takes_the_fast_path_and_reports_timings(monkeypatch):
+    called = []
+    monkeypatch.setattr(meta, "transcribe_wav", lambda data, **k: {"transcript": "180.8", "sessionId": "s"})
+    monkeypatch.setattr(meta, "spark_json", lambda *a, **k: called.append(1) or ({}, None))
+    ctx = checkin_turn.turn_context_json(context(step="weight", asked=WEIGHT))
+    r = TestClient(app).post(
+        "/checkin/turn", files={"audio": ("u.wav", wav_bytes(), "audio/wav")}, data={"context": ctx}
+    )
+    assert r.status_code == 200 and r.json()["fastPath"] is True and r.json()["answers"][0]["text"] == "180.8"
+    assert called == [] and set(r.json()["timings"]) == {"transcribe", "spark", "validate"}
