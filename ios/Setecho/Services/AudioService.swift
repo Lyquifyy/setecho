@@ -18,6 +18,13 @@ final class AudioService {
 
     /// Called on the main actor with each finished utterance while listening.
     var onUtterance: ((VoiceDetector.Utterance) -> Void)?
+    /// Realtime transcription: speech just started (the last second of audio follows at once),
+    /// and every chunk captured while the athlete keeps talking.
+    var onSpeechStart: (() -> Void)?
+    var onLiveSamples: (([Float], Double) -> Void)?
+    /// The last second of audio, so the stream can start before the onset was detected.
+    private var recent: [Float] = []
+    private var wasSpeaking = false
 
     private let session = AVAudioSession.sharedInstance()
     private let capture = CaptureBuffer()
@@ -113,7 +120,21 @@ final class AudioService {
         noiseFloorDB = detector.noiseFloorDB
         // While a callout plays, the mic hears nothing we want: drop the audio instead of transcribing ourselves.
         guard !isSpeaking else { return }
-        for utterance in detector.process(samples) {
+        let rate = capture.sampleRate
+        recent.append(contentsOf: samples)
+        let keep = Int(rate)
+        if recent.count > keep { recent.removeFirst(recent.count - keep) }
+        let utterances = detector.process(samples)
+        if detector.isSpeaking, !wasSpeaking {
+            wasSpeaking = true
+            onSpeechStart?()
+            onLiveSamples?(recent, rate)
+        } else if detector.isSpeaking {
+            onLiveSamples?(samples, rate)
+        } else if wasSpeaking {
+            wasSpeaking = false
+        }
+        for utterance in utterances {
             onUtterance?(utterance)
         }
     }

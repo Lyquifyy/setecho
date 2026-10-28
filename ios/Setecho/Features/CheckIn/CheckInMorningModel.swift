@@ -140,6 +140,8 @@ final class CheckInMorningModel {
     let natural: NaturalVoiceSpeaker
     /// Filming mode: every line and utterance saved with one clock, off the speaking path.
     private(set) var filming: FilmingRecorder?
+    /// Realtime transcription: opened the moment speech starts; file mode is the fallback.
+    let realtime = RealtimeTranscriber()
     /// The slate flash, shown by the view for a moment.
     private(set) var showSlate = false
 
@@ -196,12 +198,15 @@ final class CheckInMorningModel {
         _ = await audio.requestMicrophone()
         audio.configure()
         audio.onUtterance = { [weak self] utterance in Task { await self?.handle(utterance) } }
+        audio.onSpeechStart = { [weak self] in self?.realtime.start() }
+        audio.onLiveSamples = { [weak self] samples, rate in self?.realtime.send(samples, rate: rate) }
         audio.startListening()
         await resume(opening: true)
     }
 
     func stop() {
         silenceTask?.cancel()
+        realtime.cancel()
         audio.stopListening()
         audio.stopSpeaking()
         TurnTimings.shared.write(to: store.mediaDirectory, name: DayKey.string(.now))
@@ -277,8 +282,15 @@ final class CheckInMorningModel {
         status = "Hearing that…"
         let wav = WAVFile.data(pcm16: pcm, sampleRate: 16_000)
         do {
+            // The words from the realtime stream, if it delivered; else the WAV by file mode.
+            let words = await realtime.end()
             TurnTimings.shared.sent()
-            let response = try await api.checkInTurn(wav: wav, context: context())
+            let response: TurnResponse
+            if let words, !words.isEmpty {
+                response = try await api.checkInTurn(transcript: words, context: context())
+            } else {
+                response = try await api.checkInTurn(wav: wav, context: context())
+            }
             TurnTimings.shared.received(response)
             filming?.transcribed(response.transcript)
             status = nil

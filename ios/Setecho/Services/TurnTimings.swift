@@ -34,6 +34,7 @@ final class TurnTimings {
 
     func received(_ response: TurnResponse, at: Date = .now) {
         guard let p = pending else { return }
+        // With the realtime stream, "upload" is the wait for the final transcript after the end of speech.
         let turn = Turn(
             at: p.endOfSpeech, upload: max(0, (p.sent ?? at).timeIntervalSince(p.endOfSpeech)),
             transcribe: response.timings["transcribe"] ?? 0, spark: response.timings["spark"] ?? 0,
