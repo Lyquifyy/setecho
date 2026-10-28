@@ -198,7 +198,7 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 
 ### Review and send
 - **Purpose:** the exact message the coach receives, before it goes.
-- **Content:** both messages in the coach's format and order (the plan message, then the check-in), with the four photos beneath the check-in. Every number can be tapped to see its source.
+- **Content:** both messages in the coach's format and order (the plan message, then the check-in), with the four photos beneath the check-in; tapping one opens the Photo viewer, and "Compare with last week" opens it side by side. Every number can be tapped to see its source.
 - **Videos for your coach:** the sets the athlete flagged ("flag that"), two at most from two different movements, each cropped to just the reps. One `VideoPickRow` each, with "Swap"; with none flagged, "Pick two". No verdicts, scores or form labels anywhere.
 - **Adjustments:** the week's accepted suggestions, one line each, as they'll appear in the message.
 - **Gym changes** (stretch): the week's swaps and reorders, one `DeviationRow` each, all checked. Untick one to leave it out.
@@ -234,8 +234,14 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 - **Tabs** (`SegmentTabs`): Sessions (this week, previous sessions, last time) · Check-ins · Photos · Plan. One kind of history at a time.
 - **Sessions** keep the board's grouped-card layout. Each session is one line (date, day, sets) that opens to every set's clip and its count's `SourceChip`.
 - **Sent check-ins** reopen read-only.
-- **Photos** show each week's four photos as a timeline.
+- **Photos** show each week's four photos as a timeline. Tapping one opens the Photo viewer on that pose; "Compare" opens the latest week beside the one before it.
 - **Plan changes** list each applied coach reply with its changes. The latest one has "Revert", which restores the previous plan.
+
+### Photo viewer (full-screen)
+- **Purpose:** see a check-in photo at full size and put it beside another week's. Viewing only: the files stay exactly as taken, nothing is cropped, aligned or changed.
+- **Opens from** a photo on the History Photos tab, the Photos card on Review and send, and the review after a Photo session.
+- **Layout:** the camera fill edge to edge. Top bar: the pose and date, "Compare" (`.setechoTonal`, only when another week exists), the X. The photo in the middle: pinch or double-tap to zoom, drag to pan once zoomed, swipe for the next pose. Bottom bar: `SegmentTabs` Front · Right · Back · Left. A tap on the photo hides both bars.
+- **Compare:** the two weeks side by side, same pose, older on the left, each labeled with its date (and "this one" on the week opened). They zoom and pan together. A row above the pose tabs steps the other week with arrows, or picks it from a date menu.
 
 ## Flow
 

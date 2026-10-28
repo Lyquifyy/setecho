@@ -5,7 +5,8 @@ import UIKit
 struct HistoryView: View {
     @Environment(Store.self) private var store
     @State private var openCheckIn: CheckInDraft?
-    @State private var comparePhotos = false
+    /// A week's photo open full screen, from the Photos tab.
+    @State private var viewing: PhotoViewing?
 
     private var weekStart: Date { CheckInSchedule().week(endingBefore: CheckInSchedule().nextDue(from: .now)).start }
 
@@ -40,6 +41,9 @@ struct HistoryView: View {
         }
         .sheet(item: $openCheckIn) { draft in
             SentCheckInView(draft: draft).environment(store)
+        }
+        .fullScreenCover(item: $viewing) { viewing in
+            PhotoViewer(viewing: viewing).environment(store)
         }
     }
 
@@ -105,24 +109,22 @@ struct HistoryView: View {
         }
     }
 
+    /// Every week with photos, newest first.
+    private var photoWeeks: [PhotoSet] { store.photoSets.sorted { $0.takenAt > $1.takenAt } }
+
     private var photosSection: some View {
         SectionCard("Photos", accessory: {
-            if store.photoSets.count >= 2 {
-                Button(comparePhotos ? "Timeline" : "Compare",
-                       systemImage: comparePhotos ? "list.bullet" : "square.split.2x1") { comparePhotos.toggle() }
+            // The latest week beside the one before it, full screen; the viewer steps through the rest.
+            if photoWeeks.count >= 2 {
+                Button("Compare", systemImage: "rectangle.split.2x1") { viewing = PhotoViewing(photoSet: photoWeeks[0], compare: true) }
                     .buttonStyle(.setechoTonal)
             }
         }) {
-            let sets = store.photoSets.sorted { $0.takenAt > $1.takenAt }
-            if sets.isEmpty {
+            if photoWeeks.isEmpty {
                 Text("Each week's four photos line up here.").font(.subheadline).secondaryText()
-            } else if comparePhotos, sets.count >= 2 {
-                HStack(spacing: Theme.Space.xs) {
-                    collageTile(sets[1])
-                    collageTile(sets[0])
-                }
             } else {
-                ForEach(Array(sets.enumerated()), id: \.element.id) { index, set in
+                Text("Tap a photo to see it full screen.").font(.footnote).secondaryText()
+                ForEach(Array(photoWeeks.enumerated()), id: \.element.id) { index, set in
                     if index > 0 { CardDivider() }
                     collageTile(set)
                 }
@@ -156,17 +158,23 @@ struct HistoryView: View {
         }
     }
 
-    /// One week: the four photos as taken, in his order (no collage since Oct 27).
+    /// One week: the four photos as taken, in his order (no collage since Oct 27). Each opens full screen.
     private func collageTile(_ set: PhotoSet) -> some View {
         VStack(alignment: .leading, spacing: Theme.Space.xxs) {
             HStack(spacing: Theme.Space.xxs) {
                 ForEach(Pose.allCases, id: \.self) { pose in
                     if let file = set.photo(for: pose)?.file,
                        let image = UIImage(contentsOfFile: store.mediaDirectory.appendingPathComponent(file).path) {
-                        Color.clear
-                            .aspectRatio(3 / 4, contentMode: .fit)
-                            .overlay { Image(uiImage: image).resizable().scaledToFill() }
-                            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
+                        Button {
+                            viewing = PhotoViewing(photoSet: set, pose: pose)
+                        } label: {
+                            Color.clear
+                                .aspectRatio(3 / 4, contentMode: .fit)
+                                .overlay { Image(uiImage: image).resizable().scaledToFill() }
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(pose.title), \(Format.shortDate(set.takenAt)). Opens full screen")
                     } else {
                         Theme.cameraFill.aspectRatio(3 / 4, contentMode: .fit)
                             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))

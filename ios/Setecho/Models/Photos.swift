@@ -38,6 +38,16 @@ enum Pose: String, Codable, CaseIterable {
         }
     }
 
+    /// The pose tab in the photo viewer.
+    var shortTitle: String {
+        switch self {
+        case .front: "Front"
+        case .rightArmsUp: "Right"
+        case .back: "Back"
+        case .leftArmsUp: "Left"
+        }
+    }
+
     /// What the app says before the pose.
     var spokenCue: String {
         switch self {

@@ -136,6 +136,8 @@ struct PhotoReviewView: View {
     let thumbnails: [Pose: UIImage]
     let onRetake: (Pose) -> Void
     let onDone: () -> Void
+    /// A photo open full screen, to check it before deciding on a retake.
+    @State private var viewing: PhotoViewing?
 
     var body: some View {
         // The set is saved before this screen opens: the X and Done both just leave.
@@ -143,12 +145,19 @@ struct PhotoReviewView: View {
             TitleBlock(eyebrow: Format.shortDate(photoSet.takenAt), title: "Check-in photos",
                        subtitle: "Exactly as taken, full resolution, in your coach's order. Nothing is cropped or changed.")
             SectionCard("This week") {
-                ForEach(Array(Pose.allCases.enumerated()), id: \.element) { index, pose in
-                    if index > 0 { CardDivider() }
+                Text("Tap a photo to see it full screen, or beside last week's.").font(.footnote).secondaryText()
+                ForEach(Pose.allCases, id: \.self) { pose in
+                    CardDivider()
                     HStack(spacing: Theme.Space.s) {
                         if let image = thumbnails[pose] ?? loaded(pose) {
-                            Image(uiImage: image).resizable().scaledToFill().frame(width: 72, height: 96)
-                                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
+                            Button {
+                                viewing = PhotoViewing(photoSet: photoSet, pose: pose)
+                            } label: {
+                                Image(uiImage: image).resizable().scaledToFill().frame(width: 72, height: 96)
+                                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(pose.title). Opens full screen")
                         } else {
                             SetThumbnail(width: 72, height: 96)
                         }
@@ -160,6 +169,9 @@ struct PhotoReviewView: View {
             }
         } footer: {
             Button("Done", action: onDone).buttonStyle(.setechoPrimary)
+        }
+        .fullScreenCover(item: $viewing) { viewing in
+            PhotoViewer(viewing: viewing).environment(store)
         }
     }
 

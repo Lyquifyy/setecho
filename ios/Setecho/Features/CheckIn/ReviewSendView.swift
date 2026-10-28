@@ -89,11 +89,24 @@ struct ReviewSendView: View {
         return store.photoSets.first { $0.id == id }
     }
 
-    private var photoURLs: [URL] {
+    /// The four as (pose, file), in his order, for the strip; the share sends `photoURLs`.
+    private var posePhotos: [(pose: Pose, url: URL)] {
         guard let photoSet else { return [] }
-        return Pose.allCases.compactMap { pose in photoSet.photo(for: pose).map { store.mediaDirectory.appendingPathComponent($0.file) } }
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        return Pose.allCases.compactMap { pose in
+            photoSet.photo(for: pose).map { (pose: pose, url: store.mediaDirectory.appendingPathComponent($0.file)) }
+        }.filter { FileManager.default.fileExists(atPath: $0.url.path) }
     }
+
+    private var photoURLs: [URL] { posePhotos.map(\.url) }
+
+    /// Whether an earlier week exists to put beside this one.
+    private var hasEarlierPhotos: Bool {
+        guard let photoSet else { return false }
+        return store.photoSets.contains { $0.id != photoSet.id }
+    }
+
+    /// A photo open full screen, from the Photos card.
+    @State private var viewing: PhotoViewing?
 
     /// Only for the on-screen preview; the share sends the files.
     private var collage: UIImage? { photoURLs.first.flatMap { UIImage(contentsOfFile: $0.path) } }
@@ -146,15 +159,27 @@ struct ReviewSendView: View {
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: Theme.Space.xs) {
-                            ForEach(photoURLs, id: \.self) { url in
-                                if let image = UIImage(contentsOfFile: url.path) {
-                                    Image(uiImage: image).resizable().scaledToFill().frame(width: 90, height: 120)
-                                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
+                            ForEach(posePhotos, id: \.pose) { item in
+                                if let image = UIImage(contentsOfFile: item.url.path) {
+                                    Button {
+                                        viewing = photoSet.map { PhotoViewing(photoSet: $0, pose: item.pose) }
+                                    } label: {
+                                        Image(uiImage: image).resizable().scaledToFill().frame(width: 90, height: 120)
+                                            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("\(item.pose.title). Opens full screen")
                                 }
                             }
                         }
                     }
-                    Text("Sent exactly as taken, in his order.").font(.footnote).secondaryText()
+                    Text("Sent exactly as taken, in his order. Tap one to see it full screen.").font(.footnote).secondaryText()
+                    if hasEarlierPhotos {
+                        Button("Compare with last week", systemImage: "rectangle.split.2x1") {
+                            viewing = photoSet.map { PhotoViewing(photoSet: $0, compare: true) }
+                        }
+                        .buttonStyle(.setechoTonal)
+                    }
                 }
             }
             SectionCard("Videos for your coach", accessory: {
@@ -293,6 +318,9 @@ struct ReviewSendView: View {
         }
         .sheet(isPresented: $showPicker) {
             VideoPickerSheet(sessions: periodSessions, picks: $picks, names: exerciseName)
+        }
+        .fullScreenCover(item: $viewing) { viewing in
+            PhotoViewer(viewing: viewing).environment(store)
         }
         .onChange(of: picks) { _, new in
             coordinator.setVideoPicks(new)
