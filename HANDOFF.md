@@ -75,7 +75,7 @@ iPhone (Setecho app)                                Backend (FastAPI, stateless)
 - **The phone owns all data.** Program, template, sessions, sets, notes, photos and check-ins are stored on the device as Codable JSON under Application Support, plus JPEG and MOV files. The backend keeps nothing between requests.
 - **The backend exists to hold the key and talk to Meta.** It also does deterministic work: rendering the check-in text and validating numbers.
 - **The model never produces a number.** Numbers come from HealthKit, the training log, or the athlete's own words (extracted, then echoed back for confirmation).
-- **No text-to-speech exists on Meta Model API,** so the spotter's voice is the phone's `AVSpeechSynthesizer` with the best installed voice. If the human decides it sounds too robotic, a natural-voice service can do the speaking only (§7, The spotter voice). Every word it says is still written by the app and Muse Spark.
+- **No text-to-speech exists on Meta Model API,** so the voice is the phone's `AVSpeechSynthesizer` (§7, The spotter voice). **Every model the app calls at runtime must be Meta's** (the organizers, Oct 28; disclosing another doesn't change that), so there is no voice service. Every word it says is written by the app and Muse Spark.
 - **Set clips are uploaded for counting, then dropped.** After each set the phone sends a small copy (720p, 15 fps, no audio) to `/sets/count`. The backend forwards it to SAM 3.1 and keeps nothing. The full-quality MOV stays on the phone.
 - **Sets come from the camera and the athlete's voice,** plus the Garmin watch if that stretch item is built. Any combination works and nothing has to be switched; §7, Session inputs, has the rules.
 - **SAM 3.1 is the count of record on tripod sets.** Its count and the set's measured effort are spoken during rest. The phone's own pose count is a silent fallback, used only when SAM fails or is slower than 60 s. What the athlete says ("that was 7") beats both.
@@ -662,9 +662,11 @@ The athlete should feel like he's talking with a training partner, not a machine
   - It remembers the session: PRs, "third set in a row at the top of your range", and what he said earlier.
   - It uses his first name sparingly, and never comments on form or food.
 - **When:** it's quiet during sets, answers a voice command within about a second, and never talks over the athlete.
-- **The voice itself:** a `Speaker` protocol with two implementations.
-  - `SystemSpeaker`: `AVSpeechSynthesizer` with the best installed voice, premium first. This is the default.
-  - `NaturalVoiceSpeaker`: built only if the human decides, after Wednesday's test, that the system voice is too robotic. It's a third-party text-to-speech service the human picks, called through the backend so its key stays there. It receives only the text to speak, never audio or health data, and must start speaking within about 500 ms. The README names it as the one non-Meta piece.
+- **The voice itself:** a `Speaker` protocol with one implementation, `SystemSpeaker` (`AVSpeechSynthesizer`, on the device). The natural-voice service (ElevenLabs) was removed on Oct 28: every runtime model must be Meta's.
+  - **Voice:** Evan (Enhanced) by default, found by name in `speechVoices()` (usually `com.apple.voice.enhanced.en-US.Evan`); any installed English voice can be picked in Settings → Voice. Without Evan, Settings says "Download Evan (Enhanced): Settings → Accessibility → Read & Speak → Voices → English" and the best installed English voice speaks.
+  - **Every utterance:** `AVSpeechUtterance(ssmlRepresentation:)` with `<break time="250ms"/>` after a clause and 350 ms between sentences (never over 400 ms); rate 0.49 (a slider in Settings → Voice, 0.42–0.55, with "Play sample"), pitch 1.0, volume 1.0, no pre- or post-utterance delay. Numbers become words on the phone (`SpokenText`: "180.8" → "one eighty point eight", "225 for 8" → "two twenty five for eight").
+  - **Lines:** short and conversational; the same line never twice in a row (a fixed alternate, or "Again, …").
+  - **Pre-rendered:** the fixed lines of Check-in morning, the wrap-up and the photo session (and the coach's questions) are written to CAF files with `AVSpeechSynthesizer.write` when the flow starts, keyed by the line, voice, rate and pauses, and play at once through one `AVAudioEngine`; anything else is spoken live.
 - **One voice everywhere:** sessions, Check-in morning and the wrap-up all use the same `Speaker`.
 
 ### Garmin watch (Connect IQ app): stretch, P6
@@ -862,7 +864,7 @@ Report after each numbered block: what passed, what didn't, the measured latenci
 - [x] **Number fast path:** a transcript that is only a number (or the three tape measurements) for the field just asked is parsed by code and answered from a template, with no Spark call. Spark handles everything else.
 - [x] **Spark at its lowest reasoning effort** with small max tokens for `/checkin/turn`, `/voice/command` and `/spotter/line`. *Built without the token cap: a cap cut the JSON off.*
 - [x] **A soft sound** the moment a turn ends.
-- [x] **Natural voice, `NaturalVoiceSpeaker`:** ElevenLabs Flash v2.5 or Cartesia Sonic (the human picks and puts the key in Fly secrets by Wed noon), behind a small provider adapter so either works. `/voice/speak` streams the audio; the phone plays chunks as they arrive. The coach's check-in questions and Setecho's fixed lines are pre-generated when Check-in morning starts and cached on the phone by a text hash. No audio within 700 ms: that line falls back to `SystemSpeaker`. The service gets only the text being spoken; the README names it as the one non-Meta piece; never a voice made to sound like the coach.
+- [x] **The voice, on the device** (replaces the natural voice, Oct 28). *Removed:* ElevenLabs/Cartesia, `/voice/speak`, `NaturalVoiceSpeaker` and the backend's numbers-to-words (now `SpokenText` on the phone): every runtime model must be Meta's. `SystemSpeaker` with Evan (Enhanced), SSML pauses, numbers as words, no line twice in a row, the fixed lines pre-rendered with `AVSpeechSynthesizer.write` when the flow starts (§7, The spotter voice). The rehearsal notes above that mention the natural voice describe builds before Oct 28.
 - [ ] **Audio route:** AirPods out at full quality (A2DP, never call-quality Bluetooth); in from the DJI receiver when plugged in, else the iPhone mic; iOS 26 high-quality AirPods recording may be tried, falling back to the DJI/iPhone mic. The live route shows on the Probes screen. Check-in morning and sessions use the same route. *The AirPods mic switch is built and untested on a device.*
 - [x] **Filming mode** (Settings, off by default): every line Setecho speaks saved as audio exactly as played (the voice service's stream, or `AVSpeechSynthesizer.write`), every utterance saved as its WAV, every file stamped from one clock; one SRT captions file per check-in or session; a slate on start (a white flash and a short beep, with its time logged); export by AirDrop from History; never uploaded, never committed; no change to timing or behaviour.
 - [x] **Photos** as in §7: hands-free capture with the head-to-toe framing check and "retake front"; the collage, alignment and outline out of the flow; `/photos/segment` no longer called.
@@ -940,7 +942,7 @@ Order matters. **Check-in morning ships to TestFlight by Wednesday evening,** be
 - [x] `/spotter/line` with its validator; the set-end callout variants; session memory for PRs and streaks.
 - [x] Videos for your coach: `flagSet`, the crop to the reps from `repTimes`, the Review and send card; the adjustments line in `/checkin/render`.
 - [x] His rules in the engine: the back-off load, rest after a top set, the logbook line, and the next-session steps (§7, Measured effort).
-- [x] The `Speaker` protocol with `SystemSpeaker`. `NaturalVoiceSpeaker` only if the human asks for it after Wednesday's voice test.
+- [x] The `Speaker` protocol with `SystemSpeaker`, the only voice.
 - **Done when:**
   - In a real session, warm-ups log as warm-ups, every top set gets its measured line against his failure target and a back-off load from his 20–25% rule, and nothing is suggested without a confirmed rule.
   - The check-in carries the two flagged videos cropped to the reps, and the adjustments line.
@@ -1036,7 +1038,7 @@ In the order above. Specs:
   - **Why:** it holds working files and references, not product code, and only work from after the kickoff cutoff (12:24 PM ET, Oct 26) belongs in the submitted repo.
   - **History:** the folder is already in history from `6fc246f`. In P9, before the first push and only with the human's go-ahead, purge it with `git filter-repo --invert-paths --path design/`, which keeps commit dates.
   - **The app's logo, wordmark and icon** in `ios/Setecho/Assets.xcassets` stay.
-- Photos never go to Meta (the framing check runs on the device); set clips go only through `/sets/count` (downscaled, no audio), and the coach's voice notes only through `/coach/reply`. Filming-mode exports stay on the phone and are never uploaded or committed. All Standard tier: gyms have bystanders. Cut cue clips of the coach's voice stay on the phone, under `media/cues/`. Withings tokens live in the Keychain, never on the backend or in the repo. If a natural-voice service is used, it receives only the text to speak: no audio, no health data, and no name beyond the athlete's first name.
+- Photos never go to Meta (the framing check runs on the device); set clips go only through `/sets/count` (downscaled, no audio), and the coach's voice notes only through `/coach/reply`. Filming-mode exports stay on the phone and are never uploaded or committed. All Standard tier: gyms have bystanders. Cut cue clips of the coach's voice stay on the phone, under `media/cues/`. Withings tokens live in the Keychain, never on the backend or in the repo. Speech is synthesized on the phone; no text or audio goes to a voice service.
 
 ## 12. Things only the human can do
 - Put `MODEL_API_KEY` in `~/.zshrc`, claim the $150 credits, and set a spend limit.
@@ -1046,7 +1048,7 @@ In the order above. Specs:
 - Ask the office-hours question, and get the coach's OK to appear in the demo.
 - Tell the coach his voice notes are transcribed through Meta's API, and collect two of his past replies (one text, one voice note) for G5 and P2.
 - Hand-count every set during the gym tests, and call out an RPE on every set so the effort map can be checked.
-- Wednesday: test the spotter voice with a premium iOS voice, and decide whether it's good enough or a natural-voice service should speak (and which one).
+- Download Evan (Enhanced) on the iPhone (Settings → Accessibility → Read & Speak → Voices → English) and tune the speed at the rehearsal (Settings → Voice). Remove the `ELEVENLABS_*` Fly secrets.
 - Tell the agent your coach's load-adjustment rule if it isn't in the sheet, and check it with him.
 - Ask the organizers about the next-set suggestions and the machine-taken swaps in the same thread as G1.
 - On Import, confirm which days abs join and which mornings the vacuums go on.
@@ -1078,7 +1080,7 @@ In the order above. Specs:
 | Next-set suggestions | On; only with a confirmed coach's rule; the athlete decides each one |
 | Effort map (velocity loss → reps left) | Under 10% → 4+, 10–20% → 3, 20–30% → 2, 30–40% → 1, over 40% → 0; calibrated per exercise from spoken RPE |
 | Load steps | Barbell 5 lb, dumbbells 5 lb, machines from Settings |
-| Spotter voice | The best installed iOS voice; a natural-voice service only if the human picks one |
+| Spotter voice | Evan (Enhanced) on the device, rate 0.49; else the best installed English voice. No voice service |
 | Tagline | "The prep that logs itself." |
 | When a machine's taken | Only Wait and the athlete's own swaps until the coach's order is confirmed; then his order |
 | Exercise families | `ExerciseFamilies.json`, about 30, hand-written; the import tags against it |

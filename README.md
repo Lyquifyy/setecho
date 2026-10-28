@@ -9,7 +9,7 @@ Setecho takes the manual work out of a coached bodybuilding prep. Import your co
 - your check-in is half written from Apple Health before you answer the rest by voice
 - your coach's reply, a text or a voice note, updates the plan once you approve it
 
-One piece is not Meta's: the natural voice. ElevenLabs Flash v2.5 speaks the lines Setecho and Muse Spark write, and it receives only that text. The iOS system voice stands in whenever it is slow or unavailable.
+Every model Setecho calls is Meta's. Meta has no text-to-speech, so the lines Setecho and Muse Spark write are spoken on the phone by Apple's own speech synthesizer (Evan, Enhanced, by default).
 
 Built on Meta Model API:
 - **Muse Spark 1.3** reads the coach's material and replies, writes the check-in with every number traced to its source, turns each reply into plan changes, and gives the spotter its words.

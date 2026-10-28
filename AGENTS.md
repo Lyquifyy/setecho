@@ -27,7 +27,7 @@ Plan of record: "Setecho hackathon build plan" (Claude Docs), which holds the sc
 - `make ios`: regenerate the project and open Xcode. After adding Swift files, rerun `xcodegen generate`.
 
 ## Rules
-1. Every model call goes to Meta Model API (`https://api.meta.ai/v1`): `muse-spark-1.3` for reasoning and parsing, `muse-voice-transcribe-1.0` for speech, `sam-3.1` for segmentation and tracking. Meta has no text-to-speech, so spoken lines use iOS speech, or a natural-voice service the human picks that only speaks text the app wrote (HANDOFF §7, The spotter voice). No other model providers in product code. The Garmin watch app makes no model or network calls; it talks only to the phone.
+1. Every model call goes to Meta Model API (`https://api.meta.ai/v1`): `muse-spark-1.3` for reasoning and parsing, `muse-voice-transcribe-1.0` for speech, `sam-3.1` for segmentation and tracking. Every model the app calls at runtime is Meta's (the organizers' rule, Oct 28; disclosing another doesn't make it allowed). Meta has no text-to-speech, so every spoken line is Apple's on-device speech through `SystemSpeaker` (HANDOFF §7, The spotter voice): no voice service, no other model providers in product code. The Garmin watch app makes no model or network calls; it talks only to the phone.
 2. The key comes from the `MODEL_API_KEY` env var only. Never write keys, `.env` files or clips into the repo.
 3. Use the Standard tier only. Contributor-tier data can be used by Meta, and the footage contains bystanders.
 4. Tests never hit the live API. Use the fixtures in `tests/fixtures/`.
