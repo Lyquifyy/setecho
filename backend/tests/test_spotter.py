@@ -91,4 +91,4 @@ def test_quick_calls_ask_spark_for_low_effort(monkeypatch):
 
     monkeypatch.setattr(meta, "spark_json", fake)
     spotter.write_line(spotter.LineRequest(moment="restAfterSet", facts=facts()))
-    assert seen["SpotterLine"] == {"effort": "low", "max_tokens": 120}
+    assert seen["SpotterLine"] == {"effort": "low"}  # never a token cap: reasoning tokens count against it

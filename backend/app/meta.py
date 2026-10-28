@@ -123,7 +123,16 @@ def spark_json(
         kwargs.pop("extra_body", None)
         resp = client().chat.completions.create(**kwargs)
     content = resp.choices[0].message.content or ""
-    return json.loads(content), resp
+    try:
+        return json.loads(content), resp
+    except json.JSONDecodeError:
+        # Empty or cut-off JSON (a token cap, or the effort setting eating the budget): once more, plainly.
+        if effort is None and max_tokens is None:
+            raise
+        kwargs.pop("extra_body", None)
+        kwargs.pop("max_tokens", None)
+        resp = client().chat.completions.create(**kwargs)
+        return json.loads(resp.choices[0].message.content or ""), resp
 
 
 # ---------------------------------------------------------------------------

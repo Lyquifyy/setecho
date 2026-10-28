@@ -161,7 +161,7 @@ def write_line(req: LineRequest) -> LineResponse:
         f"Lines you said recently: {req.recent[-5:] or '(none)'}\n"
         f"Style: {', '.join(req.styleHints) or 'casual'}"
     )
-    raw, _ = meta.spark_json(SYSTEM, user, "SpotterLine", LINE_SCHEMA, effort="low", max_tokens=120)
+    raw, _ = meta.spark_json(SYSTEM, user, "SpotterLine", LINE_SCHEMA, effort="low")
     text = str(raw.get("text", "")).strip()
     if validate(text, req.facts, req.recent[-5:]) is not None:
         return LineResponse(text="", ok=False)

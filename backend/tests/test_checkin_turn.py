@@ -204,6 +204,8 @@ def test_a_plain_number_is_answered_by_code_without_spark():
     ctx = context(step="weight", asked=WEIGHT, pending=[GLUCOSE])
     r = checkin_turn.fast_turn("one eighty point eight", ctx)
     assert r is not None and r.fastPath and r.answers[0].text == "180.8" and r.reply == "180.8, got it."
+    r = checkin_turn.fast_turn("180.8.", context(step="weight", asked=WEIGHT))
+    assert r is not None and r.answers[0].text == "180.8"  # Transcribe ends a number with a period
     r = checkin_turn.fast_turn("uh, 91", context(step="glucose", asked=GLUCOSE))
     assert r is not None and r.answers[0].fieldId == GLUCOSE and r.answers[0].text == "91"
     r = checkin_turn.fast_turn("six", context(asked=ENERGY))

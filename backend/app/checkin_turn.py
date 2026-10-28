@@ -226,7 +226,8 @@ _NUMBER_WORDS = (
 def _only_numbers(text: str) -> bool:
     cleaned = _FILLER.sub(" ", text.lower())
     cleaned = re.sub(r"[^\w.\s]", " ", cleaned)
-    words = [w for w in cleaned.split() if w.strip(".")]
+    words = [w.strip(".,!?") for w in cleaned.split()]
+    words = [w for w in words if w]
     return bool(words) and all(re.fullmatch(r"\d+(?:\.\d+)?", w) or w in _NUMBER_WORDS for w in words)
 
 
@@ -323,7 +324,7 @@ def read_turn(transcript: str, context: TurnContext) -> TurnResponse:
         f"The athlete said: {transcript!r}"
     )
     t0 = time.monotonic()
-    raw, _ = meta.spark_json(SYSTEM, user, "CheckInTurn", schema_for(field_ids), effort="low", max_tokens=300)
+    raw, _ = meta.spark_json(SYSTEM, user, "CheckInTurn", schema_for(field_ids), effort="low")
     spark_s = time.monotonic() - t0
     t1 = time.monotonic()
     out = TurnOut.model_validate(raw)
