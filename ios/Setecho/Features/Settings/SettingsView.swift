@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var settings = Settings.shared
     @State private var showDiagnostics = false
+    @State private var personalVoiceNote: String?
 
     /// The show date is stored as "yyyy-mm-dd", empty when not in prep.
     private var inPrep: Binding<Bool> {
@@ -110,7 +111,7 @@ struct SettingsView: View {
                 Picker("Voice", selection: $settings.voiceIdentifier) {
                     Text(AudioService.defaultVoice.map { "Default · \($0.name) (\(qualityName($0.quality)))" } ?? "Best installed").tag("")
                     ForEach(AudioService.availableVoices(), id: \.identifier) { voice in
-                        Text("\(voice.name) · \(qualityName(voice.quality))").tag(voice.identifier)
+                        Text("\(voice.name) · \(AudioService.qualityLabel(voice).lowercased())").tag(voice.identifier)
                     }
                 }
                 .pickerStyle(.menu)
@@ -119,6 +120,11 @@ struct SettingsView: View {
                     Text("Download Ava (Premium): Settings → Accessibility → Read & Speak → Voices → English")
                         .font(.footnote).secondaryText()
                 }
+                CardDivider()
+                Toggle("Use my Personal Voice", isOn: Binding(get: { usingPersonalVoice }, set: { on in Task { await usePersonalVoice(on) } }))
+                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+                Text(personalVoiceNote ?? "Your own voice, made on this iPhone in Settings → Accessibility → Personal Voice. It runs on the phone like the others.")
+                    .font(.footnote).secondaryText()
                 CardDivider()
                 HStack {
                     Text("Speed").font(.subheadline).foregroundStyle(Theme.navy)
@@ -139,6 +145,35 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showDiagnostics) {
             NavigationStack { ProbeHomeView() }.tint(Theme.cobalt)
+        }
+    }
+
+    private var usingPersonalVoice: Bool {
+        AudioService.personalVoices.contains { $0.identifier == settings.voiceIdentifier }
+    }
+
+    /// On: ask iOS for permission once, then speak with his Personal Voice everywhere. Off: back to the default.
+    private func usePersonalVoice(_ on: Bool) async {
+        guard on else {
+            settings.voiceIdentifier = ""
+            personalVoiceNote = nil
+            return
+        }
+        let status = AudioService.personalVoiceStatus == .authorized ? .authorized : await AudioService.requestPersonalVoice()
+        switch status {
+        case .authorized:
+            if let voice = AudioService.personalVoices.first {
+                settings.voiceIdentifier = voice.identifier
+                personalVoiceNote = "Speaking as \(voice.name). Tap Play sample to hear it."
+            } else {
+                personalVoiceNote = "No Personal Voice on this iPhone yet. Make one in Settings → Accessibility → Personal Voice, then turn this on again."
+            }
+        case .denied:
+            personalVoiceNote = "Setecho isn't allowed to use it. Turn on \"Allow Apps to Request to Use\" in Settings → Accessibility → Personal Voice, then try again."
+        case .unsupported:
+            personalVoiceNote = "This iPhone can't use a Personal Voice."
+        default:
+            personalVoiceNote = "Personal Voice isn't ready yet. Try again in a moment."
         }
     }
 }

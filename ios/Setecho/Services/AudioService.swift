@@ -237,11 +237,37 @@ final class AudioService {
         ("Ava", .premium), ("Zoe", .premium), ("Ava", .enhanced), ("Zoe", .enhanced), ("Evan", .enhanced),
     ]
 
-    /// "Ava (Premium)": the voice every line uses right now, for the check-in screen and Probes.
+    /// "Ava (Premium)" or "Zander (Personal Voice)": the voice every line uses right now, for the
+    /// check-in screen and Probes.
     static var voiceDescription: String {
         guard let voice = preferredVoice() else { return "no voice installed" }
-        let quality = voice.quality == .premium ? "Premium" : voice.quality == .enhanced ? "Enhanced" : "Default"
-        return "\(voice.name) (\(quality))"
+        return "\(voice.name) (\(qualityLabel(voice)))"
+    }
+
+    /// "Premium", "Enhanced", "Default", or "Personal Voice".
+    static func qualityLabel(_ voice: AVSpeechSynthesisVoice) -> String {
+        if voice.voiceTraits.contains(.isPersonalVoice) { return "Personal Voice" }
+        return voice.quality == .premium ? "Premium" : voice.quality == .enhanced ? "Enhanced" : "Default"
+    }
+
+    // MARK: Personal Voice
+
+    /// The athlete's own Personal Voice (Settings → Accessibility → Personal Voice), made on the
+    /// phone from his recordings and run on the phone like the other voices. Listed by
+    /// `speechVoices()` only once he has allowed Setecho to use it.
+    static var personalVoices: [AVSpeechSynthesisVoice] {
+        AVSpeechSynthesisVoice.speechVoices().filter { $0.voiceTraits.contains(.isPersonalVoice) }
+    }
+
+    static var personalVoiceStatus: AVSpeechSynthesizer.PersonalVoiceAuthorizationStatus {
+        AVSpeechSynthesizer.personalVoiceAuthorizationStatus
+    }
+
+    /// iOS asks him once whether Setecho may use his Personal Voice.
+    static func requestPersonalVoice() async -> AVSpeechSynthesizer.PersonalVoiceAuthorizationStatus {
+        await withCheckedContinuation { continuation in
+            AVSpeechSynthesizer.requestPersonalVoiceAuthorization { continuation.resume(returning: $0) }
+        }
     }
 
     /// The first default voice that is installed, US English first. Nil until one is downloaded;
