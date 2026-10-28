@@ -1,0 +1,300 @@
+{
+  "scenario": "f_end_session_asks",
+  "title": "Ending, said three ways, always asks first; no carries on.",
+  "facts": {
+    "day": "Day 1",
+    "state": "rest",
+    "exercise": "Smith close-grip press",
+    "setNumber": 2,
+    "setCount": 2,
+    "targetLoadLb": 170,
+    "targetReps": "6-8",
+    "restLeft": "1:40",
+    "exercises": [
+      {
+        "name": "Smith close-grip press",
+        "setsPlanned": 2,
+        "setsDone": 1,
+        "target": "6-8 reps",
+        "loadLb": 170,
+        "lastTime": "205 for 9",
+        "sheetNote": "1 top set. 1 back down set",
+        "alternates": [
+          "Close-grip bench press"
+        ]
+      },
+      {
+        "name": "Incline dumbbell press",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "8-10 reps",
+        "lastTime": "80 for 9",
+        "alternates": []
+      },
+      {
+        "name": "Cable incline flyes",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "10-12 reps",
+        "lastTime": "30 for 12"
+      }
+    ],
+    "sets": [
+      {
+        "exercise": "Smith close-grip press",
+        "setNumber": 1,
+        "role": "top",
+        "reps": 9,
+        "repSource": "measured",
+        "loadLb": 205,
+        "estimatedRIR": 0,
+        "minutesAgo": 2
+      }
+    ],
+    "rules": [
+      "Back off sets should be 20-25% lighter than your top set"
+    ],
+    "addOns": [
+      "Abs"
+    ],
+    "athleteName": "Zander"
+  },
+  "turns": [
+    {
+      "say": "I'm done",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "endSession",
+            "number": null,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          }
+        ],
+        "reply": "",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "endSession"
+          }
+        ],
+        "reply": null,
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "that's it for me today",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "endSession",
+            "number": null,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          }
+        ],
+        "reply": "",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "endSession"
+          }
+        ],
+        "reply": null,
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "let's wrap it up",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "endSession",
+            "number": null,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          }
+        ],
+        "reply": "End the session?",
+        "expectsAnswer": true,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "endSession"
+          }
+        ],
+        "reply": "End the session?",
+        "addressed": true,
+        "expectsAnswer": true
+      }
+    },
+    {
+      "say": "no",
+      "state": "rest",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "no"
+          }
+        ],
+        "addressed": true
+      },
+      "facts": {
+        "day": "Day 1",
+        "state": "rest",
+        "exercise": "Smith close-grip press",
+        "setNumber": 2,
+        "setCount": 2,
+        "targetLoadLb": 170,
+        "targetReps": "6-8",
+        "restLeft": "1:40",
+        "exercises": [
+          {
+            "name": "Smith close-grip press",
+            "setsPlanned": 2,
+            "setsDone": 1,
+            "target": "6-8 reps",
+            "loadLb": 170,
+            "lastTime": "205 for 9",
+            "sheetNote": "1 top set. 1 back down set",
+            "alternates": [
+              "Close-grip bench press"
+            ]
+          },
+          {
+            "name": "Incline dumbbell press",
+            "setsPlanned": 2,
+            "setsDone": 0,
+            "target": "8-10 reps",
+            "lastTime": "80 for 9",
+            "alternates": []
+          },
+          {
+            "name": "Cable incline flyes",
+            "setsPlanned": 2,
+            "setsDone": 0,
+            "target": "10-12 reps",
+            "lastTime": "30 for 12"
+          }
+        ],
+        "sets": [
+          {
+            "exercise": "Smith close-grip press",
+            "setNumber": 1,
+            "role": "top",
+            "reps": 9,
+            "repSource": "measured",
+            "loadLb": 205,
+            "estimatedRIR": 0,
+            "minutesAgo": 2
+          }
+        ],
+        "rules": [
+          "Back off sets should be 20-25% lighter than your top set"
+        ],
+        "addOns": [
+          "Abs"
+        ],
+        "athleteName": "Zander",
+        "openAsk": "End the session? One set logged."
+      }
+    },
+    {
+      "say": "nah keep going",
+      "state": "rest",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "no"
+          }
+        ],
+        "addressed": true
+      },
+      "facts": {
+        "day": "Day 1",
+        "state": "rest",
+        "exercise": "Smith close-grip press",
+        "setNumber": 2,
+        "setCount": 2,
+        "targetLoadLb": 170,
+        "targetReps": "6-8",
+        "restLeft": "1:40",
+        "exercises": [
+          {
+            "name": "Smith close-grip press",
+            "setsPlanned": 2,
+            "setsDone": 1,
+            "target": "6-8 reps",
+            "loadLb": 170,
+            "lastTime": "205 for 9",
+            "sheetNote": "1 top set. 1 back down set",
+            "alternates": [
+              "Close-grip bench press"
+            ]
+          },
+          {
+            "name": "Incline dumbbell press",
+            "setsPlanned": 2,
+            "setsDone": 0,
+            "target": "8-10 reps",
+            "lastTime": "80 for 9",
+            "alternates": []
+          },
+          {
+            "name": "Cable incline flyes",
+            "setsPlanned": 2,
+            "setsDone": 0,
+            "target": "10-12 reps",
+            "lastTime": "30 for 12"
+          }
+        ],
+        "sets": [
+          {
+            "exercise": "Smith close-grip press",
+            "setNumber": 1,
+            "role": "top",
+            "reps": 9,
+            "repSource": "measured",
+            "loadLb": 205,
+            "estimatedRIR": 0,
+            "minutesAgo": 2
+          }
+        ],
+        "rules": [
+          "Back off sets should be 20-25% lighter than your top set"
+        ],
+        "addOns": [
+          "Abs"
+        ],
+        "athleteName": "Zander",
+        "openAsk": "End the session? One set logged."
+      }
+    }
+  ]
+}

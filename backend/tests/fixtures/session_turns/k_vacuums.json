@@ -1,0 +1,102 @@
+{
+  "scenario": "k_vacuums",
+  "title": "Morning vacuums run themselves; asked about, said three ways.",
+  "facts": {
+    "day": null,
+    "state": "rest",
+    "exercise": "Stomach vacuums",
+    "setNumber": 2,
+    "setCount": 4,
+    "targetLoadLb": null,
+    "targetReps": "20 seconds",
+    "restLeft": "0:25",
+    "exercises": [
+      {
+        "name": "Stomach vacuums",
+        "setsPlanned": 4,
+        "setsDone": 1,
+        "target": "20 seconds",
+        "addOn": "Vacuums"
+      }
+    ],
+    "sets": [
+      {
+        "exercise": "Stomach vacuums",
+        "setNumber": 1,
+        "seconds": 20,
+        "repSource": "plan"
+      }
+    ],
+    "rules": [],
+    "addOns": [],
+    "athleteName": "Zander"
+  },
+  "turns": [
+    {
+      "say": "how many more?",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "Three more holds.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [],
+        "reply": "Three more holds.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "how many of these are left",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "Three more after this rest.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [],
+        "reply": "Three more after this rest.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "start the next one",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "starting",
+            "number": null,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          }
+        ],
+        "reply": "Starting.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "starting"
+          }
+        ],
+        "reply": "Starting.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    }
+  ]
+}

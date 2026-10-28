@@ -1,0 +1,219 @@
+{
+  "scenario": "a_top_set_and_back_off",
+  "title": "The top set by voice, the back-off asked about three ways, then taken.",
+  "facts": {
+    "day": "Day 1",
+    "state": "rest",
+    "exercise": "Smith close-grip press",
+    "setNumber": 2,
+    "setCount": 2,
+    "targetLoadLb": 170,
+    "targetReps": "6-8",
+    "restLeft": "3:20",
+    "exercises": [
+      {
+        "name": "Smith close-grip press",
+        "setsPlanned": 2,
+        "setsDone": 1,
+        "target": "6-8 reps",
+        "loadLb": 170,
+        "lastTime": "205 for 9",
+        "sheetNote": "1 top set. 1 back down set",
+        "alternates": [
+          "Close-grip bench press"
+        ]
+      },
+      {
+        "name": "Incline dumbbell press",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "8-10 reps",
+        "lastTime": "80 for 9",
+        "alternates": []
+      },
+      {
+        "name": "Cable incline flyes",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "10-12 reps",
+        "lastTime": "30 for 12"
+      }
+    ],
+    "sets": [
+      {
+        "exercise": "Smith close-grip press",
+        "setNumber": 1,
+        "role": "top",
+        "reps": 9,
+        "repSource": "measured",
+        "loadLb": 205,
+        "estimatedRIR": 0,
+        "minutesAgo": 2
+      }
+    ],
+    "rules": [
+      "Back off sets should be 20-25% lighter than your top set"
+    ],
+    "addOns": [
+      "Abs"
+    ],
+    "athleteName": "Zander",
+    "openAsk": "Back-off at 170, his rule: 20 to 25% lighter. Say 'go with it' or a weight."
+  },
+  "turns": [
+    {
+      "say": "top set",
+      "state": "ready",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "topSet"
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "alright, this is my top set",
+      "state": "ready",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "topSet"
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "going for the top set now",
+      "state": "ready",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "topSet"
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "what's the back-off?",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "Back-off at 170. His rule: 20 to 25% lighter.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [],
+        "reply": "Back-off at 170. His rule: 20 to 25% lighter.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "what am I doing for the back-off set",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "170 for the back-off, 20 to 25% lighter by his rule.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [],
+        "reply": "170 for the back-off, 20 to 25% lighter by his rule.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "how heavy is the next one",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "170 on the next one.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [],
+        "reply": "170 on the next one.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "go with it",
+      "state": "rest",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "acceptSuggestion"
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "yeah let's do that",
+      "state": "rest",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "acceptSuggestion"
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "sure, put me down for the 170",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "acceptSuggestion",
+            "number": null,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          }
+        ],
+        "reply": "170 it is.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "acceptSuggestion"
+          }
+        ],
+        "reply": "170 it is.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,349 @@
+{
+  "scenario": "m_conversation",
+  "title": "Several things at once, follow-ups, and a model that invents a number.",
+  "facts": {
+    "day": "Day 1",
+    "state": "rest",
+    "exercise": "Smith close-grip press",
+    "setNumber": 2,
+    "setCount": 2,
+    "targetLoadLb": 170,
+    "targetReps": "6-8",
+    "restLeft": "1:40",
+    "exercises": [
+      {
+        "name": "Smith close-grip press",
+        "setsPlanned": 2,
+        "setsDone": 1,
+        "target": "6-8 reps",
+        "loadLb": 170,
+        "lastTime": "205 for 9",
+        "sheetNote": "1 top set. 1 back down set",
+        "alternates": [
+          "Close-grip bench press"
+        ]
+      },
+      {
+        "name": "Incline dumbbell press",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "8-10 reps",
+        "lastTime": "80 for 9",
+        "alternates": []
+      },
+      {
+        "name": "Cable incline flyes",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "10-12 reps",
+        "lastTime": "30 for 12"
+      }
+    ],
+    "sets": [
+      {
+        "exercise": "Smith close-grip press",
+        "setNumber": 1,
+        "role": "top",
+        "reps": 9,
+        "repSource": "measured",
+        "loadLb": 205,
+        "estimatedRIR": 0,
+        "minutesAgo": 2
+      }
+    ],
+    "rules": [
+      "Back off sets should be 20-25% lighter than your top set"
+    ],
+    "addOns": [
+      "Abs"
+    ],
+    "athleteName": "Zander"
+  },
+  "turns": [
+    {
+      "say": "that was 9, and the incline's taken",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "reps",
+            "number": 9,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          },
+          {
+            "intent": "equipmentTaken",
+            "number": null,
+            "reps": null,
+            "setNumber": null,
+            "text": "incline"
+          }
+        ],
+        "reply": "Nine on set 1. Incline's taken.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "reps",
+            "number": 9
+          },
+          {
+            "intent": "equipmentTaken",
+            "text": "incline"
+          }
+        ],
+        "reply": "Nine on set 1. Incline's taken.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "actually make it 140",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "setLoad",
+            "number": 140,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          }
+        ],
+        "reply": "140 on the next set.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "setLoad",
+            "number": 140
+          }
+        ],
+        "reply": "140 on the next set.",
+        "addressed": true,
+        "expectsAnswer": false
+      },
+      "recent": [
+        {
+          "heard": "drop to 150",
+          "said": "150 on the next set."
+        }
+      ]
+    },
+    {
+      "say": "same as last set",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "setLoad",
+            "number": 205,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          }
+        ],
+        "reply": "205, same as set 1.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "setLoad",
+            "number": 205
+          }
+        ],
+        "reply": "205, same as set 1.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "what about the other one?",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "choose",
+            "number": 2,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          }
+        ],
+        "reply": "Incline machine press. Noted for Thursday.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "choose",
+            "number": 2
+          }
+        ],
+        "reply": "Incline machine press. Noted for Thursday.",
+        "addressed": true,
+        "expectsAnswer": false
+      },
+      "recent": [
+        {
+          "heard": "the incline bench is taken",
+          "said": "Incline bench's taken. His first choice is incline Smith press. Or incline machine press. Say 'go with it', 'the other one', or 'I'll wait'."
+        }
+      ],
+      "facts": {
+        "day": "Day 1",
+        "state": "rest",
+        "exercise": "Smith close-grip press",
+        "setNumber": 2,
+        "setCount": 2,
+        "targetLoadLb": 170,
+        "targetReps": "6-8",
+        "restLeft": "1:40",
+        "exercises": [
+          {
+            "name": "Smith close-grip press",
+            "setsPlanned": 2,
+            "setsDone": 1,
+            "target": "6-8 reps",
+            "loadLb": 170,
+            "lastTime": "205 for 9",
+            "sheetNote": "1 top set. 1 back down set",
+            "alternates": [
+              "Close-grip bench press"
+            ]
+          },
+          {
+            "name": "Incline dumbbell press",
+            "setsPlanned": 2,
+            "setsDone": 0,
+            "target": "8-10 reps",
+            "lastTime": "80 for 9",
+            "alternates": []
+          },
+          {
+            "name": "Cable incline flyes",
+            "setsPlanned": 2,
+            "setsDone": 0,
+            "target": "10-12 reps",
+            "lastTime": "30 for 12"
+          }
+        ],
+        "sets": [
+          {
+            "exercise": "Smith close-grip press",
+            "setNumber": 1,
+            "role": "top",
+            "reps": 9,
+            "repSource": "measured",
+            "loadLb": 205,
+            "estimatedRIR": 0,
+            "minutesAgo": 2
+          }
+        ],
+        "rules": [
+          "Back off sets should be 20-25% lighter than your top set"
+        ],
+        "addOns": [
+          "Abs"
+        ],
+        "athleteName": "Zander",
+        "openAsk": "Incline bench's taken. His first choice is incline Smith press. Or incline machine press. Say 'go with it', 'the other one', or 'I'll wait'.",
+        "takenOptions": [
+          "Incline Smith press",
+          "Incline machine press"
+        ]
+      }
+    },
+    {
+      "say": "yeah that one's finished",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "endSet",
+            "number": 12,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          }
+        ],
+        "reply": "Twelve on set 2.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "fallback",
+        "actions": [],
+        "reply": "Sorry, say that again?",
+        "addressed": true,
+        "expectsAnswer": true
+      }
+    },
+    {
+      "say": "was that nine?",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "Was that nine reps, or how hard it felt?",
+        "expectsAnswer": true,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [],
+        "reply": "Was that nine reps, or how hard it felt?",
+        "addressed": true,
+        "expectsAnswer": true
+      }
+    },
+    {
+      "say": "swap to dumbbells",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "swapTo",
+            "number": null,
+            "reps": null,
+            "setNumber": null,
+            "text": "dumbbells"
+          }
+        ],
+        "reply": "Great set! Swapped to dumbbells.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "swapTo",
+            "text": "dumbbells"
+          }
+        ],
+        "reply": null,
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,229 @@
+{
+  "scenario": "i_out_of_scope",
+  "title": "Advice is for the coach, however it's asked; the model's own advice never gets through.",
+  "facts": {
+    "day": "Day 1",
+    "state": "rest",
+    "exercise": "Smith close-grip press",
+    "setNumber": 2,
+    "setCount": 2,
+    "targetLoadLb": 170,
+    "targetReps": "6-8",
+    "restLeft": "1:40",
+    "exercises": [
+      {
+        "name": "Smith close-grip press",
+        "setsPlanned": 2,
+        "setsDone": 1,
+        "target": "6-8 reps",
+        "loadLb": 170,
+        "lastTime": "205 for 9",
+        "sheetNote": "1 top set. 1 back down set",
+        "alternates": [
+          "Close-grip bench press"
+        ]
+      },
+      {
+        "name": "Incline dumbbell press",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "8-10 reps",
+        "lastTime": "80 for 9",
+        "alternates": []
+      },
+      {
+        "name": "Cable incline flyes",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "10-12 reps",
+        "lastTime": "30 for 12"
+      }
+    ],
+    "sets": [
+      {
+        "exercise": "Smith close-grip press",
+        "setNumber": 1,
+        "role": "top",
+        "reps": 9,
+        "repSource": "measured",
+        "loadLb": 205,
+        "estimatedRIR": 0,
+        "minutesAgo": 2
+      }
+    ],
+    "rules": [
+      "Back off sets should be 20-25% lighter than your top set"
+    ],
+    "addOns": [
+      "Abs"
+    ],
+    "athleteName": "Zander"
+  },
+  "turns": [
+    {
+      "say": "should I go heavier next week?",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "",
+        "expectsAnswer": false,
+        "outOfScope": true
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "question",
+            "topic": "outOfScope"
+          }
+        ],
+        "reply": "That's one for your coach. Want me to note it for Thursday?",
+        "addressed": true,
+        "expectsAnswer": true
+      }
+    },
+    {
+      "say": "is my form okay on these?",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "",
+        "expectsAnswer": false,
+        "outOfScope": true
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "question",
+            "topic": "outOfScope"
+          }
+        ],
+        "reply": "That's one for your coach. Want me to note it for Thursday?",
+        "addressed": true,
+        "expectsAnswer": true
+      }
+    },
+    {
+      "say": "what should I eat after this",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "",
+        "expectsAnswer": false,
+        "outOfScope": true
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "question",
+            "topic": "outOfScope"
+          }
+        ],
+        "reply": "That's one for your coach. Want me to note it for Thursday?",
+        "addressed": true,
+        "expectsAnswer": true
+      }
+    },
+    {
+      "say": "is 205 too light for me",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "You should add 10 pounds next time.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "question",
+            "topic": "outOfScope"
+          }
+        ],
+        "reply": "That's one for your coach. Want me to note it for Thursday?",
+        "addressed": true,
+        "expectsAnswer": true
+      }
+    },
+    {
+      "say": "yeah",
+      "state": "rest",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "yes"
+          }
+        ],
+        "addressed": true
+      },
+      "facts": {
+        "day": "Day 1",
+        "state": "rest",
+        "exercise": "Smith close-grip press",
+        "setNumber": 2,
+        "setCount": 2,
+        "targetLoadLb": 170,
+        "targetReps": "6-8",
+        "restLeft": "1:40",
+        "exercises": [
+          {
+            "name": "Smith close-grip press",
+            "setsPlanned": 2,
+            "setsDone": 1,
+            "target": "6-8 reps",
+            "loadLb": 170,
+            "lastTime": "205 for 9",
+            "sheetNote": "1 top set. 1 back down set",
+            "alternates": [
+              "Close-grip bench press"
+            ]
+          },
+          {
+            "name": "Incline dumbbell press",
+            "setsPlanned": 2,
+            "setsDone": 0,
+            "target": "8-10 reps",
+            "lastTime": "80 for 9",
+            "alternates": []
+          },
+          {
+            "name": "Cable incline flyes",
+            "setsPlanned": 2,
+            "setsDone": 0,
+            "target": "10-12 reps",
+            "lastTime": "30 for 12"
+          }
+        ],
+        "sets": [
+          {
+            "exercise": "Smith close-grip press",
+            "setNumber": 1,
+            "role": "top",
+            "reps": 9,
+            "repSource": "measured",
+            "loadLb": 205,
+            "estimatedRIR": 0,
+            "minutesAgo": 2
+          }
+        ],
+        "rules": [
+          "Back off sets should be 20-25% lighter than your top set"
+        ],
+        "addOns": [
+          "Abs"
+        ],
+        "athleteName": "Zander",
+        "openAsk": "That's one for your coach. Want me to note it for Thursday?"
+      }
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "scenario": "g_wait_is_a_count",
+  "title": "A correction that starts like a pause is a count.",
+  "facts": {
+    "day": "Day 1",
+    "state": "rest",
+    "exercise": "Smith close-grip press",
+    "setNumber": 2,
+    "setCount": 2,
+    "targetLoadLb": 170,
+    "targetReps": "6-8",
+    "restLeft": "1:40",
+    "exercises": [
+      {
+        "name": "Smith close-grip press",
+        "setsPlanned": 2,
+        "setsDone": 1,
+        "target": "6-8 reps",
+        "loadLb": 170,
+        "lastTime": "205 for 9",
+        "sheetNote": "1 top set. 1 back down set",
+        "alternates": [
+          "Close-grip bench press"
+        ]
+      },
+      {
+        "name": "Incline dumbbell press",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "8-10 reps",
+        "lastTime": "80 for 9",
+        "alternates": []
+      },
+      {
+        "name": "Cable incline flyes",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "10-12 reps",
+        "lastTime": "30 for 12"
+      }
+    ],
+    "sets": [
+      {
+        "exercise": "Smith close-grip press",
+        "setNumber": 1,
+        "reps": 11,
+        "repSource": "spoken",
+        "loadLb": 205
+      }
+    ],
+    "rules": [
+      "Back off sets should be 20-25% lighter than your top set"
+    ],
+    "addOns": [
+      "Abs"
+    ],
+    "athleteName": "Zander"
+  },
+  "turns": [
+    {
+      "say": "wait, that was 9",
+      "state": "rest",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "reps",
+            "number": 9
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "hold on, it was nine",
+      "state": "rest",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "reps",
+            "number": 9
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "sorry, nine, not eleven",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "reps",
+            "number": 9,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          }
+        ],
+        "reply": "Nine on set 1.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "reps",
+            "number": 9
+          }
+        ],
+        "reply": "Nine on set 1.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    }
+  ]
+}

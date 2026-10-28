@@ -1,0 +1,139 @@
+{
+  "scenario": "b_pocket_set",
+  "title": "Pocket sets by voice and a correction, said three ways.",
+  "facts": {
+    "day": "Day 1",
+    "state": "ready",
+    "exercise": "Cable incline flyes",
+    "setNumber": 1,
+    "setCount": 2,
+    "targetLoadLb": 30,
+    "targetReps": "10-12",
+    "restLeft": null,
+    "exercises": [
+      {
+        "name": "Cable incline flyes",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "10-12 reps",
+        "lastTime": "30 for 12"
+      }
+    ],
+    "sets": [],
+    "rules": [
+      "Back off sets should be 20-25% lighter than your top set"
+    ],
+    "addOns": [
+      "Abs"
+    ],
+    "athleteName": "Zander"
+  },
+  "turns": [
+    {
+      "say": "done, 12",
+      "state": "ready",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "endSet",
+            "number": 12
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "finished, twelve",
+      "state": "ready",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "endSet",
+            "number": 12
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "done with twelve reps",
+      "state": "ready",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "endSet",
+            "number": 12
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "actually that was 11",
+      "state": "rest",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "reps",
+            "number": 11
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "no, that was eleven",
+      "state": "rest",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "reps",
+            "number": 11
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "hang on I miscounted, it was eleven not twelve",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "reps",
+            "number": 11,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          }
+        ],
+        "reply": "Eleven on set 1.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "reps",
+            "number": 11
+          }
+        ],
+        "reply": "Eleven on set 1.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    }
+  ]
+}

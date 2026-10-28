@@ -1,0 +1,195 @@
+{
+  "scenario": "j_questions",
+  "title": "Last time and the rest left, from the facts; a number not in them never gets said.",
+  "facts": {
+    "day": "Day 1",
+    "state": "rest",
+    "exercise": "Smith close-grip press",
+    "setNumber": 2,
+    "setCount": 2,
+    "targetLoadLb": 170,
+    "targetReps": "6-8",
+    "restLeft": "1:40",
+    "exercises": [
+      {
+        "name": "Smith close-grip press",
+        "setsPlanned": 2,
+        "setsDone": 1,
+        "target": "6-8 reps",
+        "loadLb": 170,
+        "lastTime": "205 for 9",
+        "sheetNote": "1 top set. 1 back down set",
+        "alternates": [
+          "Close-grip bench press"
+        ]
+      },
+      {
+        "name": "Incline dumbbell press",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "8-10 reps",
+        "lastTime": "80 for 9",
+        "alternates": []
+      },
+      {
+        "name": "Cable incline flyes",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "10-12 reps",
+        "lastTime": "30 for 12"
+      }
+    ],
+    "sets": [
+      {
+        "exercise": "Smith close-grip press",
+        "setNumber": 1,
+        "role": "top",
+        "reps": 9,
+        "repSource": "measured",
+        "loadLb": 205,
+        "estimatedRIR": 0,
+        "minutesAgo": 2
+      }
+    ],
+    "rules": [
+      "Back off sets should be 20-25% lighter than your top set"
+    ],
+    "addOns": [
+      "Abs"
+    ],
+    "athleteName": "Zander"
+  },
+  "turns": [
+    {
+      "say": "what did I do last time?",
+      "state": "ready",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "Last time 205 for 9.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [],
+        "reply": "Last time 205 for 9.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "what'd I get on this last week",
+      "state": "ready",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "205 for 9 last time.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [],
+        "reply": "205 for 9 last time.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "remind me what I hit last time",
+      "state": "ready",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "Last time you did 205 for 9.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [],
+        "reply": "Last time you did 205 for 9.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "how long left?",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "One forty left.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [],
+        "reply": "One forty left.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "how much rest have I got",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "1:40 to go.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [],
+        "reply": "1:40 to go.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "am I good to go yet",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "Ninety seconds left.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "fallback",
+        "actions": [],
+        "reply": "Sorry, say that again?",
+        "addressed": true,
+        "expectsAnswer": true
+      }
+    },
+    {
+      "say": "how long have I got left",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [],
+        "reply": "Ninety seconds left.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "fallback",
+        "actions": [
+          {
+            "intent": "question",
+            "topic": "restLeft"
+          }
+        ],
+        "reply": null,
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    }
+  ]
+}

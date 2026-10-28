@@ -1,0 +1,170 @@
+{
+  "scenario": "c_phone_in_pocket",
+  "title": "No camera: he starts, ends and counts by voice.",
+  "facts": {
+    "day": "Day 1",
+    "state": "ready",
+    "exercise": "Smith close-grip press",
+    "setNumber": 1,
+    "setCount": 2,
+    "targetLoadLb": 170,
+    "targetReps": "6-8",
+    "restLeft": null,
+    "exercises": [
+      {
+        "name": "Smith close-grip press",
+        "setsPlanned": 2,
+        "setsDone": 1,
+        "target": "6-8 reps",
+        "loadLb": 170,
+        "lastTime": "205 for 9",
+        "sheetNote": "1 top set. 1 back down set",
+        "alternates": [
+          "Close-grip bench press"
+        ]
+      },
+      {
+        "name": "Incline dumbbell press",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "8-10 reps",
+        "lastTime": "80 for 9",
+        "alternates": []
+      },
+      {
+        "name": "Cable incline flyes",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "10-12 reps",
+        "lastTime": "30 for 12"
+      }
+    ],
+    "sets": [],
+    "rules": [
+      "Back off sets should be 20-25% lighter than your top set"
+    ],
+    "addOns": [
+      "Abs"
+    ],
+    "athleteName": "Zander"
+  },
+  "turns": [
+    {
+      "say": "starting",
+      "state": "ready",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "starting"
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "here we go",
+      "state": "ready",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "starting"
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "lifting",
+      "state": "ready",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "starting"
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "done",
+      "state": "recording",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "endSet"
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "ten",
+      "state": "rest",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "answer",
+            "number": 10
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "I got ten",
+      "state": "rest",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "reps",
+            "number": 10
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "ten of them I think",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "reps",
+            "number": 10,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          }
+        ],
+        "reply": "Ten on set 1.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "reps",
+            "number": 10
+          }
+        ],
+        "reply": "Ten on set 1.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    }
+  ]
+}

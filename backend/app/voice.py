@@ -392,8 +392,13 @@ _PAUSE = re.compile(
 _RESUME = re.compile(r"\b(resume|unpause|continue|keep going|i'?m back|back now)\b")
 _NEXT_EXERCISE = re.compile(r"\b(next|skip)( the| this)? (exercise|movement|lift)\b|\bnext exercise\b")
 _SKIP_SET = re.compile(r"\bskip( this| that| the)? set\b|\bskip it\b")
+# Arming (HANDOFF.md §7, Sets start on his word): generous on purpose, since an arm with no movement
+# in 20 s lapses silently. "Set two" alone arms; "set two was 7" is a named count, matched earlier.
 _STARTING = re.compile(
-    r"\b(starting|start(ing)? (the |this |my )?set|here we go|going now)\b|^(go|ready|start|i'?m ready)( now)?$"
+    r"\b(starting|start(ing)? (the |this |my )?set|here we go|going now|lifting)\b"
+    r"|^(?:(?:alright|all right|ok|okay|right)[ ,]+)?(go|going|ready|start|i'?m ready|i'?m going)( now)?$"
+    r"|^(?:(?:alright|ok|okay)[ ,]+)?(?:the )?back[- ]?(?:off|down)( set)?( now)?$"
+    r"|^(?:(?:alright|ok|okay)[ ,]+)?set (?:one|two|three|four|five|six|\d)$"
 )
 _TOP_SET = re.compile(
     r"\b(top set|this is (the|my) top set|that was (the|my) top set|going for the top set)\b"

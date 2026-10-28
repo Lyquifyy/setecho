@@ -1,0 +1,359 @@
+{
+  "scenario": "d_machine_taken",
+  "title": "The incline bench is taken, said three ways; the other one; it's free.",
+  "facts": {
+    "day": "Day 1",
+    "state": "rest",
+    "exercise": "Incline dumbbell press",
+    "setNumber": 1,
+    "setCount": 2,
+    "targetLoadLb": 80,
+    "targetReps": "8-10",
+    "restLeft": "1:40",
+    "exercises": [
+      {
+        "name": "Smith close-grip press",
+        "setsPlanned": 2,
+        "setsDone": 1,
+        "target": "6-8 reps",
+        "loadLb": 170,
+        "lastTime": "205 for 9",
+        "sheetNote": "1 top set. 1 back down set",
+        "alternates": [
+          "Close-grip bench press"
+        ]
+      },
+      {
+        "name": "Incline dumbbell press",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "8-10 reps",
+        "lastTime": "80 for 9",
+        "alternates": []
+      },
+      {
+        "name": "Cable incline flyes",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "10-12 reps",
+        "lastTime": "30 for 12"
+      }
+    ],
+    "sets": [
+      {
+        "exercise": "Smith close-grip press",
+        "setNumber": 1,
+        "role": "top",
+        "reps": 9,
+        "repSource": "measured",
+        "loadLb": 205,
+        "estimatedRIR": 0,
+        "minutesAgo": 2
+      }
+    ],
+    "rules": [
+      "Back off sets should be 20-25% lighter than your top set"
+    ],
+    "addOns": [
+      "Abs"
+    ],
+    "athleteName": "Zander"
+  },
+  "turns": [
+    {
+      "say": "the incline bench is taken",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "equipmentTaken",
+            "number": null,
+            "reps": null,
+            "setNumber": null,
+            "text": "incline bench"
+          }
+        ],
+        "reply": "Okay, the incline bench is taken.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "equipmentTaken",
+            "text": "incline bench"
+          }
+        ],
+        "reply": "Okay, the incline bench is taken.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "someone's camped on the incline bench",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "equipmentTaken",
+            "number": null,
+            "reps": null,
+            "setNumber": null,
+            "text": "incline bench"
+          }
+        ],
+        "reply": "Got it, incline bench is taken.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "equipmentTaken",
+            "text": "incline bench"
+          }
+        ],
+        "reply": "Got it, incline bench is taken.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "ugh, somebody just grabbed the incline",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "equipmentTaken",
+            "number": null,
+            "reps": null,
+            "setNumber": null,
+            "text": "incline"
+          }
+        ],
+        "reply": "Incline's taken. Here are his options.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "equipmentTaken",
+            "text": "incline"
+          }
+        ],
+        "reply": "Incline's taken. Here are his options.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "the other one",
+      "state": "rest",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "choose",
+            "number": 2
+          }
+        ],
+        "addressed": true
+      },
+      "facts": {
+        "day": "Day 1",
+        "state": "rest",
+        "exercise": "Incline dumbbell press",
+        "setNumber": 2,
+        "setCount": 2,
+        "targetLoadLb": 170,
+        "targetReps": "6-8",
+        "restLeft": "1:40",
+        "exercises": [
+          {
+            "name": "Smith close-grip press",
+            "setsPlanned": 2,
+            "setsDone": 1,
+            "target": "6-8 reps",
+            "loadLb": 170,
+            "lastTime": "205 for 9",
+            "sheetNote": "1 top set. 1 back down set",
+            "alternates": [
+              "Close-grip bench press"
+            ]
+          },
+          {
+            "name": "Incline dumbbell press",
+            "setsPlanned": 2,
+            "setsDone": 0,
+            "target": "8-10 reps",
+            "lastTime": "80 for 9",
+            "alternates": []
+          },
+          {
+            "name": "Cable incline flyes",
+            "setsPlanned": 2,
+            "setsDone": 0,
+            "target": "10-12 reps",
+            "lastTime": "30 for 12"
+          }
+        ],
+        "sets": [
+          {
+            "exercise": "Smith close-grip press",
+            "setNumber": 1,
+            "role": "top",
+            "reps": 9,
+            "repSource": "measured",
+            "loadLb": 205,
+            "estimatedRIR": 0,
+            "minutesAgo": 2
+          }
+        ],
+        "rules": [
+          "Back off sets should be 20-25% lighter than your top set"
+        ],
+        "addOns": [
+          "Abs"
+        ],
+        "athleteName": "Zander",
+        "openAsk": "Incline bench's taken. His first choice is incline Smith press. Or incline machine press. Say 'go with it', 'the other one', or 'I'll wait'.",
+        "takenOptions": [
+          "Incline Smith press",
+          "Incline machine press"
+        ]
+      }
+    },
+    {
+      "say": "let's do the machine one",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "choose",
+            "number": 2,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          }
+        ],
+        "reply": "Incline machine press. Noted for Thursday.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "choose",
+            "number": 2
+          }
+        ],
+        "reply": "Incline machine press. Noted for Thursday.",
+        "addressed": true,
+        "expectsAnswer": false
+      },
+      "facts": {
+        "day": "Day 1",
+        "state": "rest",
+        "exercise": "Incline dumbbell press",
+        "setNumber": 2,
+        "setCount": 2,
+        "targetLoadLb": 170,
+        "targetReps": "6-8",
+        "restLeft": "1:40",
+        "exercises": [
+          {
+            "name": "Smith close-grip press",
+            "setsPlanned": 2,
+            "setsDone": 1,
+            "target": "6-8 reps",
+            "loadLb": 170,
+            "lastTime": "205 for 9",
+            "sheetNote": "1 top set. 1 back down set",
+            "alternates": [
+              "Close-grip bench press"
+            ]
+          },
+          {
+            "name": "Incline dumbbell press",
+            "setsPlanned": 2,
+            "setsDone": 0,
+            "target": "8-10 reps",
+            "lastTime": "80 for 9",
+            "alternates": []
+          },
+          {
+            "name": "Cable incline flyes",
+            "setsPlanned": 2,
+            "setsDone": 0,
+            "target": "10-12 reps",
+            "lastTime": "30 for 12"
+          }
+        ],
+        "sets": [
+          {
+            "exercise": "Smith close-grip press",
+            "setNumber": 1,
+            "role": "top",
+            "reps": 9,
+            "repSource": "measured",
+            "loadLb": 205,
+            "estimatedRIR": 0,
+            "minutesAgo": 2
+          }
+        ],
+        "rules": [
+          "Back off sets should be 20-25% lighter than your top set"
+        ],
+        "addOns": [
+          "Abs"
+        ],
+        "athleteName": "Zander",
+        "openAsk": "Incline bench's taken. His first choice is incline Smith press. Or incline machine press. Say 'go with it', 'the other one', or 'I'll wait'.",
+        "takenOptions": [
+          "Incline Smith press",
+          "Incline machine press"
+        ]
+      }
+    },
+    {
+      "say": "it's free now",
+      "state": "rest",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "equipmentFree",
+            "number": null,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          }
+        ],
+        "reply": "Back to incline dumbbell press.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "equipmentFree"
+          }
+        ],
+        "reply": "Back to incline dumbbell press.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    }
+  ]
+}

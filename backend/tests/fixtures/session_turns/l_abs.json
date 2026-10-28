@@ -1,0 +1,144 @@
+{
+  "scenario": "l_abs",
+  "title": "Abs by voice: done with a count, three ways.",
+  "facts": {
+    "day": "Day 1",
+    "state": "ready",
+    "exercise": "Hanging or lying leg raises",
+    "setNumber": 1,
+    "setCount": 2,
+    "targetLoadLb": null,
+    "targetReps": "12-15",
+    "restLeft": null,
+    "exercises": [
+      {
+        "name": "Hanging or lying leg raises",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "12-15 reps",
+        "addOn": "Abs"
+      },
+      {
+        "name": "Cable crunch",
+        "setsPlanned": 2,
+        "setsDone": 0,
+        "target": "15 reps",
+        "addOn": "Abs"
+      }
+    ],
+    "sets": [],
+    "rules": [],
+    "addOns": [
+      "Abs"
+    ],
+    "athleteName": "Zander"
+  },
+  "turns": [
+    {
+      "say": "done, 12",
+      "state": "ready",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "endSet",
+            "number": 12
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "done at twelve",
+      "state": "ready",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "endSet",
+            "number": 12
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "that's twelve on the leg raises",
+      "state": "ready",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "reps",
+            "number": 12
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "twelve on those leg raises, I'm done",
+      "state": "ready",
+      "spark": {
+        "addressed": true,
+        "actions": [
+          {
+            "intent": "endSet",
+            "number": 12,
+            "reps": null,
+            "setNumber": null,
+            "text": null
+          }
+        ],
+        "reply": "Twelve on set 1.",
+        "expectsAnswer": false,
+        "outOfScope": false
+      },
+      "expect": {
+        "via": "spark",
+        "actions": [
+          {
+            "intent": "endSet",
+            "number": 12
+          }
+        ],
+        "reply": "Twelve on set 1.",
+        "addressed": true,
+        "expectsAnswer": false
+      }
+    },
+    {
+      "say": "fifteen",
+      "state": "rest",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "answer",
+            "number": 15
+          }
+        ],
+        "addressed": true
+      }
+    },
+    {
+      "say": "did fifteen on the crunches",
+      "state": "rest",
+      "spark": null,
+      "expect": {
+        "via": "rules",
+        "actions": [
+          {
+            "intent": "reps",
+            "number": 15
+          }
+        ],
+        "addressed": true
+      }
+    }
+  ]
+}
