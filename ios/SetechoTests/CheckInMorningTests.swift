@@ -98,7 +98,8 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     let m = CheckInMorningModel(coordinator: fresh, store: store, speak: { spoken.append($0) })
     await m.resume(opening: true)
     #expect(m.step == .weight && spoken.last == "Step on the scale, and tell me when you're off.")
-    #expect(spoken.dropLast().last?.hasPrefix("Morning") == true && spoken.dropLast().last?.contains("check-in") == true)
+    // The introduction is spoken by start(), before the draft builds; its words come from the flow.
+    #expect(m.intro.hasPrefix("Morning") && m.intro.contains("check-in"))
     // "Give me a couple of minutes": a pause keeps listening and asks nothing.
     await m.apply(turn(.pause, "give me a couple of minutes", reply: "No worries, just tell me whenever you're ready."))
     #expect(m.isPaused && m.isListening && spoken.last == "No worries, just tell me whenever you're ready.")

@@ -203,11 +203,11 @@ final class CheckInMorningModel {
 
     func start() async {
         Task { [api] in _ = try? await api.health() } // warm the backend before the first turn
-        if coordinator.draft == nil { await coordinator.buildDraft() }
+        // The draft (Apple Health, the log, Spark for the notes) takes seconds: build it under the
+        // introduction, which needs none of it, so the voice is heard the moment the screen opens.
+        let draft = Task { [coordinator] in if coordinator.draft == nil { await coordinator.buildDraft() } }
         await natural.prepare()
-        pregenerate()
-        // The first line is due in a moment: wait briefly for its cache so it does not race the live deadline.
-        await natural.warm([intro, "Step on the scale, and tell me when you're off.", "Welcome back."])
+        await natural.warm([intro])
         if let filming {
             showSlate = true
             filming.slate()
@@ -222,6 +222,11 @@ final class CheckInMorningModel {
         audio.startListening()
         // A beat for the session and the input engine to settle before the first line plays.
         try? await Task.sleep(for: .milliseconds(250))
+        await say(intro)
+        if coordinator.draft == nil { status = "Reading Apple Health and the training log…" }
+        await draft.value
+        status = nil
+        pregenerate()
         await resume(opening: true)
     }
 
@@ -240,7 +245,6 @@ final class CheckInMorningModel {
         await coordinator.refreshWeightToday()
         step = flow.nextStep(draft: draft, photosTakenToday: photosTakenToday)
         questionIndex = 0
-        if opening { await say(intro) }
         switch step {
         case .weight:
             if !coordinator.weightMissingToday, let known = coordinator.weightTodayText {
