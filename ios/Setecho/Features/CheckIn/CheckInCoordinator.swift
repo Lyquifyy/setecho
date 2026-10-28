@@ -240,7 +240,7 @@ final class CheckInCoordinator {
         store.upsert(checkIn: current)
     }
 
-    /// The last wrap-up question when the weigh-in never arrived: "Today's weight?"
+    /// The last wrap-up question when the weigh-in never arrived: "What's your weight today?"
     var weightField: FieldSpec? {
         template?.fields.first { $0.source.key == .currentWeight }
     }

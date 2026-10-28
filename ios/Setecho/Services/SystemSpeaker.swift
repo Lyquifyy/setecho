@@ -4,8 +4,8 @@ import Foundation
 
 /// The one voice (HANDOFF.md §7, The spotter voice). Every model the app calls at runtime is Meta's
 /// (the organizers' rule, Oct 28), so lines are spoken by Apple's on-device speech, made as human as
-/// it gets: his pick of the installed Premium English voice (Settings), SSML pauses between clauses,
-/// numbers as words, and never the same line twice in a row (`SpokenText`). The fixed lines are
+/// it gets: Ava (Premium) or his pick in Settings, numbers as words, lines written the way people
+/// talk, and never the same line twice in a row (`SpokenText`). The fixed lines are
 /// rendered to files with `AVSpeechSynthesizer.write` when a flow starts and play at once through one
 /// engine; anything else is spoken live. What happened to each line is counted on `TurnTimings`.
 @MainActor
@@ -28,9 +28,9 @@ final class SystemSpeaker: Speaker {
 
     private var voice: AVSpeechSynthesisVoice? { AudioService.preferredVoice() }
 
-    /// The file name covers the words, the voice, the rate and the pauses: a change renders afresh.
+    /// The file name covers the words, the voice, the rate and how lines are built: a change renders afresh.
     static func key(for text: String, voice: String, rate: Double) -> String {
-        let seed = "\(voice)|\(rate)|\(SpokenText.clausePause)|\(SpokenText.sentencePause)|\(text)"
+        let seed = "plain|\(voice)|\(rate)|\(text)"
         return SHA256.hash(data: Data(seed.utf8)).map { String(format: "%02x", $0) }.joined().prefix(24).description
     }
 

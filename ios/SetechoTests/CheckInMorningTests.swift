@@ -60,7 +60,7 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     let refeed = try #require(flow.template.fields.first { $0.id.contains("refeed") })
     let draft = CheckInDraft(id: UUID(), weekStart: .now, weekEnd: .now, answers: [answer(refeed.id, "10/24/26", state: .drafted), answer(weight.id, "180.8", state: .drafted)], photoSetId: nil, sentAt: nil)
     #expect(flow.nextStep(draft: draft, photosTakenToday: true) == .weight)   // drafted is not answered
-    #expect(flow.prompt(for: [refeed], draft: draft) == "Date of last refeed or cheat meal, 10/24/26?")
+    #expect(flow.prompt(for: [refeed], draft: draft) == "For your last refeed or cheat meal, I've got 10/24/26. Sound right?")
     #expect(CheckInMorningFlow.isYes("Yes.") && CheckInMorningFlow.isYes("yeah") && !CheckInMorningFlow.isYes("yes it was 180"))
     #expect(CheckInMorningFlow.isYes("Use that.") && CheckInMorningFlow.isYes("Sounds good"))   // the weight offer's own words
     #expect(CheckInMorningFlow.isNo("Nope") && !CheckInMorningFlow.isNo("no idea"))
@@ -114,16 +114,32 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     #expect(items.map(\.field.id) == flow.template.orderedFields.map(\.id).filter { $0 == steps.id || $0 == training.id })
     let first = CheckInMorningFlow.readBackPrompt(items[0].field, items[0].answer, first: true)
     let second = CheckInMorningFlow.readBackPrompt(items[1].field, items[1].answer, first: false)
-    #expect(first.hasPrefix("From your data: ") && first.hasSuffix(". Sound right?"))
-    #expect(!second.contains("From your data") && second.hasSuffix(". Sound right?"))
+    #expect(first == "Quick check on your data. Training consistency came in at 100%, 5 of 5 sessions. Sound right?")
+    #expect(second == "Average daily steps came in at 9.4k. Sound right?")
     #expect([first, second].allSatisfy { line in items.filter { line.contains($0.answer.text) }.count == 1 })   // one field per line
+}
+
+@Test func theQuestionsSoundAskedNotRead() throws {
+    let fields = try template().orderedFields
+    func ask(_ label: String) throws -> String { WrapUpModel.question(for: [try #require(fields.first { $0.label == label })]) }
+    #expect(try ask("Energy levels") == "How were your energy levels this week, out of ten?")
+    #expect(try ask("Notes on stress") == "How was your stress this week, out of ten?")
+    #expect(try ask("Notes on recovery") == "How's your recovery been this week?")
+    #expect(try ask("Biggest win this week") == "What was your biggest win this week?")
+    #expect(try ask("Fasted blood glucose") == "What's your fasted blood glucose?")
+    #expect(try ask("Additional notes or concerns") == "Anything else you want your coach to know?")
+    #expect(try ask("Date of last refeed or cheat meal") == "When was your last refeed or cheat meal?")
+    let tape = fields.filter { $0.kind == .measurement && $0.source.type == .voice }
+    #expect(WrapUpModel.question(for: tape) == "What did the tape say for your waist, bicep and thigh?")
+    #expect(SpokenText.words("I've got 10/24/26.") == "I've got October twenty fourth.")
+    #expect(SpokenText.ordinal(1) == "first" && SpokenText.ordinal(22) == "twenty second" && SpokenText.ordinal(30) == "thirtieth")
 }
 
 @Test func theIntroductionNamesTheAthleteTheDayAndWhatIsComing() {
     #expect(CheckInMorningFlow.intro(firstName: "Zander", dueDay: "Thursday", isDueMorning: true)
-            == "Morning, Zander. Your Thursday check-in: weight, glucose, photos, then the coach's questions.")
+            == "Morning, Zander. It's your Thursday check-in. We'll do your weight, glucose and photos, then your coach's questions.")
     #expect(CheckInMorningFlow.intro(firstName: " ", dueDay: "Thursday", isDueMorning: false)
-            == "Morning. Rehearsing your Thursday check-in: weight, glucose, photos, then the coach's questions.")
+            == "Morning. This is a practice run of your Thursday check-in. We'll do your weight, glucose and photos, then your coach's questions.")
 }
 
 @Test @MainActor func aScriptedMorningSavesEveryAnswerAndPicksTheNextQuestionItself() async throws {
@@ -140,7 +156,7 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     let fresh = CheckInCoordinator(store: store)
     let m = CheckInMorningModel(coordinator: fresh, store: store, speak: { spoken.append($0) })
     await m.resume(opening: true)
-    #expect(m.step == .weight && spoken.last == "Step on the scale. Tell me when you're off.")
+    #expect(m.step == .weight && spoken.last == "Hop on the scale, and tell me when you're off.")
     // The introduction is spoken by start(), before the draft builds; its words come from the flow.
     #expect(m.intro.hasPrefix("Morning") && m.intro.contains("check-in"))
     // "Give me a couple of minutes": a pause keeps listening and asks nothing.
@@ -151,7 +167,7 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     #expect(!m.isPaused)
     #expect(fresh.answer(for: weight)?.text == "180.8" && fresh.answer(for: glucose)?.text == "91")
     #expect(store.checkIns.first?.answers.count == 2)   // saved after the answer
-    #expect(m.step == .photos && m.question == "Tripod up for photos. Tell me when you're ready.")
+    #expect(m.step == .photos && m.question == "Time for photos. Set up the tripod, and tell me when you're ready.")
     // A correction names a field already answered and stays on the current question.
     await m.apply(turn(.correction, "wait, it was 180.6", answers: [answer(weight.id, "180.6")], reply: "Changed to 180.6."))
     #expect(fresh.answer(for: weight)?.text == "180.6" && m.step == .photos && m.echo?.contains("180.6") == true)
@@ -182,8 +198,8 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     await m.resume()
     #expect(m.step == .questions && m.question.hasSuffix("?"))
     let first = m.question
-    await m.apply(turn(.forCoach, "should I bump my carbs", answers: [answer(notes.id, "Should I bump my carbs?")], reply: "That's one for your coach. Want me to add it to your notes?"))
-    #expect(m.pendingForCoach == "Should I bump my carbs?" && spoken.last == "That's one for your coach. Want me to add it to your notes?")
+    await m.apply(turn(.forCoach, "should I bump my carbs", answers: [answer(notes.id, "Should I bump my carbs?")], reply: "That's a good one for your coach. Want me to add it to your notes?"))
+    #expect(m.pendingForCoach == "Should I bump my carbs?" && spoken.last == "That's a good one for your coach. Want me to add it to your notes?")
     await m.apply(turn(.chitchat, "yes", reply: "Sure."))
     #expect(fresh.answer(for: notes)?.text == "Should I bump my carbs?" && m.pendingForCoach == nil)
     #expect(m.question == first)   // back to the question that was being asked

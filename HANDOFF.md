@@ -663,9 +663,9 @@ The athlete should feel like he's talking with a training partner, not a machine
   - It uses his first name sparingly, and never comments on form or food.
 - **When:** it's quiet during sets, answers a voice command within about a second, and never talks over the athlete.
 - **The voice itself:** a `Speaker` protocol with one implementation, `SystemSpeaker` (`AVSpeechSynthesizer`, on the device). The natural-voice service (ElevenLabs) was removed on Oct 28: every runtime model must be Meta's.
-  - **Voice:** Evan (Enhanced) by default, found by name in `speechVoices()` (usually `com.apple.voice.enhanced.en-US.Evan`); any installed English voice can be picked in Settings → Voice. Without Evan, Settings says "Download Evan (Enhanced): Settings → Accessibility → Read & Speak → Voices → English" and the best installed English voice speaks.
-  - **Every utterance:** `AVSpeechUtterance(ssmlRepresentation:)` with `<break time="250ms"/>` after a clause and 350 ms between sentences (never over 400 ms); rate 0.49 (a slider in Settings → Voice, 0.42–0.55, with "Play sample"), pitch 1.0, volume 1.0, no pre- or post-utterance delay. Numbers become words on the phone (`SpokenText`: "180.8" → "one eighty point eight", "225 for 8" → "two twenty five for eight").
-  - **Lines:** short and conversational; the same line never twice in a row (a fixed alternate, or "Again, …").
+  - **Voice:** Ava (Premium) by default, then Zoe (Premium), then Evan (Enhanced), found by name and quality in `speechVoices()`; any installed English voice can be picked in Settings → Voice. With none of them, Settings says "Download Ava (Premium): Settings → Accessibility → Read & Speak → Voices → English" and the best installed English voice speaks. Siri's voices can't be used: iOS never lists them to apps.
+  - **Every utterance:** plain text (`AVSpeechUtterance(string:)`), no added pauses: SSML breaks on top of the voice's own made every comma stall (Oct 28), so the voice phrases the punctuation itself. Rate 0.49 (a slider in Settings → Voice, 0.42–0.55, with "Play sample"), pitch 1.0, volume 1.0, no pre- or post-utterance delay. Numbers and dates become words on the phone (`SpokenText`: "180.8" → "one eighty point eight", "225 for 8" → "two twenty five for eight", "10/24/26" → "October twenty fourth").
+  - **Lines:** written to be heard, the way a person asks: "How were your energy levels this week, out of ten?", "How's your recovery been this week?", "What did the tape say for your waist, bicep and thigh?", "Apple Health has you at 180.8. Should I use that?", "Quick check on your data. Average daily steps came in at 9.4k. Sound right?" (`WrapUpModel.question`, from the form's labels). The same line never twice in a row (a fixed alternate, or "Again, …"). Session callouts stay short on purpose.
   - **Pre-rendered:** the fixed lines of Check-in morning, the wrap-up and the photo session (and the coach's questions) are written to CAF files with `AVSpeechSynthesizer.write` when the flow starts, keyed by the line, voice, rate and pauses, and play at once through one `AVAudioEngine`; anything else is spoken live.
 - **One voice everywhere:** sessions, Check-in morning and the wrap-up all use the same `Speaker`.
 
@@ -864,7 +864,7 @@ Report after each numbered block: what passed, what didn't, the measured latenci
 - [x] **Number fast path:** a transcript that is only a number (or the three tape measurements) for the field just asked is parsed by code and answered from a template, with no Spark call. Spark handles everything else.
 - [x] **Spark at its lowest reasoning effort** with small max tokens for `/checkin/turn`, `/voice/command` and `/spotter/line`. *Built without the token cap: a cap cut the JSON off.*
 - [x] **A soft sound** the moment a turn ends.
-- [x] **The voice, on the device** (replaces the natural voice, Oct 28). *Removed:* ElevenLabs/Cartesia, `/voice/speak`, `NaturalVoiceSpeaker` and the backend's numbers-to-words (now `SpokenText` on the phone): every runtime model must be Meta's. `SystemSpeaker` with Evan (Enhanced), SSML pauses, numbers as words, no line twice in a row, the fixed lines pre-rendered with `AVSpeechSynthesizer.write` when the flow starts (§7, The spotter voice). The rehearsal notes above that mention the natural voice describe builds before Oct 28.
+- [x] **The voice, on the device** (replaces the natural voice, Oct 28). *Removed:* ElevenLabs/Cartesia, `/voice/speak`, `NaturalVoiceSpeaker` and the backend's numbers-to-words (now `SpokenText` on the phone): every runtime model must be Meta's. `SystemSpeaker` with Ava (Premium), numbers as words, lines written to be heard, no line twice in a row, the fixed lines pre-rendered with `AVSpeechSynthesizer.write` when the flow starts (§7, The spotter voice). The rehearsal notes above that mention the natural voice describe builds before Oct 28.
 - [ ] **Audio route:** AirPods out at full quality (A2DP, never call-quality Bluetooth); in from the DJI receiver when plugged in, else the iPhone mic; iOS 26 high-quality AirPods recording may be tried, falling back to the DJI/iPhone mic. The live route shows on the Probes screen. Check-in morning and sessions use the same route. *The AirPods mic switch is built and untested on a device.*
 - [x] **Filming mode** (Settings, off by default): every line Setecho speaks saved as audio exactly as played (the voice service's stream, or `AVSpeechSynthesizer.write`), every utterance saved as its WAV, every file stamped from one clock; one SRT captions file per check-in or session; a slate on start (a white flash and a short beep, with its time logged); export by AirDrop from History; never uploaded, never committed; no change to timing or behaviour.
 - [x] **Photos** as in §7: hands-free capture with the head-to-toe framing check and "retake front"; the collage, alignment and outline out of the flow; `/photos/segment` no longer called.
@@ -1048,7 +1048,7 @@ In the order above. Specs:
 - Ask the office-hours question, and get the coach's OK to appear in the demo.
 - Tell the coach his voice notes are transcribed through Meta's API, and collect two of his past replies (one text, one voice note) for G5 and P2.
 - Hand-count every set during the gym tests, and call out an RPE on every set so the effort map can be checked.
-- Download Evan (Enhanced) on the iPhone (Settings → Accessibility → Read & Speak → Voices → English) and tune the speed at the rehearsal (Settings → Voice). Remove the `ELEVENLABS_*` Fly secrets.
+- Download Ava and Zoe (Premium) on the iPhone (Settings → Accessibility → Read & Speak → Voices → English) and tune the speed at the rehearsal (Settings → Voice).
 - Tell the agent your coach's load-adjustment rule if it isn't in the sheet, and check it with him.
 - Ask the organizers about the next-set suggestions and the machine-taken swaps in the same thread as G1.
 - On Import, confirm which days abs join and which mornings the vacuums go on.
@@ -1080,7 +1080,7 @@ In the order above. Specs:
 | Next-set suggestions | On; only with a confirmed coach's rule; the athlete decides each one |
 | Effort map (velocity loss → reps left) | Under 10% → 4+, 10–20% → 3, 20–30% → 2, 30–40% → 1, over 40% → 0; calibrated per exercise from spoken RPE |
 | Load steps | Barbell 5 lb, dumbbells 5 lb, machines from Settings |
-| Spotter voice | Evan (Enhanced) on the device, rate 0.49; else the best installed English voice. No voice service |
+| Spotter voice | Ava (Premium) on the device (then Zoe, then Evan), rate 0.49; else the best installed English voice. No voice service |
 | Tagline | "The prep that logs itself." |
 | When a machine's taken | Only Wait and the athlete's own swaps until the coach's order is confirmed; then his order |
 | Exercise families | `ExerciseFamilies.json`, about 30, hand-written; the import tags against it |

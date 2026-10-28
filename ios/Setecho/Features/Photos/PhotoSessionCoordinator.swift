@@ -3,7 +3,7 @@ import Observation
 import UIKit
 
 /// The hands-free photo session (DESIGN.md Photo session, HANDOFF.md §7): speak the pose, wait
-/// until the athlete is framed and still, capture, say "Got it", move on. Then align each still
+/// until the athlete is framed and still, capture, say "Got it.", move on. Then align each still
 /// through /photos/segment against the reference week, build the collage and save the set.
 @MainActor
 @Observable
@@ -44,8 +44,8 @@ final class PhotoSessionCoordinator {
     }
 
     /// Every line the session can say, rendered once when it starts.
-    private static let fixedLines = ["Got it", "All four. Say retake and a pose, or you're done.", "Step into frame", "Step back a little",
-                                     "Move left", "Move right", "Hold it there.", "Hold still for a second.", "Taking it now."]
+    private static let fixedLines = ["Got it.", "That's all four. Say retake and a pose to redo one, or we're done.", "Step into the frame", "Take a step back",
+                                     "Move a little to your left", "Move a little to your right", "Perfect, hold it right there.", "Just hold still for a second.", "Okay, taking it now."]
 
     var currentPose: Pose? {
         if case .posing(let pose) = phase { return pose }
@@ -106,7 +106,7 @@ final class PhotoSessionCoordinator {
                 let data = try await capture.capture()
                 captured[pose] = data
                 thumbnails[pose] = UIImage(data: data).map { Self.thumbnail($0) }
-                await voice.speak("Got it")
+                await voice.speak("Got it.")
             } catch {
                 phase = .failed("Capture failed: \(error.localizedDescription)")
                 return
@@ -129,7 +129,7 @@ final class PhotoSessionCoordinator {
             if let data = try? await capture.capture() {
                 captured[pose] = data
                 thumbnails[pose] = UIImage(data: data).map { Self.thumbnail($0) }
-                await voice.speak("Got it")
+                await voice.speak("Got it.")
             }
             capture.stop()
             await save()
@@ -160,7 +160,7 @@ final class PhotoSessionCoordinator {
         photoSet = set
         phase = .review
         loop = nil
-        await voice.speak("All four. Say retake and a pose, or you're done.")
+        await voice.speak("That's all four. Say retake and a pose to redo one, or we're done.")
     }
 
     /// Guidance that sounds like a person at the camera. Four seconds to get into position after the
@@ -195,12 +195,12 @@ final class PhotoSessionCoordinator {
                 if capture.stillness.isStill { return true }
                 if !saidHold, now.timeIntervalSince(poseCueAt) >= 1.5 {
                     saidHold = true
-                    await voice.speak("Hold it there.")
+                    await voice.speak("Perfect, hold it right there.")
                 } else if !saidStill, framedFor >= 4 {
                     saidStill = true
-                    await voice.speak("Hold still for a second.")
+                    await voice.speak("Just hold still for a second.")
                 } else if framedFor >= 7 {
-                    await voice.speak("Taking it now.")
+                    await voice.speak("Okay, taking it now.")
                     return true
                 }
                 continue
@@ -279,7 +279,7 @@ final class PhotoSessionCoordinator {
         photoSet = set
         collage = collageImage
         phase = .review
-        await voice.speak("Done. All four are saved.")
+        await voice.speak("All done. Your four photos are saved.")
     }
 
     private static func thumbnail(_ image: UIImage) -> UIImage {

@@ -126,7 +126,7 @@ def test_a_number_not_in_the_transcript_makes_the_turn_unclear():
         "one eighty point eight",
         context(asked=WEIGHT),
     )
-    assert r.intent == "unclear" and r.answers == [] and r.reply == "Sorry, say that again?"
+    assert r.intent == "unclear" and r.answers == [] and r.reply == checkin_turn.UNCLEAR_REPLY
     r = checkin_turn.validate_turn(
         out("answer", [{"fieldId": ENERGY, "text": "", "number": 6}], reply="Energy 7, noted."),
         "six",
@@ -220,7 +220,7 @@ def test_turn_endpoint(monkeypatch):
     r = TestClient(app).post(
         "/checkin/turn", files={"audio": ("u.wav", wav_bytes(), "audio/wav")}, data={"context": ctx}
     )
-    assert r.json()["intent"] == "unclear" and r.json()["reply"] == "Sorry, say that again?"
+    assert r.json()["intent"] == "unclear" and r.json()["reply"] == checkin_turn.UNCLEAR_REPLY
 
 
 def test_a_plain_number_is_answered_by_code_without_spark():

@@ -29,7 +29,7 @@ TurnIntent = Literal[
 INTENTS: tuple[str, ...] = TurnIntent.__args__  # type: ignore[attr-defined]
 
 MAX_REPLY_WORDS = 20
-UNCLEAR_REPLY = "Sorry, say that again?"
+UNCLEAR_REPLY = "Sorry, can you say that again?"
 
 # The reply must never advise. A short blocklist backs the prompt (HANDOFF.md §5, step 5).
 _ADVICE = re.compile(
@@ -93,7 +93,8 @@ SYSTEM = (
     "their coach: never give advice about training, food, weight, recovery or posing. The user message "
     "gives the question just asked, the fields still to answer, the fields already answered, and what "
     "the athlete said. Return the intent, any answers (the field id plus the number or words they used), "
-    "and a reply of one short, friendly, casual sentence. Use only numbers the athlete said. One "
+    "and a reply of one short, friendly, casual sentence, written to be spoken aloud: everyday words "
+    "and contractions, under 12 words, no labels, colons, slashes or lists. Use only numbers the athlete said. One "
     'utterance can answer several fields ("180.8, and glucose was 91"). A correction names a field '
     'already answered ("wait, it was 180.6"). change is asking to redo a field without giving its new value '
     '("let me change my biggest win", "I want to redo energy"): put that field in answers with empty text '

@@ -3,9 +3,8 @@ import Foundation
 
 /// How a line is said by Apple's on-device voice (HANDOFF.md §7, The spotter voice): numbers as
 /// words the way an athlete says them ("180.8" → "one eighty point eight", "225 for 8" → "two twenty
-/// five for eight", "24 3/4" → "twenty four and three quarters", "6/10" → "six out of ten"), short
-/// pauses between clauses through SSML, and a different wording when the same line would come twice
-/// in a row. Only the digits change; every other word is said as written.
+/// five for eight", "24 3/4" → "twenty four and three quarters", "6/10" → "six out of ten"), and a
+/// different wording when the same line would come twice in a row. Only the digits change; every other word is said as written.
 enum SpokenText {
     // MARK: Numbers as words
 
@@ -42,6 +41,19 @@ enum SpokenText {
         return String(n)
     }
 
+    private static let months = ["January", "February", "March", "April", "May", "June", "July", "August", "September",
+                                 "October", "November", "December"]
+
+    /// 1–31 as spoken in a date: "first", "twenty fourth", "thirtieth".
+    static func ordinal(_ n: Int) -> String {
+        let special = [1: "first", 2: "second", 3: "third", 5: "fifth", 8: "eighth", 9: "ninth", 12: "twelfth"]
+        if let word = special[n] { return word }
+        if n < 20 { return units[n] + "th" }
+        let (t, o) = n.quotientAndRemainder(dividingBy: 10)
+        if o == 0 { return String(tens[t].dropLast()) + "ieth" }
+        return "\(tens[t]) \(ordinal(o))"
+    }
+
     /// One numeric token: "180.8" → "one eighty point eight"; "0.5" → "zero point five".
     static func number(_ token: String) -> String {
         let parts = token.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
@@ -57,6 +69,7 @@ enum SpokenText {
         #"(?<scale>\b\d+(?:\.\d+)?/10\b)"#, // 6/10
         #"(?<pct>\b\d+(?:\.\d+)?%)"#, // 100%
         #"(?<thousands>\b\d+(?:\.\d+)?k\b)"#, // 10k, 9.4k
+        #"(?<date>\b\d{1,2}/\d{1,2}/\d{2,4}\b)"#, // 10/24/26
         #"(?<time>\b\d{1,2}:\d{2}\b)"#, // 2:30
         #"(?<num>\b\d+(?:\.\d+)?\b)"#,
     ].joined(separator: "|"))
@@ -83,6 +96,10 @@ enum SpokenText {
                 out += "\(number(String(pct.dropLast()))) percent"
             } else if let k = group("thousands") {
                 out += "\(number(String(k.dropLast()))) thousand"
+            } else if let date = group("date") {
+                let parts = date.split(separator: "/").compactMap { Int($0) }
+                out += (1...12).contains(parts[0]) && (1...31).contains(parts[1])
+                    ? "\(months[parts[0] - 1]) \(ordinal(parts[1]))" : date
             } else if let time = group("time") {
                 let parts = time.split(separator: ":").compactMap { Int($0) }
                 let (mins, secs) = (parts[0], parts[1])
@@ -100,43 +117,14 @@ enum SpokenText {
         return out
     }
 
-    // MARK: Pauses
-
-    /// Pauses on top of the voice's own: 250 ms after a clause, a little more between sentences,
-    /// never longer than 400 ms.
-    static let clausePause = "250ms"
-    static let sentencePause = "350ms"
-
-    /// The line as SSML: numbers as words, XML escaped, a break after each clause and sentence.
-    static func ssml(_ text: String) -> String {
-        var out = ""
-        let chars = Array(words(text))
-        for (i, c) in chars.enumerated() {
-            // Escaped as it goes, so the ";" of "&amp;" is never taken for a clause.
-            switch c {
-            case "&": out += "&amp;"
-            case "<": out += "&lt;"
-            case ">": out += "&gt;"
-            default: out.append(c)
-            }
-            let next: Character? = i + 1 < chars.count ? chars[i + 1] : nil
-            guard next == " " else { continue }
-            if ".?!".contains(c) {
-                out += "<break time=\"\(sentencePause)\"/>"
-            } else if ",;:—".contains(c) {
-                out += "<break time=\"\(clausePause)\"/>"
-            }
-        }
-        return "<speak>\(out)</speak>"
-    }
-
     static let defaultRate = 0.49
     static let rateRange = 0.42...0.55
 
-    /// The utterance every line is spoken or rendered with: SSML when the voice accepts it, the plain
-    /// words otherwise; his rate, pitch and volume at 1, no delay before or after.
+    /// The utterance every line is spoken or rendered with: the words as written, numbers as words,
+    /// his rate, pitch and volume at 1, no delay before or after. No added pauses (Oct 28: SSML breaks
+    /// on top of the voice's own made every comma stall); the voice phrases the punctuation itself.
     static func utterance(_ text: String, voice: AVSpeechSynthesisVoice?, rate: Double) -> AVSpeechUtterance {
-        let utterance = AVSpeechUtterance(ssmlRepresentation: ssml(text)) ?? AVSpeechUtterance(string: words(text))
+        let utterance = AVSpeechUtterance(string: words(text))
         utterance.voice = voice
         utterance.rate = Float(min(max(rate, rateRange.lowerBound), rateRange.upperBound))
         utterance.pitchMultiplier = 1.0
@@ -151,19 +139,19 @@ enum SpokenText {
 
     /// Another way to say a fixed line, so a repeat doesn't sound like a recording.
     static let alternates: [String: String] = [
-        "Sorry, say that again?": "Sorry, one more time?",
+        "Sorry, can you say that again?": "Sorry, I missed that. One more time?",
+        "Sorry, I didn't catch that.": "Hmm, I didn't get that.",
         "Didn't catch that. Say it again?": "Missed that. Once more?",
-        "Got it.": "Okay.",
-        "Got it": "Okay",
-        "Skipped.": "Skipping that one.",
+        "Got it.": "Okay, got it.",
+        "Okay, we'll skip that one.": "No problem, skipping it.",
         "Take your time.": "No rush.",
-        "Hold it there.": "Right there.",
-        "Hold still for a second.": "Stay still, just a second.",
-        "Step into frame": "Come into the frame",
-        "Step back a little": "Back a touch",
-        "Move left": "A bit left",
-        "Move right": "A bit right",
-        "Welcome back.": "Back again.",
+        "Perfect, hold it right there.": "That's it, stay right there.",
+        "Just hold still for a second.": "Nice and still, just a second.",
+        "Step into the frame": "Come on into the frame",
+        "Take a step back": "Back up just a little",
+        "Move a little to your left": "A touch more to your left",
+        "Move a little to your right": "A touch more to your right",
+        "Welcome back. Let's pick up where we left off.": "Okay, let's keep going.",
     ]
 
     /// `text`, unless it is exactly the line just said: then its alternate, or "Again, …" for a

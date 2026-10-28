@@ -108,7 +108,7 @@ struct SettingsView: View {
                 CardDivider()
                 Text("The voice Setecho speaks with, everywhere.").font(.subheadline).secondaryText()
                 Picker("Voice", selection: $settings.voiceIdentifier) {
-                    Text(AudioService.defaultVoice == nil ? "Best installed" : "Evan (Enhanced)").tag("")
+                    Text(AudioService.defaultVoice.map { "Default · \($0.name) (\(qualityName($0.quality)))" } ?? "Best installed").tag("")
                     ForEach(AudioService.availableVoices(), id: \.identifier) { voice in
                         Text("\(voice.name) · \(qualityName(voice.quality))").tag(voice.identifier)
                     }
@@ -116,7 +116,7 @@ struct SettingsView: View {
                 .pickerStyle(.menu)
                 .tint(Theme.cobalt)
                 if AudioService.defaultVoice == nil {
-                    Text("Download Evan (Enhanced): Settings → Accessibility → Read & Speak → Voices → English")
+                    Text("Download Ava (Premium): Settings → Accessibility → Read & Speak → Voices → English")
                         .font(.footnote).secondaryText()
                 }
                 CardDivider()

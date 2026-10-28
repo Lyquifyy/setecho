@@ -48,11 +48,11 @@ enum Framing: Equatable {
 
     var spoken: String? {
         switch self {
-        case .noPerson: "Step into frame"
+        case .noPerson: "Step into the frame"
         case .good: nil
-        case .stepBack: "Step back a little"
-        case .moveLeft: "Move left"
-        case .moveRight: "Move right"
+        case .stepBack: "Take a step back"
+        case .moveLeft: "Move a little to your left"
+        case .moveRight: "Move a little to your right"
         }
     }
 }

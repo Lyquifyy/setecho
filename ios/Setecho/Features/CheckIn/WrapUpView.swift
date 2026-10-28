@@ -86,7 +86,7 @@ final class WrapUpModel {
         self.voice = SystemSpeaker(audio: audio, cacheDirectory: coordinator.store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
     }
 
-    private static let fixedLines = ["That's everything. Review and send is next.", "Skipped.", "Didn't catch that. Say it again?"]
+    private static let fixedLines = ["That's everything. Review and send is next.", "Okay, we'll skip that one.", "Didn't catch that. Say it again?"]
 
     var progressText: String { "\(min(index + 1, max(questions.count, 1))) of \(questions.count)" }
 
@@ -95,19 +95,35 @@ final class WrapUpModel {
         return Self.question(for: questions[index])
     }
 
-    /// "Energy levels, 1 to 10?" or "Waist, bicep and thigh?"; the weight fallback asks "Today's weight?"
+    /// Each question the way a person would ask it, from his form's labels (Oct 28: "Energy levels,
+    /// 1 to 10?" sounded like a form): "How were your energy levels this week, out of ten?", "How's
+    /// your recovery been this week?", "What did the tape say for your waist, bicep and thigh?"
     nonisolated static func question(for group: [FieldSpec]) -> String {
-        if group.count == 1, group[0].source.key == .currentWeight { return "Today's weight?" }
+        if group.count == 1, group[0].source.key == .currentWeight { return "What's your weight today?" }
         if group.count > 1 {
             let names = group.map { Self.shortName($0.label) }
-            return names.dropLast().joined(separator: ", ") + " and \(names.last ?? "")?"
+            return "What did the tape say for your " + names.dropLast().joined(separator: ", ") + " and \(names.last ?? "")?"
         }
         let field = group[0]
-        var text = field.label.trimmingCharacters(in: .whitespaces)
-        if let prompt = field.prompt?.lowercased() {
-            if prompt.contains("1-10") { text += ", 1 to 10" } else { text += " " + prompt.trimmingCharacters(in: CharacterSet(charactersIn: "()")) }
+        let label = spokenLabel(field)
+        let lower = field.label.lowercased()
+        let plural = label.hasSuffix("s") && !label.hasSuffix("ss")
+        if lower.contains("additional notes") || lower.contains("concerns") { return "Anything else you want your coach to know?" }
+        if lower.hasPrefix("biggest") { return "What was your \(label)?" }
+        switch field.kind {
+        case .scale10: return "How \(plural ? "were" : "was") your \(label) this week, out of ten?"
+        case .text where lower.hasPrefix("notes on"): return plural ? "How have your \(label) been this week?" : "How's your \(label) been this week?"
+        case .measurement, .number, .percent: return "What's your \(label)?"
+        case .date: return "When was your \(label)?"
+        default: return label.capitalizedFirst + "?"
         }
-        return text + "?"
+    }
+
+    /// The label as said in a sentence: "notes on recovery" → "recovery", "Date of last refeed or cheat
+    /// meal" → "last refeed or cheat meal", "Bicep measurement, flexed" → "bicep measurement, flexed".
+    nonisolated static func spokenLabel(_ field: FieldSpec) -> String {
+        let label = shortLabel([field])
+        return label.hasPrefix("date of ") ? String(label.dropFirst("date of ".count)) : label
     }
 
     nonisolated static func shortName(_ label: String) -> String {
@@ -190,7 +206,7 @@ final class WrapUpModel {
             }
             if control.hasPrefix("skip") || control == "next" {
                 index += 1
-                await voice.speak("Skipped.")
+                await voice.speak("Okay, we'll skip that one.")
                 await ask()
                 return
             }
@@ -204,7 +220,7 @@ final class WrapUpModel {
             coordinator.apply(response.answers)
             index += 1
             let confirmation = Self.confirmation(for: group, answers: usable)
-            let next = questions.indices.contains(index) ? " Next: \(Self.shortLabel(questions[index]))." : ""
+            let next = questions.indices.contains(index) ? " Next up, \(Self.shortLabel(questions[index]))." : ""
             await voice.speak(confirmation + next)
             await ask()
         } catch {
@@ -224,7 +240,7 @@ final class WrapUpModel {
         let label = shortLabel(group)
         let text = answers.first?.text ?? ""
         let head = text.split(separator: ",").first.map(String.init) ?? text
-        return "\(label): \(head.replacingOccurrences(of: "/10", with: ""))."
+        return "Got it, \(head.replacingOccurrences(of: "/10", with: "")) for \(label)."
     }
 
     nonisolated static func shortLabel(_ group: [FieldSpec]) -> String {

@@ -209,10 +209,11 @@ final class AudioService {
     }
 
     /// One voice everywhere (HANDOFF.md §7, The spotter voice): the athlete's pick from Settings,
-    /// else Evan (Enhanced), else the best installed English voice, premium first. Never the coach's.
+    /// else Ava (Premium), Zoe (Premium) or Evan (Enhanced), else the best installed English voice,
+    /// premium first. Never the coach's.
     static func preferredVoice(identifier: String = Settings.shared.voiceIdentifier) -> AVSpeechSynthesisVoice? {
         if !identifier.isEmpty, let chosen = AVSpeechSynthesisVoice(identifier: identifier) { return chosen }
-        if let evan = defaultVoice { return evan }
+        if let preferred = defaultVoice { return preferred }
         let english = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("en") }
         let ranked = english.sorted { a, b in
             if a.quality != b.quality { return a.quality.rawValue > b.quality.rawValue }
@@ -230,13 +231,19 @@ final class AudioService {
         }
     }
 
-    /// The default voice: Evan (Enhanced), found by name (usually com.apple.voice.enhanced.en-US.Evan),
-    /// US English first. Nil until it is downloaded; Settings says where.
+    /// The default voices in order, by name and quality (Oct 28: Premium sounds the most fluent; Evan
+    /// has no Premium version).
+    static let defaultVoices: [(name: String, quality: AVSpeechSynthesisVoiceQuality)] = [("Ava", .premium), ("Zoe", .premium), ("Evan", .enhanced)]
+
+    /// The first default voice that is installed, US English first. Nil until one is downloaded;
+    /// Settings says where.
     static var defaultVoice: AVSpeechSynthesisVoice? {
-        AVSpeechSynthesisVoice.speechVoices()
-            .filter { $0.name == "Evan" && $0.quality == .enhanced && $0.language.hasPrefix("en") }
-            .sorted { ($0.language == "en-US" ? 0 : 1) < ($1.language == "en-US" ? 0 : 1) }
-            .first
+        let english = AVSpeechSynthesisVoice.speechVoices().filter { $0.language.hasPrefix("en") }
+        for wanted in defaultVoices {
+            let matches = english.filter { $0.name == wanted.name && $0.quality == wanted.quality }
+            if let voice = matches.first(where: { $0.language == "en-US" }) ?? matches.first { return voice }
+        }
+        return nil
     }
 
     /// Play one audio file (a coach cue) with the music ducked, then restore mixing. Serialized

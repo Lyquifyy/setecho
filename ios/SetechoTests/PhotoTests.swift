@@ -14,7 +14,7 @@ private func mask(x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, grid: [UInt8] 
     #expect(Framing.judge(mask(x: 0.3, y: 0.1, w: 0.4, h: 0.88)) == .stepBack)  // feet cut off
     #expect(Framing.judge(mask(x: 0.01, y: 0.1, w: 0.4, h: 0.8)) == .moveLeft)
     #expect(Framing.judge(mask(x: 0.6, y: 0.1, w: 0.38, h: 0.8)) == .moveRight)
-    #expect(Framing.stepBack.spoken == "Step back a little" && Framing.good.spoken == nil)
+    #expect(Framing.stepBack.spoken == "Take a step back" && Framing.good.spoken == nil)
 }
 
 @Test func iouAndStillness() {
