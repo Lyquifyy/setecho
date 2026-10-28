@@ -12,8 +12,11 @@ import Foundation
 final class SystemSpeaker: Speaker {
     private let audio: AudioService
     private let cacheDirectory: URL
-    /// Renders under way, by line, so a line about to be spoken can wait a moment for its own file.
-    private var rendering: [String: Task<Void, Never>] = [:]
+    /// Lines waiting to render, in order, and the one rendering now. One at a time: two dozen
+    /// synthesizers writing at once compete for the Premium voice, and the next line due goes first.
+    private var renderQueue: [String] = []
+    private var renderingNow: String?
+    private var renderLoop: Task<Void, Never>?
     private let player = LinePlayer()
     private var lastLine: String?
 
@@ -46,35 +49,46 @@ final class SystemSpeaker: Speaker {
 
     /// Render the fixed lines (and their alternates) in the background so they play at once.
     func prerender(_ lines: [String]) {
-        for line in SpokenText.withAlternates(lines) { startRender(line) }
+        enqueue(SpokenText.withAlternates(lines), first: false)
     }
 
-    /// Start the lines and wait, up to `limit`, for them to land: the opening line should be ready
-    /// before it is due.
+    /// Move the lines to the front and wait, up to `limit`, for them to land: the opening line
+    /// should be ready before it is due.
     func warm(_ lines: [String], within limit: Duration = .seconds(1.5)) async {
-        for line in lines { startRender(line) }
+        enqueue(lines, first: true)
         let deadline = ContinuousClock.now + limit
-        while ContinuousClock.now < deadline, lines.contains(where: { rendering[$0] != nil }) {
+        while ContinuousClock.now < deadline, lines.contains(where: isPending) {
             try? await Task.sleep(for: .milliseconds(30))
         }
     }
 
-    private func startRender(_ line: String) {
-        guard rendering[line] == nil, cachedAudio(for: line) == nil else { return }
-        let url = fileURL(for: line)
-        let voice = self.voice
-        let rate = Settings.shared.voiceRate
-        rendering[line] = Task.detached(priority: .userInitiated) {
-            _ = await SpokenText.render(line, voice: voice, rate: rate, to: url)
-        }
-        Task { [weak self] in
-            await self?.rendering[line]?.value
-            self?.rendering[line] = nil
+    private func isPending(_ line: String) -> Bool { renderingNow == line || renderQueue.contains(line) }
+
+    private func enqueue(_ lines: [String], first: Bool) {
+        let wanted = lines.filter { cachedAudio(for: $0) == nil && renderingNow != $0 }
+        renderQueue.removeAll { wanted.contains($0) }
+        renderQueue = first ? wanted + renderQueue : renderQueue + wanted
+        guard renderLoop == nil else { return }
+        renderLoop = Task { [weak self] in
+            while let self, !self.renderQueue.isEmpty {
+                let line = self.renderQueue.removeFirst()
+                guard self.cachedAudio(for: line) == nil else { continue }
+                self.renderingNow = line
+                let url = self.fileURL(for: line)
+                let voice = self.voice
+                let rate = Settings.shared.voiceRate
+                _ = await Task.detached(priority: .userInitiated) {
+                    await SpokenText.render(line, voice: voice, rate: rate, to: url)
+                }.value
+                self.renderingNow = nil
+            }
+            self?.renderLoop = nil
         }
     }
 
     /// Cut whatever is playing (the app went to the background, or the flow was cancelled).
     func stop() {
+        renderQueue.removeAll()
         player.cancel()
         audio.stopSpeaking()
     }
@@ -82,7 +96,7 @@ final class SystemSpeaker: Speaker {
     func speak(_ text: String) async {
         let line = SpokenText.varied(text, after: lastLine)
         lastLine = line
-        if rendering[line] != nil { await warm([line], within: .milliseconds(Self.renderWaitMilliseconds)) }
+        if isPending(line) { await warm([line], within: .milliseconds(Self.renderWaitMilliseconds)) }
         if let file = cachedAudio(for: line) {
             await audio.duck()
             do {

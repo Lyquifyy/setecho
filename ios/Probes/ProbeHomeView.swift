@@ -127,11 +127,8 @@ private struct TurnTimingsCard: View {
         .onAppear { route = AudioService().routeDescription }
     }
 
-    /// "Ava · Premium": the on-device voice every line uses.
-    private var voiceState: String {
-        guard let voice = AudioService.preferredVoice() else { return "none installed" }
-        return "\(voice.name) · \(voice.quality == .premium ? "Premium" : voice.quality == .enhanced ? "Enhanced" : "Default")"
-    }
+    /// "Ava (Premium)": the on-device voice every line uses.
+    private var voiceState: String { AudioService.voiceDescription }
 
     private func seconds(_ value: Double?) -> String {
         guard let value else { return "—" }

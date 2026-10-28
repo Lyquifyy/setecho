@@ -233,7 +233,16 @@ final class AudioService {
 
     /// The default voices in order, by name and quality (Oct 28: Premium sounds the most fluent; Evan
     /// has no Premium version).
-    static let defaultVoices: [(name: String, quality: AVSpeechSynthesisVoiceQuality)] = [("Ava", .premium), ("Zoe", .premium), ("Evan", .enhanced)]
+    static let defaultVoices: [(name: String, quality: AVSpeechSynthesisVoiceQuality)] = [
+        ("Ava", .premium), ("Zoe", .premium), ("Ava", .enhanced), ("Zoe", .enhanced), ("Evan", .enhanced),
+    ]
+
+    /// "Ava (Premium)": the voice every line uses right now, for the check-in screen and Probes.
+    static var voiceDescription: String {
+        guard let voice = preferredVoice() else { return "no voice installed" }
+        let quality = voice.quality == .premium ? "Premium" : voice.quality == .enhanced ? "Enhanced" : "Default"
+        return "\(voice.name) (\(quality))"
+    }
 
     /// The first default voice that is installed, US English first. Nil until one is downloaded;
     /// Settings says where.

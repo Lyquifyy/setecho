@@ -22,8 +22,12 @@ final class AirPodsMic {
     var isActive: Bool { Settings.shared.useAirPodsMic && !unavailable }
 
     /// The category options for every activation: ducking while Setecho speaks, mixing otherwise.
+    /// `.defaultToSpeaker`: with nothing plugged in, .playAndRecord plays through the earpiece, which
+    /// made every check-in line thin and quiet (Oct 28) while "Play sample" used the loudspeaker.
+    /// AirPods and other headphones still take the output when connected.
     func options(ducking: Bool) -> AVAudioSession.CategoryOptions {
         var options: AVAudioSession.CategoryOptions = ducking ? [.duckOthers, .allowBluetoothA2DP] : [.mixWithOthers, .allowBluetoothA2DP]
+        options.insert(.defaultToSpeaker)
         if isActive { options.formUnion([.allowBluetoothHFP, .bluetoothHighQualityRecording]) }
         return options
     }

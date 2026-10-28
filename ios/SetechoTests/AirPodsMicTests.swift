@@ -12,7 +12,7 @@ import Testing
     settings.useAirPodsMic = false
     AirPodsMic.shared.reset()
     let off = AirPodsMic.shared.options(ducking: false)
-    #expect(off.contains(.allowBluetoothA2DP) && off.contains(.mixWithOthers))
+    #expect(off.contains(.allowBluetoothA2DP) && off.contains(.mixWithOthers) && off.contains(.defaultToSpeaker)) // never the earpiece
     #expect(!off.contains(.allowBluetoothHFP) && !off.contains(.bluetoothHighQualityRecording))
 
     settings.useAirPodsMic = true

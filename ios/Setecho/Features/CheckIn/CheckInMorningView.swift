@@ -49,6 +49,8 @@ struct CheckInMorningView: View {
                 Text(notice).font(.hudLabel).secondaryText().multilineTextAlignment(.center)
             }
             Spacer(minLength: 0)
+            // Which voice is speaking, so a fallback to a lesser voice is never a mystery.
+            Text("Voice · \(AudioService.voiceDescription)").font(.caption).secondaryText()
             if model.isDone {
                 Button("Open to send") { model.showReview = true }.buttonStyle(.setechoPrimary)
                 LinkButton(title: "Read it back", chevron: .none) { Task { await model.readBack() } }
