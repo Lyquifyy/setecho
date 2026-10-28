@@ -13,7 +13,7 @@ Plan of record: "Setecho hackathon build plan" (Claude Docs), which holds the sc
   - `tests/fixtures/` holds saved raw SAM / Spark output. Build measurement math against these.
 - `ios/`: SwiftUI, iOS 26+. XcodeGen generates the project from `ios/project.yml`; never edit the .xcodeproj.
   - `Setecho/DesignSystem/` holds the tokens, type, components, number formatting and the component gallery preview.
-  - `Setecho/Assets.xcassets` holds the app icon, lockup, logo and wordmark. `TabCoach` is unused; delete it.
+  - `Setecho/Assets.xcassets` holds the app icon, lockup, logo and wordmark.
   - `Setecho/App/` holds placeholder tabs (Today / History / Check-in). Replace them with the real screens.
 - `watch/` (stretch, P6): the Garmin watch app (Monkey C, Connect IQ) for the Venu 4. Motion, haptics and messages to the phone only. `make watch` / `make watch-sim`.
 - `design/` holds the approved boards and brand files, **local only**: it's gitignored and never committed (HANDOFF §11). Read it for reference; never add it to git or link it from the README.
