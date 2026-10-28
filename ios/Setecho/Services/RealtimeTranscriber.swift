@@ -20,7 +20,9 @@ final class RealtimeTranscriber {
     private var task: URLSessionWebSocketTask?
     private var ready = false
     private var queued: [Data] = []
-    private var finalTranscript: String?
+    /// The answer's committed segments: Meta marks a segment final at a pause mid-answer, and the
+    /// answer is all of them (Oct 28: keeping only the latest one cut answers in half).
+    private var segments: [String] = []
     private var done: CheckedContinuation<String?, Never>?
     private var receiver: Task<Void, Never>?
 
@@ -39,7 +41,7 @@ final class RealtimeTranscriber {
     func start() {
         guard task == nil, let url = streamURL else { return }
         partial = ""
-        finalTranscript = nil
+        segments = []
         ready = false
         queued.removeAll()
         lastError = nil
@@ -65,9 +67,10 @@ final class RealtimeTranscriber {
     /// The athlete stopped: send the end frame and wait briefly for the final transcript.
     func end() async -> String? {
         guard let ws = task else { return nil }
-        if let finalTranscript {
+        // Speech ended on a committed segment with nothing after it: the answer is complete.
+        if partial.isEmpty, !segments.isEmpty {
             close()
-            return finalTranscript
+            return text
         }
         ws.send(.string(#"{"type":"end"}"#)) { _ in }
         let result: String? = await withCheckedContinuation { continuation in
@@ -86,7 +89,30 @@ final class RealtimeTranscriber {
     private func finish(_ transcript: String?) {
         guard let continuation = done else { return }
         done = nil
-        continuation.resume(returning: transcript ?? finalTranscript ?? (partial.isEmpty ? nil : partial))
+        if let transcript { commit(transcript) }
+        let whole = text
+        continuation.resume(returning: whole.isEmpty ? nil : whole)
+    }
+
+    /// Everything said so far: the committed segments, then the segment still being heard.
+    var text: String {
+        let committed = segments.joined(separator: " ")
+        guard !partial.isEmpty else { return committed }
+        if committed.isEmpty || partial.hasPrefix(committed) { return partial }
+        return committed + " " + partial
+    }
+
+    /// A final segment. A transcript that repeats what is committed is cumulative and replaces it.
+    private func commit(_ transcript: String) {
+        let t = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        partial = ""
+        guard !t.isEmpty else { return }
+        let committed = segments.joined(separator: " ")
+        if !committed.isEmpty, t.hasPrefix(committed) {
+            segments = [t]
+        } else if segments.last != t {
+            segments.append(t)
+        }
     }
 
     private func fail(_ message: String) {
@@ -121,12 +147,10 @@ final class RealtimeTranscriber {
                 queued.removeAll()
             case "transcript":
                 let transcript = event["transcript"] as? String ?? ""
-                partial = transcript
-                if event["final"] as? Bool == true { finalTranscript = transcript }
+                if event["final"] as? Bool == true { commit(transcript) } else { partial = transcript }
             case "done":
-                let transcript = event["transcript"] as? String ?? partial
-                finalTranscript = transcript.isEmpty ? finalTranscript : transcript
-                finish(finalTranscript)
+                let transcript = event["transcript"] as? String ?? ""
+                finish(transcript.isEmpty ? nil : transcript)
                 return
             case "error":
                 fail(event["message"] as? String ?? "realtime error")

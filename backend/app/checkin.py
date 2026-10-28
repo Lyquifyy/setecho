@@ -83,12 +83,26 @@ class FieldAnswer(StrictModel):
     provenance: list[Provenance]
 
 
+class VideoPick(StrictModel):
+    """One of the two videos, as the phone keeps it. The backend only carries it through."""
+
+    setId: str
+    caption: str
+    cropStart: float
+    cropEnd: float
+    sourceFile: str | None = None
+
+
 class CheckInDraft(StrictModel):
     id: str
     weekStart: str
     weekEnd: str
     answers: list[FieldAnswer]
     photoSetId: str | None = None
+    # The phone's own bookkeeping, carried through so a draft it sends back is accepted (Oct 28: a
+    # render with picks or adjustments was refused with "extra inputs are not permitted").
+    videoPicks: list[VideoPick] = Field(default_factory=list)
+    adjustments: list[str] = Field(default_factory=list)
     sentAt: str | None = None
 
 
@@ -220,19 +234,17 @@ def fill_data_field(
             Provenance(source="Training log", detail=f"{training.setsLogged} sets logged; PRs: {prs or 'none'}")])  # fmt: skip
 
     if key == "cardioProtocol":
+        # The protocol his coach assigned, word for word, and nothing else (Oct 28): what was logged
+        # stays in the provenance, and steps have their own field.
         liss = [s for d in facts.daily for s in d.liss]
         minutes = sum(s.minutes for s in liss)
-        steps = [d.steps for d in facts.daily if d.steps is not None]
-        avg = round(sum(steps) / len(steps) / 100) * 100 if steps else None
-        parts = [facts.cardioProtocol] if facts.cardioProtocol else []
-        parts.append(f"logged: {len(liss)} sessions, {minutes} min")
-        if avg is not None:
-            parts.append(f"Steps: avg {avg / 1000:.1f}k")
-        text = ". ".join(parts) if facts.cardioProtocol else " ".join(parts)
-        return FieldAnswer(fieldId=field.id, text=text, state=state, provenance=[
-            Provenance(source="Settings", detail=facts.cardioProtocol or "No protocol set"),
-            Provenance(source=_source(facts, "workouts", "Garmin via Apple Health"), detail=f"{len(liss)} LISS sessions, {minutes} min"),
-        ])  # fmt: skip
+        logged = Provenance(source=_source(facts, "workouts", "Garmin via Apple Health"),
+                            detail=f"Logged this week: {len(liss)} LISS sessions, {minutes} min")  # fmt: skip
+        if not facts.cardioProtocol:
+            return FieldAnswer(fieldId=field.id, text="", state="missing", provenance=[
+                Provenance(source="Plan", detail="No cardio protocol from the coach yet: asked on check-in morning"), logged])  # fmt: skip
+        return FieldAnswer(fieldId=field.id, text=facts.cardioProtocol.strip(), state=state, provenance=[
+            Provenance(source="Coach's plan", detail=facts.cardioProtocol.strip()), logged])  # fmt: skip
 
     if key == "performanceNotes":
         if training.prs:

@@ -11,7 +11,9 @@ import Observation
 @MainActor
 @Observable
 final class NaturalVoiceSpeaker: Speaker {
-    static let fallbackMilliseconds = 700
+    /// The first audio of a live line must land within this, else the system voice says it. 700 ms
+    /// let a slow hop drop a line to the robotic voice mid-flow (Oct 28); the measured first byte is ~0.1 s.
+    static let fallbackMilliseconds = 1500
     static let sampleRate = 24_000.0
     private(set) var isConfigured = false
     private(set) var lastFallbackReason: String?
@@ -146,10 +148,14 @@ final class PCMStreamPlayer {
     private var played = 0
     private var ended = false
     private var waiter: CheckedContinuation<Void, Never>?
+    /// Bumped at every line: a completion from an earlier line is ignored (Oct 28: a stopped line's
+    /// callbacks counted toward the next one, which then ended early).
+    private var generation = 0
     /// Cached MP3 lines play on their own node, connected in the file's format; the mixer converts.
     private let fileNode = AVAudioPlayerNode()
     private var fileFormat: AVAudioFormat?
     private var fileWaiter: CheckedContinuation<Void, Never>?
+    private var fileGeneration = 0
 
     init(sampleRate: Double) {
         format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false)!
@@ -167,27 +173,32 @@ final class PCMStreamPlayer {
             fileFormat = file.processingFormat
         }
         if !engine.isRunning { try engine.start() }
-        let seconds = Double(file.length) / file.processingFormat.sampleRate + 1
+        fileGeneration += 1
+        let line = fileGeneration
+        let seconds = Double(file.length) / file.processingFormat.sampleRate + 1.5
         await withCheckedContinuation { continuation in
             fileWaiter = continuation
             fileNode.scheduleFile(file, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
-                Task { @MainActor in self?.fileDone() }
+                Task { @MainActor in self?.fileDone(line) }
             }
             fileNode.play()
+            // A safety net if the completion never comes (a route change mid-line): this line's only.
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(seconds))
-                self?.fileDone()
+                self?.fileDone(line)
             }
         }
         fileNode.stop()
     }
 
-    private func fileDone() {
+    private func fileDone(_ line: Int) {
+        guard line == fileGeneration else { return }
         fileWaiter?.resume()
         fileWaiter = nil
     }
 
     func begin() {
+        generation += 1
         pending.removeAll()
         scheduled = 0
         played = 0
@@ -208,12 +219,14 @@ final class PCMStreamPlayer {
         }
         pending.removeFirst(frames * 2)
         scheduled += 1
+        let line = generation
         node.scheduleBuffer(buffer) { [weak self] in
-            Task { @MainActor in self?.bufferDone() }
+            Task { @MainActor in self?.bufferDone(line) }
         }
     }
 
-    private func bufferDone() {
+    private func bufferDone(_ line: Int) {
+        guard line == generation else { return }
         played += 1
         if ended, played >= scheduled, let waiter {
             self.waiter = nil
@@ -235,7 +248,7 @@ final class PCMStreamPlayer {
         waiter?.resume()
         waiter = nil
         fileNode.stop()
-        fileDone()
+        fileDone(fileGeneration)
     }
 }
 

@@ -38,6 +38,14 @@ final class TurnTimings {
     private(set) var voiceLive = 0
     private(set) var voiceFallbacks = 0
     private(set) var voiceLastFallback: String?
+    /// Turns that came back unclear, and why (Oct 28: he had to say answers twice).
+    private(set) var unclearCount = 0
+    private(set) var unclearReasons: [String: Int] = [:]
+
+    func unclear(_ reason: String?) {
+        unclearCount += 1
+        unclearReasons[reason ?? "unknown", default: 0] += 1
+    }
 
     /// Seconds from opening Check-in morning to each stage (voice ready, intro, draft, first question).
     private(set) var openStages: [(name: String, seconds: Double)] = []

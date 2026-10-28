@@ -65,7 +65,7 @@ def test_data_fields_come_from_code_with_sources():
     assert a["training_consistency"].text == "80%, 4 of 5 sessions. PRs: Bench press 190×8"
     assert (
         a["current_cardio_protocol_assigned"].text
-        == "25 min LISS × 2 on rest days. logged: 2 sessions, 51 min. Steps: avg 10.3k"
+        == "25 min LISS × 2 on rest days"  # the coach's protocol only; the log stays in the provenance
     )
     assert a["average_daily_steps"].text == "10.3k"
     assert a["last_check_in_body_weight"].text == "181.5"
@@ -160,6 +160,37 @@ def test_render_endpoint():
     assert r.status_code == 200
     assert r.json()["text"].startswith("Nutrition:")
     assert len(r.json()["messages"]) == 2
+
+
+def test_render_accepts_the_draft_as_the_phone_sends_it():
+    """Oct 28: the phone's draft carries its video picks and accepted adjustments; a render, and a
+    draft request with last week's check-in, must accept them."""
+    draft = checkin.build_draft(request(), agent=lambda req, fields: {})
+    body = draft.model_dump()
+    body["videoPicks"] = [
+        {"setId": "A1", "caption": "Squat · top set", "cropStart": 1.5, "cropEnd": 22.0},
+        {
+            "setId": "B2",
+            "caption": "From your camera roll",
+            "cropStart": 0,
+            "cropEnd": 31.0,
+            "sourceFile": "roll-1.mov",
+        },
+    ]
+    body["adjustments"] = ["7D7E1A52-0000-4000-8000-000000000000"]
+    r = TestClient(app).post("/checkin/render", json={"template": TEMPLATE.model_dump(), "draft": body})
+    assert r.status_code == 200, r.text
+    req = json.loads(request().model_dump_json())
+    req["lastCheckIn"] = body
+    assert TestClient(app).post("/checkin/draft", json=req).status_code != 422
+
+
+def test_without_a_protocol_the_cardio_field_is_asked():
+    req = request()
+    req.facts.cardioProtocol = None
+    draft = checkin.build_draft(req, agent=lambda req, fields: {})
+    cardio = next(a for a in draft.answers if "cardio" in a.fieldId)
+    assert cardio.state == "missing" and cardio.text == ""
 
 
 def test_render_returns_the_plan_message_then_the_questionnaire():

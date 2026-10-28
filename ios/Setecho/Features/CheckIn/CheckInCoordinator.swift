@@ -124,6 +124,8 @@ final class CheckInCoordinator {
                 let kept = Dictionary(uniqueKeysWithValues: existing.answers.filter { $0.state == .confirmed || $0.provenance.contains { $0.source.hasPrefix("You said") } }.map { ($0.fieldId, $0) })
                 fresh.answers = fresh.answers.map { kept[$0.fieldId] ?? $0 }
                 fresh.photoSetId = existing.photoSetId
+                fresh.videoPicks = existing.videoPicks
+                fresh.adjustments = existing.adjustments
             }
             if fresh.photoSetId == nil { fresh.photoSetId = store.lastPhotoSet?.id }
             draft = fresh

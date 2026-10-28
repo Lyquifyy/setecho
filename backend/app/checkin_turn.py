@@ -81,6 +81,11 @@ class TurnResponse(StrictModel):
     changeFieldId: str | None = Field(
         default=None, description="For `change`: the field the athlete wants to redo; the phone asks it again"
     )
+    unclearReason: str | None = Field(
+        default=None,
+        description="Why a turn came back unclear, for the Probes screen (never the words): noWords, model, "
+        "reply, field, number, empty",
+    )
 
 
 SYSTEM = (
@@ -148,21 +153,22 @@ def validate_turn(out: TurnOut, transcript: str, context: TurnContext) -> TurnRe
     fields = {f.id: f for f in context.template.fields}
     when = f"You said · {checkin._mdy(context.askedOn)}" if context.askedOn else "You said"
 
-    def unclear() -> TurnResponse:
+    def unclear(reason: str) -> TurnResponse:
         return TurnResponse(
-            transcript=transcript, intent="unclear", answers=[], reply=UNCLEAR_REPLY, confidence=0.0
-        )
+            transcript=transcript, intent="unclear", answers=[], reply=UNCLEAR_REPLY, confidence=0.0,
+            unclearReason=reason,
+        )  # fmt: skip
 
     if len(out.reply.split()) > MAX_REPLY_WORDS or _ADVICE.search(out.reply):
-        return unclear()
+        return unclear("reply")
     if any(not _number_is_spoken(n, said) for n in _text_numbers(out.reply)):
-        return unclear()
+        return unclear("reply")
 
     if out.intent == "change":
         # The field to ask again, by code: an unknown field is unclear, no field means "which one?".
         field_id = out.answers[0].fieldId if out.answers else None
         if field_id is not None and field_id not in fields:
-            return unclear()
+            return unclear("field")
         return TurnResponse(
             transcript=transcript, intent="change", answers=[], reply=out.reply.strip(),
             confidence=out.confidence, changeFieldId=field_id,
@@ -172,19 +178,19 @@ def validate_turn(out: TurnOut, transcript: str, context: TurnContext) -> TurnRe
     for a in out.answers:
         spec = fields.get(a.fieldId)
         if spec is None:
-            return unclear()
+            return unclear("field")
         if a.number is not None and not _number_is_spoken(a.number, said):
-            return unclear()
+            return unclear("number")
         if a.measurements is not None:
             values = [a.measurements.waistIn, a.measurements.bicepIn, a.measurements.thighIn]
             if any(v is not None and not _number_is_spoken(v, said) for v in values):
-                return unclear()
+                return unclear("number")
         if any(not _number_is_spoken(n, said) for n in _text_numbers(a.text)):
-            return unclear()
+            return unclear("number")
         answers.append(_answer(spec, a, transcript, when))
 
     if out.intent in ("answer", "correction") and not answers:
-        return unclear()
+        return unclear("empty")
     state_intent: TurnIntent = out.intent
     return TurnResponse(
         transcript=transcript,
@@ -192,6 +198,7 @@ def validate_turn(out: TurnOut, transcript: str, context: TurnContext) -> TurnRe
         answers=answers,
         reply=out.reply.strip(),
         confidence=out.confidence,
+        unclearReason="model" if state_intent == "unclear" else None,
     )
 
 
@@ -395,7 +402,7 @@ async def checkin_turn(
     transcript = (result.get("transcript") or "").strip()
     if not transcript:
         return TurnResponse(transcript="", intent="unclear", answers=[], reply=UNCLEAR_REPLY, confidence=0.0,
-                            timings={"transcribe": transcribe_s})  # fmt: skip
+                            timings={"transcribe": transcribe_s}, unclearReason="noWords")  # fmt: skip
     if (fast := fast_turn(transcript, ctx)) is not None:
         fast.timings = {"transcribe": transcribe_s, "spark": 0.0, "validate": 0.0}
         return fast

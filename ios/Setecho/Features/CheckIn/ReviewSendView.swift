@@ -24,6 +24,7 @@ struct ReviewSendView: View {
     @State private var videoFiles: [UUID: String] = [:]
     @State private var showPicker = false
     @State private var exporting = false
+    @State private var exportTask: Task<Void, Never>?
     @State private var photosFirst = false
     @State private var settings = Settings.shared
 
@@ -182,11 +183,11 @@ struct ReviewSendView: View {
                 }
             }
         } footer: {
-            Button(exporting ? "Cropping the videos…" : sendStep == 0 ? "Send to WhatsApp" : "Next: \(stepName)") {
+            Button(exporting && isVideoStep ? "Preparing the videos…" : sendStep == 0 ? "Send to WhatsApp" : "Next: \(stepName)") {
                 includeText = true
                 banner = nil
                 if isVideoStep {
-                    Task { await exportVideos(); showShare = true }
+                    Task { await prepareVideos(); showShare = true }
                 } else if settings.rehearsalMode, !settings.ownWhatsAppNumber.isEmpty, isPlanStep, let planMessage {
                     // Rehearsal: a text-only step goes straight to the athlete's own chat.
                     openOwnChat(with: planMessage)
@@ -195,7 +196,7 @@ struct ReviewSendView: View {
                 }
             }
             .buttonStyle(.setechoPrimary)
-            .disabled(text == nil || sendStep >= stepCount || exporting)
+            .disabled(text == nil || sendStep >= stepCount || (exporting && isVideoStep))
             if !isVideoStep, sendStep == (planMessage == nil ? 0 : 1) {
                 // If WhatsApp splits the text from the photos: the photos first, the text right after.
                 Button("Photos first, then the text") {
@@ -219,6 +220,8 @@ struct ReviewSendView: View {
             picks = coordinator.draft?.videoPicks ?? []
             if picks.isEmpty { picks = VideoCropper.picks(from: periodSessions, names: exerciseName) }
             await render()
+            // The set clips are cropped while he reads, so the third send is ready when he gets there.
+            await prepareVideos()
         }
         .sheet(isPresented: $showShare) {
             if isVideoStep {
@@ -255,7 +258,10 @@ struct ReviewSendView: View {
         .sheet(isPresented: $showPicker) {
             VideoPickerSheet(sessions: periodSessions, picks: $picks, names: exerciseName)
         }
-        .onChange(of: picks) { _, new in coordinator.setVideoPicks(new) }
+        .onChange(of: picks) { _, new in
+            coordinator.setVideoPicks(new)
+            Task { await prepareVideos() }
+        }
     }
 
     /// whatsapp://send to the athlete's own number: nothing can reach the coach from here.
@@ -282,20 +288,27 @@ struct ReviewSendView: View {
         }
     }
 
-    /// Crop each picked set's MOV to the reps, once, before the third share.
+    /// One preparation at a time; a second call waits for the first and finds the work done.
+    private func prepareVideos() async {
+        if let running = exportTask { await running.value }
+        let task = Task { await exportVideos() }
+        exportTask = task
+        await task.value
+        exportTask = nil
+    }
+
+    /// A camera-roll video goes out exactly as he chose it, with no re-encode (Oct 28: he had already
+    /// trimmed it, and the 720p export took minutes). A set's clip is cropped to the reps, once.
     private func exportVideos() async {
         exporting = true
         defer { exporting = false }
         for pick in picks where videoFiles[pick.setId] == nil {
-            let clip: String
             if let source = pick.sourceFile {
-                clip = source
-            } else if let set = periodSessions.flatMap(\.sets).first(where: { $0.id == pick.setId }), let file = set.clipFile {
-                clip = file
-            } else {
+                videoFiles[pick.setId] = source
                 continue
             }
-            let url = store.mediaDirectory.appendingPathComponent(clip)
+            guard let set = periodSessions.flatMap(\.sets).first(where: { $0.id == pick.setId }), let file = set.clipFile else { continue }
+            let url = store.mediaDirectory.appendingPathComponent(file)
             if let name = try? await VideoCropper.export(clip: url, pick: pick, into: store.mediaDirectory) { videoFiles[pick.setId] = name }
         }
     }
@@ -311,7 +324,7 @@ struct VideoPickRow: View {
             SetThumbnail(width: 96, height: 58)
             VStack(alignment: .leading, spacing: Theme.Space.xxs) {
                 Text(pick.caption).font(.body.weight(.semibold)).foregroundStyle(Theme.navy)
-                Text("\(Format.duration(pick.cropEnd - pick.cropStart)) · \(pick.sourceFile == nil ? "just the reps" : "from your camera roll")")
+                Text("\(Format.duration(pick.cropEnd - pick.cropStart)) · \(pick.sourceFile == nil ? "just the reps" : "as you trimmed it")")
                     .font(.footnote).monospacedDigit().secondaryText()
             }
             Spacer()
@@ -336,7 +349,7 @@ private struct VideoPickerSheet: View {
         ScreenScaffold {
             LinkButton(title: "Done", chevron: .leading) { dismiss() }
             SectionCard("From your camera roll") {
-                Text("A video you filmed yourself goes out whole, at 720p. It counts as one of the two.").font(.footnote).secondaryText()
+                Text("Goes out exactly as you trimmed it. It counts as one of the two.").font(.footnote).secondaryText()
                 PhotosPicker(selection: $rollItem, matching: .videos) {
                     Text(importing ? "Importing…" : "Choose a video").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.cobalt)
                         .frame(minHeight: 44)

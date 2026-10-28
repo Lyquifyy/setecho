@@ -84,6 +84,17 @@ def test_a_correction_names_a_field_already_answered():
     assert r.intent == "correction" and r.answers[0].text == "180.6"
 
 
+def test_an_unclear_turn_says_why_without_the_words():
+    r = checkin_turn.validate_turn(
+        out("answer", [{"fieldId": WEIGHT, "text": "", "number": 181.0}]),
+        "it was 180.8",
+        context(asked=WEIGHT),
+    )
+    assert r.intent == "unclear" and r.unclearReason == "number"
+    r2 = checkin_turn.validate_turn(out("unclear", reply="Sorry?"), "mm", context())
+    assert r2.unclearReason == "model"
+
+
 def test_a_change_request_names_the_field_to_ask_again():
     r = checkin_turn.validate_turn(
         out("change", [{"fieldId": ENERGY, "text": ""}], reply="Sure, I'll ask energy again."),

@@ -81,6 +81,8 @@ struct TurnResponse: Codable, Equatable {
     var fastPath: Bool
     /// For `change`: the field the athlete wants to redo.
     var changeFieldId: String?
+    /// Why a turn came back unclear (never the words): noWords, model, reply, field, number, empty.
+    var unclearReason: String?
 
     init(transcript: String, intent: TurnIntent, answers: [FieldAnswer], reply: String, confidence: Double,
          timings: [String: Double] = [:], fastPath: Bool = false, changeFieldId: String? = nil) {

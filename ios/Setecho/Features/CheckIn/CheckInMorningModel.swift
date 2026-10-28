@@ -90,6 +90,34 @@ struct CheckInMorningFlow: Equatable {
         return WrapUpModel.question(for: group)
     }
 
+    /// The values filled from Apple Health and the log that he has not heard (Oct 28: steps went out
+    /// without a word). Short ones only; the weight has its own step, and a long text is on the screen.
+    func readBackFields(draft: CheckInDraft?) -> [(field: FieldSpec, answer: FieldAnswer)] {
+        template.orderedFields.compactMap { field in
+            guard field.source.type != .voice, field.source.type != .photo, field.id != weightField?.id,
+                  let answer = draft?.answers.first(where: { $0.fieldId == field.id }),
+                  answer.state == .filled, !answer.text.isEmpty, answer.text.count <= 40
+            else { return nil }
+            return (field, answer)
+        }
+    }
+
+    /// "From your data: average daily steps, 9.4k. Training consistency, 100%. Sound right?"
+    static func readBackLine(_ items: [(field: FieldSpec, answer: FieldAnswer)]) -> String {
+        let parts = items.map { "\(WrapUpModel.shortLabel([$0.field]).capitalizedFirst), \($0.answer.text)" }
+        return "From your data: " + parts.joined(separator: ". ") + ". Sound right?"
+    }
+
+    /// The field he named ("steps", "the training one"), among the ones just read back.
+    func field(named transcript: String, among ids: [String]) -> FieldSpec? {
+        let said = transcript.lowercased()
+        let candidates = template.fields.filter { ids.contains($0.id) }
+        if let exact = candidates.first(where: { said.contains(WrapUpModel.shortLabel([$0])) }) { return exact }
+        return candidates.first { field in
+            WrapUpModel.shortLabel([field]).split(separator: " ").contains { word in word.count > 3 && said.contains(word) }
+        }
+    }
+
     /// The notes field a question for the coach lands in ("Additional notes or concerns").
     var notesField: FieldSpec? {
         template.orderedFields.first { $0.id.contains("additional_notes") } ?? template.orderedFields.last { $0.source.type == .voice && $0.kind == .text }
@@ -140,6 +168,10 @@ final class CheckInMorningModel {
     var showReview = false
     private(set) var pendingForCoach: String?
     private(set) var awaitingWeightReading = false
+    /// The data read back before review: a yes confirms them all, a name or "change steps" asks that one.
+    private(set) var dataReadBack: [String]?
+    private var dataReadBackAsked = false
+    private var awaitingWhichOne: [String]?
     /// Apple Health's weigh-in on offer: a yes takes it, a number replaces it, a no asks for the reading.
     private(set) var offeredWeight: String?
     private(set) var questionIndex = 0
@@ -251,6 +283,8 @@ final class CheckInMorningModel {
         if coordinator.draft == nil { status = "Reading Apple Health and the training log…" }
         await draft.value
         TurnTimings.shared.stage("draft")
+        await coordinator.refreshWeightToday()
+        if let known = coordinator.weightTodayText { await natural.warm([Self.weightOffer(known)], within: .seconds(1)) }
         status = nil
         pregenerate()
         await resume(opening: true)
@@ -306,6 +340,13 @@ final class CheckInMorningModel {
         case .questions:
             await askCurrentQuestion()
         case .review:
+            let items = flow.readBackFields(draft: draft)
+            if !items.isEmpty, !dataReadBackAsked {
+                dataReadBackAsked = true
+                dataReadBack = items.map(\.field.id)
+                await ask(CheckInMorningFlow.readBackLine(items))
+                return
+            }
             isDone = true
             await ask("That's everything. Want me to read it back, or open it to send?")
         }
@@ -416,6 +457,31 @@ final class CheckInMorningModel {
                 return
             }
         }
+        if let ids = dataReadBack ?? awaitingWhichOne {
+            let named = flow.field(named: response.transcript, among: ids)
+            if dataReadBack != nil, CheckInMorningFlow.isYes(response.transcript) {
+                for id in ids { coordinator.confirm(id) }
+                dataReadBack = nil
+                echo = "From your data → confirmed"
+                await say("Got it.")
+                await resume()
+                return
+            }
+            if dataReadBack != nil, CheckInMorningFlow.isNo(response.transcript), named == nil {
+                dataReadBack = nil
+                awaitingWhichOne = ids
+                await ask("Which one should change?")
+                return
+            }
+            if let named, response.intent != .answer && response.intent != .correction {
+                dataReadBack = nil
+                awaitingWhichOne = nil
+                await change(named.id)
+                return
+            }
+            dataReadBack = nil
+            awaitingWhichOne = nil
+        }
         if step == .weight, let known = offeredWeight {
             if CheckInMorningFlow.isYes(response.transcript) {
                 offeredWeight = nil
@@ -489,15 +555,7 @@ final class CheckInMorningModel {
         case .change:
             // The field to ask again, picked by code: it goes back to missing and its question comes next.
             if let id = response.changeFieldId, flow.template.fields.contains(where: { $0.id == id }) {
-                coordinator.set(id, text: "", state: .missing)
-                if let index = questionGroups.firstIndex(where: { $0.contains { $0.id == id } }) {
-                    step = .questions
-                    questionIndex = index
-                    echo = "\(label(for: id)) → asked again"
-                    await ask("\(label(for: id)). What should it say?")
-                } else {
-                    await resume()
-                }
+                await change(id)
             } else {
                 await ask(response.reply.isEmpty ? "Which one do you want to change?" : response.reply)
             }
@@ -505,6 +563,7 @@ final class CheckInMorningModel {
             await say(response.reply)
             isListening = true
         case .unclear:
+            TurnTimings.shared.unclear(response.unclearReason)
             await say(response.reply.isEmpty ? "Sorry, say that again?" : response.reply)
             isListening = true
         }
@@ -532,12 +591,27 @@ final class CheckInMorningModel {
         }
     }
 
+    /// Ask one field again: it goes back to unanswered and its question is next.
+    private func change(_ id: String) async {
+        coordinator.set(id, text: "", state: .missing)
+        if let index = questionGroups.firstIndex(where: { $0.contains { $0.id == id } }) {
+            step = .questions
+            questionIndex = index
+            echo = "\(label(for: id)) → asked again"
+            await ask("\(label(for: id)). What should it say?")
+        } else {
+            await resume()
+        }
+    }
+
     /// "Apple Health has 180.8. Use that, or tell me the number." (Oct 27 rehearsal: he wants to say it.)
     private func offerWeight(_ known: String) async {
         offeredWeight = known
         awaitingWeightReading = false
-        await ask("Apple Health has \(known). Use that, or tell me the number.")
+        await ask(Self.weightOffer(known))
     }
+
+    static func weightOffer(_ known: String) -> String { "Apple Health has \(known). Use that, or tell me the number." }
 
     /// After an answer: the next pending step or question, by the draft, never by the model.
     private func advance() async {
