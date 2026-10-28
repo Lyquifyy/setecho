@@ -15,9 +15,10 @@
         },
         {
           "title": "Before a set",
-          "detail": "On the tripod, just lift: the camera starts the set.",
+          "detail": "On the tripod, say go, then lift: the camera starts the set and follows only you. Nothing moves in 20 seconds and it lets go.",
           "phrases": [
-            { "say": "starting", "does": "Starts a set when the camera can't see you.", "state": "ready", "intent": "starting" },
+            { "say": "go", "does": "Arms the set on the tripod; with the phone in your pocket, starts it.", "state": "ready", "intent": "starting" },
+            { "say": "here we go", "does": "The same. So do starting, lifting, back-off and set two.", "state": "ready", "intent": "starting" },
             { "say": "top set", "does": "Makes the next set your top set.", "state": "ready", "intent": "topSet" },
             { "say": "drop to 215", "does": "Sets the weight.", "state": "ready", "intent": "setLoad" },
             { "say": "add 5", "does": "Adds 5 lb.", "state": "ready", "intent": "loadDelta" },
