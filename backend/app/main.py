@@ -23,6 +23,7 @@ from app import (
     importing,
     meta,
     photos_api,
+    realtime,
     sets_api,
     speak,
     spotter,
@@ -37,6 +38,7 @@ app.include_router(checkin_api.router)
 app.include_router(checkin_turn.router)
 app.include_router(spotter.router)
 app.include_router(speak.router)
+app.include_router(realtime.router)
 
 
 @app.exception_handler(importing.ImportError_)

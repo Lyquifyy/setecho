@@ -333,6 +333,33 @@ def read_turn(transcript: str, context: TurnContext) -> TurnResponse:
     return response
 
 
+class TextTurnRequest(StrictModel):
+    """A turn whose words the realtime stream already produced: no audio, no Transcribe call."""
+
+    transcript: str
+    context: TurnContext
+
+
+@router.post("/checkin/turn/text", response_model=TurnResponse)
+async def checkin_turn_text(req: TextTurnRequest) -> TurnResponse:
+    transcript = req.transcript.strip()
+    if not transcript:
+        return TurnResponse(
+            transcript="",
+            intent="unclear",
+            answers=[],
+            reply=UNCLEAR_REPLY,
+            confidence=0.0,
+            timings={"transcribe": 0.0},
+        )
+    if (fast := fast_turn(transcript, req.context)) is not None:
+        fast.timings = {"transcribe": 0.0, "spark": 0.0, "validate": 0.0}
+        return fast
+    response = await run_in_threadpool(read_turn, transcript, req.context)
+    response.timings = {"transcribe": 0.0, **response.timings}
+    return response
+
+
 @router.post("/checkin/turn", response_model=TurnResponse)
 async def checkin_turn(
     audio_file: Annotated[UploadFile, File(alias="audio")],

@@ -17,6 +17,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "scipy>=1.18.1",
     "uvicorn[standard]>=0.54.0",
+    "websockets>=13",
 ]
 
 [dependency-groups]
