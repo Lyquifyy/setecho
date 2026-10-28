@@ -101,6 +101,24 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     #expect(coordinator.draft?.photoSetId == nil)
 }
 
+@Test func theDataIsReadBackOneFieldAtATime() throws {
+    let flow = CheckInMorningFlow(template: try template())
+    let steps = try #require(flow.template.fields.first { $0.source.key == .avgDailySteps })
+    let training = try #require(flow.template.fields.first { $0.source.key == .trainingConsistency })
+    let fromData = { (id: String, text: String) in
+        FieldAnswer(fieldId: id, text: text, state: .filled, provenance: [Provenance(source: "Apple Health", detail: text)])
+    }
+    let draft = CheckInDraft(id: UUID(), weekStart: .now, weekEnd: .now,
+                             answers: [fromData(steps.id, "9.4k"), fromData(training.id, "100%, 5 of 5 sessions")], photoSetId: nil, sentAt: nil)
+    let items = flow.readBackFields(draft: draft)
+    #expect(items.map(\.field.id) == flow.template.orderedFields.map(\.id).filter { $0 == steps.id || $0 == training.id })
+    let first = CheckInMorningFlow.readBackPrompt(items[0].field, items[0].answer, first: true)
+    let second = CheckInMorningFlow.readBackPrompt(items[1].field, items[1].answer, first: false)
+    #expect(first.hasPrefix("From your data: ") && first.hasSuffix(". Sound right?"))
+    #expect(!second.contains("From your data") && second.hasSuffix(". Sound right?"))
+    #expect([first, second].allSatisfy { line in items.filter { line.contains($0.answer.text) }.count == 1 })   // one field per line
+}
+
 @Test func theIntroductionNamesTheAthleteTheDayAndWhatIsComing() {
     #expect(CheckInMorningFlow.intro(firstName: "Zander", dueDay: "Thursday", isDueMorning: true)
             == "Morning, Zander. Your Thursday check-in: weight, glucose, four photos, then the coach's questions.")

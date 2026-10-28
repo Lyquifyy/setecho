@@ -102,20 +102,11 @@ struct CheckInMorningFlow: Equatable {
         }
     }
 
-    /// "From your data: average daily steps, 9.4k. Training consistency, 100%. Sound right?"
-    static func readBackLine(_ items: [(field: FieldSpec, answer: FieldAnswer)]) -> String {
-        let parts = items.map { "\(WrapUpModel.shortLabel([$0.field]).capitalizedFirst), \($0.answer.text)" }
-        return "From your data: " + parts.joined(separator: ". ") + ". Sound right?"
-    }
-
-    /// The field he named ("steps", "the training one"), among the ones just read back.
-    func field(named transcript: String, among ids: [String]) -> FieldSpec? {
-        let said = transcript.lowercased()
-        let candidates = template.fields.filter { ids.contains($0.id) }
-        if let exact = candidates.first(where: { said.contains(WrapUpModel.shortLabel([$0])) }) { return exact }
-        return candidates.first { field in
-            WrapUpModel.shortLabel([field]).split(separator: " ").contains { word in word.count > 3 && said.contains(word) }
-        }
+    /// One data field read back, like the questions (Oct 28: all of them in one line was too much).
+    /// The first carries "From your data": "From your data: average daily steps, 9.4k. Sound right?"
+    static func readBackPrompt(_ field: FieldSpec, _ answer: FieldAnswer, first: Bool) -> String {
+        let label = WrapUpModel.shortLabel([field])
+        return (first ? "From your data: \(label)" : label.capitalizedFirst) + ", \(answer.text). Sound right?"
     }
 
     /// The notes field a question for the coach lands in ("Additional notes or concerns").
@@ -172,10 +163,10 @@ final class CheckInMorningModel {
     private(set) var awaitingWeightReading = false
     /// Speech that arrived while a turn was in flight, read when that turn comes to nothing.
     private var pendingUtterance: VoiceDetector.Utterance?
-    /// The data read back before review: a yes confirms them all, a name or "change steps" asks that one.
-    private(set) var dataReadBack: [String]?
-    private var dataReadBackAsked = false
-    private var awaitingWhichOne: [String]?
+    /// The data fields still to read back before review, one at a time: yes keeps it, no or a new value changes it.
+    private(set) var dataQueue: [String] = []
+    private var dataQueueBuilt = false
+    private var dataReadBackStarted = false
     /// Apple Health's weigh-in on offer: a yes takes it, a number replaces it, a no asks for the reading.
     private(set) var offeredWeight: String?
     private(set) var questionIndex = 0
@@ -235,6 +226,10 @@ final class CheckInMorningModel {
                      "Welcome back.", "Sorry, say that again?", "Skipped.", "Got it.", "Added to your notes.", "Okay, leaving it out.",
                      "Take your time.", "What should it say?"]
         lines += questionGroups.map { flow.prompt(for: $0, draft: draft) }
+        // The data read-back, each line as it will be said, so they play in the natural voice at once.
+        lines += flow.readBackFields(draft: draft).enumerated().map { index, item in
+            CheckInMorningFlow.readBackPrompt(item.field, item.answer, first: index == 0)
+        }
         natural.pregenerate([intro] + lines)
     }
 
@@ -345,11 +340,18 @@ final class CheckInMorningModel {
         case .questions:
             await askCurrentQuestion()
         case .review:
-            let items = flow.readBackFields(draft: draft)
-            if !items.isEmpty, !dataReadBackAsked {
-                dataReadBackAsked = true
-                dataReadBack = items.map(\.field.id)
-                await ask(CheckInMorningFlow.readBackLine(items))
+            if !dataQueueBuilt {
+                dataQueueBuilt = true
+                dataQueue = flow.readBackFields(draft: draft).map(\.field.id)
+            }
+            // Drop any the draft no longer has a value for (a change asked it again as a question).
+            while let id = dataQueue.first, flow.readBackFields(draft: draft).contains(where: { $0.field.id == id }) == false {
+                dataQueue.removeFirst()
+            }
+            if let id = dataQueue.first, let item = flow.readBackFields(draft: draft).first(where: { $0.field.id == id }) {
+                let first = !dataReadBackStarted
+                dataReadBackStarted = true
+                await ask(CheckInMorningFlow.readBackPrompt(item.field, item.answer, first: first))
                 return
             }
             isDone = true
@@ -459,7 +461,8 @@ final class CheckInMorningModel {
         case .weight: flow.weightField
         case .glucose: flow.glucoseField
         case .questions: currentGroup?.first
-        case .photos, .review: nil
+        case .review: dataQueue.first.flatMap { id in flow.template.fields.first { $0.id == id } }
+        case .photos: nil
         }
         var pending: [String] = []
         for group in questionGroups {
@@ -494,30 +497,34 @@ final class CheckInMorningModel {
                 return
             }
         }
-        if let ids = dataReadBack ?? awaitingWhichOne {
-            let named = flow.field(named: response.transcript, among: ids)
-            if dataReadBack != nil, CheckInMorningFlow.isYes(response.transcript) {
-                for id in ids { coordinator.confirm(id) }
-                dataReadBack = nil
-                echo = "From your data → confirmed"
-                await say("Got it.")
+        if step == .review, !isDone, let id = dataQueue.first {
+            // One data field at a time: yes keeps it, no asks for his value, a value replaces it.
+            if CheckInMorningFlow.isYes(response.transcript) {
+                dataQueue.removeFirst()
+                coordinator.confirm(id)
+                echo = "\(label(for: id)) → confirmed"
                 await resume()
                 return
             }
-            if dataReadBack != nil, CheckInMorningFlow.isNo(response.transcript), named == nil {
-                dataReadBack = nil
-                awaitingWhichOne = ids
-                await ask("Which one should change?")
+            if CheckInMorningFlow.isNo(response.transcript) {
+                dataQueue.removeFirst()
+                await change(id)
                 return
             }
-            if let named, response.intent != .answer && response.intent != .correction {
-                dataReadBack = nil
-                awaitingWhichOne = nil
-                await change(named.id)
+            if response.intent == .answer || response.intent == .correction, response.answers.contains(where: { $0.fieldId == id }) {
+                dataQueue.removeFirst()
+                coordinator.apply(response.answers)
+                echo = response.answers.map { "\(label(for: $0.fieldId)) → \($0.text) · You said" }.joined(separator: "\n")
+                await say(response.reply.isEmpty ? Self.readBack(response.answers, labels: label(for:)) : response.reply)
+                await resume()
                 return
             }
-            dataReadBack = nil
-            awaitingWhichOne = nil
+            if response.intent == .skip {
+                dataQueue.removeFirst()
+                await say("Skipped.")
+                await resume()
+                return
+            }
         }
         if step == .weight, let known = offeredWeight {
             if CheckInMorningFlow.isYes(response.transcript) {
