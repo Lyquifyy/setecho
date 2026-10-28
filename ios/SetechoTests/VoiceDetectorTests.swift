@@ -37,6 +37,19 @@ private func detector() -> VoiceDetector {
     #expect(u.peakDB > -15)
 }
 
+@Test func anAnswerInsideTheCalibrationWindowDoesNotRaiseTheFloor() {
+    // Oct 28: he answered the first question at once; with a median the floor became his voice
+    // and the next answer went unheard.
+    let d = detector()
+    var out = d.process(noise(seconds: 0.6, amplitude: 0.001))
+    out += d.process(tone(seconds: 1.4, amplitude: 0.3))
+    #expect(d.noiseFloorDB != nil && d.noiseFloorDB! < -50)
+    out += d.process(noise(seconds: 2.0, amplitude: 0.001))
+    out += d.process(tone(seconds: 1.0, amplitude: 0.3))
+    out += d.process(noise(seconds: 1.5, amplitude: 0.001))
+    #expect(out.count == 1)
+}
+
 @Test func shortBlipsBelowTheOnsetAreIgnored() {
     let d = detector()
     _ = d.process(noise(seconds: 2.5, amplitude: 0.001))

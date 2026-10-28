@@ -62,10 +62,13 @@ struct PhotoSessionView: View {
                         .padding(.vertical, Theme.Space.xs)
                         .background(Theme.yellow, in: RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
                 }
-                if coordinator.capture.framing == .good, coordinator.capture.stillness.progress > 0 {
-                    ProgressView(value: coordinator.capture.stillness.progress)
+                if coordinator.capture.framing == .good {
+                    // Read from the tripod: framed, and how long the hold has to go.
+                    ProgressView(value: coordinator.stillProgress)
                         .tint(Theme.cobalt)
-                        .frame(width: 160)
+                        .frame(width: 260)
+                        .scaleEffect(x: 1, y: 3)
+                        .accessibilityLabel("Holding still")
                 }
             }
             .padding(.top, Theme.Space.xl)

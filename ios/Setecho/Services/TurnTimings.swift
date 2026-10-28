@@ -42,6 +42,12 @@ final class TurnTimings {
     private(set) var unclearCount = 0
     private(set) var unclearReasons: [String: Int] = [:]
 
+    /// Every utterance the phone heard and what became of it.
+    enum Heard: String { case turn, queued, tooShort, noWords }
+    private(set) var heardCounts: [String: Int] = [:]
+
+    func heard(_ kind: Heard) { heardCounts[kind.rawValue, default: 0] += 1 }
+
     func unclear(_ reason: String?) {
         unclearCount += 1
         unclearReasons[reason ?? "unknown", default: 0] += 1

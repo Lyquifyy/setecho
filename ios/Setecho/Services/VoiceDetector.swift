@@ -96,8 +96,9 @@ final class VoiceDetector {
         guard let threshold = thresholdDB else {
             calibrationLevels.append(level)
             if calibrationLevels.count >= calibrationBlocks {
-                // The median ignores a cough during calibration.
-                noiseFloorDB = calibrationLevels.sorted()[calibrationLevels.count / 2]
+                // The quietest fifth: an answer started inside the first two seconds can't raise the floor
+                // (with the median, it did, and his next answer went unheard).
+                noiseFloorDB = calibrationLevels.sorted()[calibrationLevels.count / 5]
             }
             keepPreRoll(block)
             return nil
@@ -133,6 +134,8 @@ final class VoiceDetector {
             current = []
             currentPeakDB = -120
             keepPreRoll(block)
+            // Follow the room while it's quiet: about two thirds of the way to a new level in a second.
+            if let floor = noiseFloorDB { noiseFloorDB = floor + (level - floor) * 0.02 }
         }
         return nil
     }

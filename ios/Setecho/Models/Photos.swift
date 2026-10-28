@@ -41,10 +41,10 @@ enum Pose: String, Codable, CaseIterable {
     /// What the app says before the pose.
     var spokenCue: String {
         switch self {
-        case .front: "Face the camera"
-        case .rightArmsUp: "Turn right, arms up"
-        case .back: "Turn around"
-        case .leftArmsUp: "Turn left, arms up"
+        case .front: "Face the camera, arms relaxed."
+        case .rightArmsUp: "Now your right side to the camera, arms up."
+        case .back: "Now your back to the camera."
+        case .leftArmsUp: "Last one. Left side to the camera, arms up."
         }
     }
 
@@ -52,9 +52,9 @@ enum Pose: String, Codable, CaseIterable {
     var hudTitle: String {
         switch self {
         case .front: "Front"
-        case .rightArmsUp: "Turn right · arms up"
-        case .back: "Back"
-        case .leftArmsUp: "Turn left · arms up"
+        case .rightArmsUp: "Right side to camera · arms up"
+        case .back: "Back to camera"
+        case .leftArmsUp: "Left side to camera · arms up"
         }
     }
 }

@@ -37,6 +37,21 @@ private func mask(x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, grid: [UInt8] 
     #expect(!tracker.isStill)
 }
 
+@Test func aBreathDoesNotResetTheHoldButAMoveDoes() {
+    func m(_ ones: Int) -> PersonMask {
+        PersonMask(box: CGRect(x: 0, y: 0, width: 1, height: 1), grid: (0..<16).map { $0 < ones ? 1 : 0 }, gridWidth: 4, gridHeight: 4)
+    }
+    var tracker = StillnessTracker()
+    tracker.update(m(12), at: 0)
+    tracker.update(m(12), at: 0.1)
+    tracker.update(m(13), at: 0.5)      // IoU 12/13: a breath, forgiven
+    #expect(tracker.progress > 0.3)
+    tracker.update(m(13), at: 1.2)
+    #expect(tracker.isStill)
+    tracker.update(m(6), at: 1.3)       // a real move
+    #expect(!tracker.isStill && tracker.progress == 0)
+}
+
 @Test func cropAndCollageMath() {
     let format = UIGraphicsImageRendererFormat()
     format.scale = 1

@@ -123,7 +123,9 @@ struct CheckInMorningFlow: Equatable {
         template.orderedFields.first { $0.id.contains("additional_notes") } ?? template.orderedFields.last { $0.source.type == .voice && $0.kind == .text }
     }
 
-    static let yesWords: Set<String> = ["yes", "yeah", "yep", "yup", "correct", "right", "sure", "that's right", "thats right", "confirm", "confirmed"]
+    static let yesWords: Set<String> = ["yes", "yeah", "yep", "yup", "correct", "right", "sure", "that's right", "thats right", "confirm", "confirmed",
+                                        "use that", "use it", "use that one", "that's it", "thats it", "that's fine", "sounds good", "looks good",
+                                        "ok", "okay", "good", "yes please", "yeah that's right", "all good"]
     static let noWords: Set<String> = ["no", "nope", "nah", "wrong", "not quite", "no that's wrong"]
 
     /// The opening line (Oct 27 rehearsal): who it is for, which check-in, and what is coming. Every
@@ -168,6 +170,8 @@ final class CheckInMorningModel {
     var showReview = false
     private(set) var pendingForCoach: String?
     private(set) var awaitingWeightReading = false
+    /// Speech that arrived while a turn was in flight, read when that turn comes to nothing.
+    private var pendingUtterance: VoiceDetector.Utterance?
     /// The data read back before review: a yes confirms them all, a name or "change steps" asks that one.
     private(set) var dataReadBack: [String]?
     private var dataReadBackAsked = false
@@ -380,11 +384,32 @@ final class CheckInMorningModel {
     // MARK: Turns
 
     private func handle(_ utterance: VoiceDetector.Utterance) async {
-        guard !busy else { return }
-        let pcm = Resample.toInt16Mono(utterance.samples, from: utterance.sampleRate, to: 16_000)
-        guard pcm.count > 16_000 / 4 else { return }
+        // A turn is in flight (often a bump or the dog): keep what he says now and read it next,
+        // instead of dropping it (Oct 28: "it didn't hear me the first time").
+        guard !busy else {
+            pendingUtterance = utterance
+            TurnTimings.shared.heard(.queued)
+            return
+        }
         busy = true
-        defer { busy = false }
+        let answered = await runTurn(utterance)
+        busy = false
+        if let next = pendingUtterance {
+            pendingUtterance = nil
+            if !answered { await handle(next) }
+        }
+    }
+
+    /// One utterance to one turn. False when nothing usable came of it (no words, or unclear with
+    /// more speech waiting), so a waiting utterance is read instead.
+    private func runTurn(_ utterance: VoiceDetector.Utterance) async -> Bool {
+        let pcm = Resample.toInt16Mono(utterance.samples, from: utterance.sampleRate, to: 16_000)
+        guard pcm.count > 16_000 / 4 else {
+            realtime.cancel()
+            TurnTimings.shared.heard(.tooShort)
+            return false
+        }
+        TurnTimings.shared.heard(.turn)
         isListening = false
         TurnTimings.shared.endOfSpeech()
         audio.playTurnEndSound() // a soft sound the moment a turn ends
@@ -404,15 +429,26 @@ final class CheckInMorningModel {
             TurnTimings.shared.received(response)
             filming?.transcribed(response.transcript)
             status = nil
-            // Nothing was said (a bump, the dog): keep listening and say nothing.
-            guard response.transcript.contains(where: { $0.isLetter || $0.isNumber }) else {
+            let hasWords = response.transcript.contains { $0.isLetter || $0.isNumber }
+            if !hasWords {
+                TurnTimings.shared.heard(.noWords)
+                // A short sound with no words was not him. A long one probably was: say so.
+                if utterance.seconds >= 1.2, pendingUtterance == nil {
+                    await say("Sorry, I didn't catch that.")
+                }
                 isListening = true
-                return
+                return false
+            }
+            if response.intent == .unclear, pendingUtterance != nil {
+                TurnTimings.shared.unclear(response.unclearReason)
+                return false
             }
             await apply(response)
+            return true
         } catch {
             status = error.userMessage
             isListening = true
+            return false
         }
     }
 

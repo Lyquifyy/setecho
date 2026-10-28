@@ -20,6 +20,8 @@ final class PhotoSessionCoordinator {
     private(set) var captured: [Pose: Data] = [:]
     private(set) var thumbnails: [Pose: UIImage] = [:]
     private(set) var cue: String?
+    /// How far the hold has got, 0…1, for the bar on screen.
+    private(set) var stillProgress: Double = 0
     private(set) var photoSet: PhotoSet?
     private(set) var collage: UIImage?
     private(set) var alignmentNotes: [String] = []
@@ -42,7 +44,7 @@ final class PhotoSessionCoordinator {
 
     /// Every line the session can say, generated once and cached.
     private static let fixedLines = ["Got it", "All four. Say retake and a pose, or you're done.", "Step into frame", "Step back a little",
-                                     "Move left", "Move right"]
+                                     "Move left", "Move right", "Hold it there.", "Hold still for a second.", "Taking it now."]
 
     var currentPose: Pose? {
         if case .posing(let pose) = phase { return pose }
@@ -99,7 +101,7 @@ final class PhotoSessionCoordinator {
             phase = .posing(pose)
             capture.resetStillness()
             await natural.speak(pose.spokenCue)
-            guard await waitUntilStill(poseCueAt: .now) else { return }
+            guard await waitUntilStill(poseCueAt: .now, pose: pose) else { return }
             do {
                 let data = try await capture.capture()
                 captured[pose] = data
@@ -123,7 +125,7 @@ final class PhotoSessionCoordinator {
             phase = .posing(pose)
             capture.resetStillness()
             await natural.speak(pose.spokenCue)
-            guard await waitUntilStill(poseCueAt: .now) else { return }
+            guard await waitUntilStill(poseCueAt: .now, pose: pose) else { return }
             if let data = try? await capture.capture() {
                 captured[pose] = data
                 thumbnails[pose] = UIImage(data: data).map { Self.thumbnail($0) }
@@ -161,39 +163,67 @@ final class PhotoSessionCoordinator {
         await natural.speak("All four. Say retake and a pose, or you're done.")
     }
 
-    /// Guidance that sounds like a person at the camera (Oct 27 rehearsal): four seconds to get into
-    /// position after the pose cue, a cue only once the framing has held for a second, the same cue
-    /// no sooner than 8 s later and at most twice in a row, a different cue after 2.5 s, and nothing
-    /// said once the framing is good. Capture when still for 1.2 s. False if cancelled.
-    private func waitUntilStill(poseCueAt: Date) async -> Bool {
+    /// Guidance that sounds like a person at the camera. Four seconds to get into position after the
+    /// pose cue; a framing cue only once the framing has held for a second, the same one no sooner
+    /// than 8 s later. Once framed: "Hold it there", once, and the progress on screen. Capture when
+    /// still for 1 s. It never just sits (Oct 28): after 4 s framed but not still, "Hold still for a
+    /// second"; after 7 s framed in all, the photo is taken anyway; after 15 s without a capture the
+    /// pose cue is said again. False if cancelled.
+    private func waitUntilStill(poseCueAt: Date, pose: Pose) async -> Bool {
         var candidate: Framing?
         var candidateSince = Date.now
         var lastSpoken: Framing?
-        var repeats = 0
+        var framedFor: TimeInterval = 0
+        var saidHold = false
+        var saidStill = false
+        var lastTick = Date.now
+        var lastPoseCue = poseCueAt
         while !cancelled {
             try? await Task.sleep(for: .milliseconds(100))
             if Task.isCancelled { return false }
+            let now = Date.now
             let framing = capture.framing
             if framing != candidate {
                 candidate = framing
-                candidateSince = .now
+                candidateSince = now
             }
             if framing == .good {
+                framedFor += now.timeIntervalSince(lastTick)
+                lastTick = now
+                stillProgress = capture.stillness.progress
                 cue = capture.stillness.isStill ? nil : "Hold still"
                 if capture.stillness.isStill { return true }
+                if !saidHold, now.timeIntervalSince(poseCueAt) >= 1.5 {
+                    saidHold = true
+                    await natural.speak("Hold it there.")
+                } else if !saidStill, framedFor >= 4 {
+                    saidStill = true
+                    await natural.speak("Hold still for a second.")
+                } else if framedFor >= 7 {
+                    await natural.speak("Taking it now.")
+                    return true
+                }
                 continue
             }
+            lastTick = now
+            stillProgress = 0
             cue = framing.spoken
+            if now.timeIntervalSince(lastPoseCue) >= 15 {
+                // Stuck: start the pose over, as a person would.
+                lastPoseCue = now
+                lastSpoken = nil
+                capture.resetStillness()
+                await natural.speak(pose.spokenCue)
+                continue
+            }
             guard let line = framing.spoken,
-                  Date.now.timeIntervalSince(candidateSince) >= 1.0,
-                  Date.now.timeIntervalSince(poseCueAt) >= 4.0
+                  now.timeIntervalSince(candidateSince) >= 1.0,
+                  now.timeIntervalSince(lastPoseCue) >= 4.0
             else { continue }
-            if framing != lastSpoken { repeats = 0 }
             let gap = framing == lastSpoken ? 8.0 : 2.5
-            guard repeats < 2, Date.now.timeIntervalSince(lastCueAt) >= gap else { continue }
+            guard now.timeIntervalSince(lastCueAt) >= gap else { continue }
             lastSpoken = framing
-            repeats += 1
-            lastCueAt = .now
+            lastCueAt = now
             await natural.speak(line)
         }
         return false

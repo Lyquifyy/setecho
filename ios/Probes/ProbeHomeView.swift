@@ -105,6 +105,7 @@ private struct TurnTimingsCard: View {
             if !timings.openStages.isEmpty {
                 LabeledRow("Open → stages", timings.openStages.map { "\($0.name) \(seconds($0.seconds))" }.joined(separator: " · "))
             }
+            LabeledRow("Heard", timings.heardCounts.isEmpty ? "—" : timings.heardCounts.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", "))
             LabeledRow("Unclear turns", timings.unclearCount == 0 ? "0" : "\(timings.unclearCount) · " + timings.unclearReasons.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", "))
             LabeledRow("Natural voice", voiceState)
             LabeledRow("Lines cached / live / system", "\(timings.voiceCached) / \(timings.voiceLive) / \(timings.voiceFallbacks)")

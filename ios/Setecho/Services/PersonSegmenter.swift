@@ -57,23 +57,40 @@ enum Framing: Equatable {
     }
 }
 
-/// Stillness: IoU above 0.97 between consecutive masks for 1.2 s.
+/// Stillness: IoU above 0.93 between consecutive masks for 1 s. Up to two near-misses in a row (a
+/// breath, a sway: IoU above 0.85) are forgiven; a real move resets it. Oct 28: at 0.97 with any
+/// shaky frame resetting it, an arms-up pose was almost never still.
 struct StillnessTracker: Equatable {
-    var requiredSeconds = 1.2
-    var minimumIoU = 0.97
+    var requiredSeconds = 1.0
+    var minimumIoU = 0.93
+    var nearMissIoU = 0.85
+    var forgivenFrames = 2
     private var last: PersonMask?
     private var stillSince: TimeInterval?
+    private var misses = 0
     private(set) var isStill = false
     private(set) var progress: Double = 0
 
     mutating func update(_ mask: PersonMask?, at t: TimeInterval) {
         defer { last = mask }
-        guard let mask, let previous = last, PersonMask.iou(previous, mask) >= minimumIoU else {
+        let iou = mask.flatMap { m in last.map { PersonMask.iou($0, m) } } ?? 0
+        guard iou >= minimumIoU else {
+            if iou >= nearMissIoU, misses < forgivenFrames {
+                // A breath: the hold's clock keeps running.
+                misses += 1
+                if let since = stillSince {
+                    progress = min(1, (t - since) / requiredSeconds)
+                    isStill = t - since >= requiredSeconds
+                }
+                return
+            }
+            misses = 0
             stillSince = nil
             isStill = false
             progress = 0
             return
         }
+        misses = 0
         let since = stillSince ?? t
         stillSince = since
         progress = min(1, (t - since) / requiredSeconds)
@@ -82,6 +99,7 @@ struct StillnessTracker: Equatable {
 
     mutating func reset() {
         last = nil
+        misses = 0
         stillSince = nil
         isStill = false
         progress = 0

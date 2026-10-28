@@ -62,6 +62,7 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     #expect(flow.nextStep(draft: draft, photosTakenToday: true) == .weight)   // drafted is not answered
     #expect(flow.prompt(for: [refeed], draft: draft) == "Date of last refeed or cheat meal, 10/24/26?")
     #expect(CheckInMorningFlow.isYes("Yes.") && CheckInMorningFlow.isYes("yeah") && !CheckInMorningFlow.isYes("yes it was 180"))
+    #expect(CheckInMorningFlow.isYes("Use that.") && CheckInMorningFlow.isYes("Sounds good"))   // the weight offer's own words
     #expect(CheckInMorningFlow.isNo("Nope") && !CheckInMorningFlow.isNo("no idea"))
 }
 
