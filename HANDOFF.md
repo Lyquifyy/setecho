@@ -836,6 +836,14 @@ Each phase ends with its checks passing, a commit, and a TestFlight build the hu
 - **Decided Oct 26** (§13): the spreadsheet arrives as a Google Sheets link; the check-in is due **Thursday morning**; the backend is on Fly.
 - **Untested:** every phone flow, in a real gym or at home.
 
+### What's left (Oct 28)
+Everything ticked below is built; "untested" still applies to every phone flow until it has run in the gym or at home.
+- **Waiting on the human:** Thursday's first real check-in (P3); his real coach reply as the loop's first test; a real session's debug JSON (History → session → Share, saved to `backend/private/sessions/`) for the P1b median and P5 tuning; the gates G1, G2/G3/G6, G5 and G7 below; the App Group in Xcode so the share extension can be embedded.
+- **Block 2 (Thursday):** camera speed (the second writer during recording, the tighter clip window, stage timings, 30 s to the measured line); `PlanItem` replacing add-ons; default filming (the tripod only for the top sets of the 1–2 main lifts, named on Today).
+- **Block 3 (Friday):** P4 in a real session: warm-ups, the measured line on every top set, the back-off load from his rule, nothing suggested without a confirmed rule; the two flagged videos in the check-in.
+- **Block 4 (Saturday):** P5 tuning from the sessions' debug JSON; the day's plan in time order on Today; cardio and steps checked against Apple Health; the PlanItem notifications.
+- **After that:** fixes only (Sunday freeze), then P7–P9. Stretch (Machine taken, the watch, Withings, WhatsApp history) only if all of the above is green.
+
 ### Plan and priorities, Oct 27 evening (replaces the order above where they differ)
 Report after each numbered block: what passed, what didn't, the measured latencies, and what the human owes.
 
@@ -848,26 +856,26 @@ Report after each numbered block: what passed, what didn't, the measured latenci
 - **From the fifth rehearsal (Oct 28):** answers went unheard the first time with no unclear turn logged. Two causes in code: speech that arrived while a turn was in flight (often a noise turn) was dropped, and a turn with no words got no reply at all; and the noise floor was the median of the first 2 s of listening, so an answer started inside that window became the floor. Now the latest utterance during a turn in flight is kept and read when that turn comes to nothing, a long utterance with no words gets "Sorry, I didn't catch that", the floor is the quietest fifth of the window and follows the room while quiet, and "use that" / "sounds good" count as yes. The Probes card shows a "Heard" row (turns, queued, tooShort, noWords). Photos: the side cues say which side faces the camera ("Right side to the camera, arms up"); stillness is IoU ≥ 0.93 for 1 s with two shaky frames forgiven (was 0.97 for 1.2 s, any shaky frame reset it); once framed it says "Hold it there", after 4 s framed "Hold still for a second", after 7 s framed it takes the photo anyway, and after 15 s without a capture it repeats the pose cue; a larger hold bar shows on the HUD.
 - **AirPods mic (Oct 28, optional, built, untested on a device):** Settings → Voice → "Use AirPods mic", off by default. On: `.playAndRecord`, mode `.default`, options HFP + `.bluetoothHighQualityRecording` + A2DP (plus duck or mix), all through `AirPodsMic.options`, the one place every activation takes its options from. Off: A2DP output with the DJI receiver or the iPhone mic, as before. After each activation and on every route change, `AirPodsMic.check` falls back for the rest of the run when the output is HFP and the input port's `bluetoothMicrophoneExtension.highQualityRecording.isEnabled` is false (iOS dropped to call quality), when there is no output, or when the options are refused; it then says "AirPods mic unavailable, using the DJI mic" (or "iPhone mic") on Check-in morning, Settings and Probes. Probes has the iOS 26 input picker (`AVInputPickerInteraction`) beside the live route readout and the AirPods state.
 - **From the sixth rehearsal (Oct 28):** a pause before the mic heard him after each line: every natural-voice line ducked the music before it and restored mixing after it, two session category changes per line, and the mic stayed closed until the second one finished. Check-in morning, the photo session and the wrap-up now hold the ducking for their whole run (`AudioService.holdsDucking`), so the mic reopens the moment a line ends; sessions still duck per line. The indicator is a larger ring with "Your turn" in cobalt, shown only while the mic is actually open, and it follows his voice ("Hearing you"). The system voice: a live line now waits 2.5 s for its first audio, then retries once as a whole MP3 (4 s) before the system voice, and a voice status that failed at start is asked again on the next line (at most every 10 s).
-- [ ] **Timing:** log every stage of a check-in turn (end of speech, upload, transcribe, Spark, validator, first audio) to the debug JSON; live stage timings and medians on the Probes screen.
-- [ ] **Warm backend:** Fly `min_machines_running = 1`, auto-stop off, the region nearest Wichita (dfw or ord); one keep-alive HTTP client for Meta; the app pings `/health` when Check-in morning or a session starts.
-- [ ] **Realtime transcription:** check-in turns stream mic audio through the backend to Voice Transcribe's realtime WebSocket, with Meta's endpointing deciding when a turn ends. File mode stays as the fallback.
-- [ ] **Number fast path:** a transcript that is only a number (or the three tape measurements) for the field just asked is parsed by code and answered from a template, with no Spark call. Spark handles everything else.
-- [ ] **Spark at its lowest reasoning effort** with small max tokens for `/checkin/turn`, `/voice/command` and `/spotter/line`.
-- [ ] **A soft sound** the moment a turn ends.
-- [ ] **Natural voice, `NaturalVoiceSpeaker`:** ElevenLabs Flash v2.5 or Cartesia Sonic (the human picks and puts the key in Fly secrets by Wed noon), behind a small provider adapter so either works. `/voice/speak` streams the audio; the phone plays chunks as they arrive. The coach's check-in questions and Setecho's fixed lines are pre-generated when Check-in morning starts and cached on the phone by a text hash. No audio within 700 ms: that line falls back to `SystemSpeaker`. The service gets only the text being spoken; the README names it as the one non-Meta piece; never a voice made to sound like the coach.
-- [ ] **Audio route:** AirPods out at full quality (A2DP, never call-quality Bluetooth); in from the DJI receiver when plugged in, else the iPhone mic; iOS 26 high-quality AirPods recording may be tried, falling back to the DJI/iPhone mic. The live route shows on the Probes screen. Check-in morning and sessions use the same route.
-- [ ] **Filming mode** (Settings, off by default): every line Setecho speaks saved as audio exactly as played (the voice service's stream, or `AVSpeechSynthesizer.write`), every utterance saved as its WAV, every file stamped from one clock; one SRT captions file per check-in or session; a slate on start (a white flash and a short beep, with its time logged); export by AirDrop from History; never uploaded, never committed; no change to timing or behaviour.
-- [ ] **Photos** as in §7: hands-free capture with the head-to-toe framing check and "retake front"; the collage, alignment and outline out of the flow; `/photos/segment` no longer called.
-- [ ] **Check-in morning** (§7 and P2) plus the three-step send `[plan message]`, `[questionnaire text + four photos]`, `[two videos]`, the weekly period, the free-meal draft, and "Current Goal(s)".
-- [ ] **Readiness, before the 6 PM build:** a scripted run in tests (a pause, a two-field answer, a correction, a question for the coach, every number from the transcript); a format check against a real past check-in in `backend/private/` (labels, order, carried blocks, the plan message as its own message), differences reported; a Facts screen (debug) with every data field and the raw values behind it; Rehearsal mode on Review and send (off by default) that sends all three steps to the athlete's own chat; a deadline guard: not sent by 8:40 AM Central, Review and send opens with what's ready and the missing fields can be typed.
-- [ ] **Today:** the cycle follows the day of the week when it is seven days long (Day 1 on Monday), with "Change day" as the override; a clean loading indicator wherever data is being read (Import, the check-in draft, Review and send).
+- [x] **Timing:** log every stage of a check-in turn (end of speech, upload, transcribe, Spark, validator, first audio) to the debug JSON; live stage timings and medians on the Probes screen.
+- [x] **Warm backend:** Fly `min_machines_running = 1`, auto-stop off, the region nearest Wichita (dfw or ord); one keep-alive HTTP client for Meta; the app pings `/health` when Check-in morning or a session starts.
+- [x] **Realtime transcription:** check-in turns stream mic audio through the backend to Voice Transcribe's realtime WebSocket, with Meta's endpointing deciding when a turn ends. File mode stays as the fallback. *Built with the phone's voice detector ending the turn; Meta's endpointing mode is unverified.*
+- [x] **Number fast path:** a transcript that is only a number (or the three tape measurements) for the field just asked is parsed by code and answered from a template, with no Spark call. Spark handles everything else.
+- [x] **Spark at its lowest reasoning effort** with small max tokens for `/checkin/turn`, `/voice/command` and `/spotter/line`. *Built without the token cap: a cap cut the JSON off.*
+- [x] **A soft sound** the moment a turn ends.
+- [x] **Natural voice, `NaturalVoiceSpeaker`:** ElevenLabs Flash v2.5 or Cartesia Sonic (the human picks and puts the key in Fly secrets by Wed noon), behind a small provider adapter so either works. `/voice/speak` streams the audio; the phone plays chunks as they arrive. The coach's check-in questions and Setecho's fixed lines are pre-generated when Check-in morning starts and cached on the phone by a text hash. No audio within 700 ms: that line falls back to `SystemSpeaker`. The service gets only the text being spoken; the README names it as the one non-Meta piece; never a voice made to sound like the coach.
+- [ ] **Audio route:** AirPods out at full quality (A2DP, never call-quality Bluetooth); in from the DJI receiver when plugged in, else the iPhone mic; iOS 26 high-quality AirPods recording may be tried, falling back to the DJI/iPhone mic. The live route shows on the Probes screen. Check-in morning and sessions use the same route. *The AirPods mic switch is built and untested on a device.*
+- [x] **Filming mode** (Settings, off by default): every line Setecho speaks saved as audio exactly as played (the voice service's stream, or `AVSpeechSynthesizer.write`), every utterance saved as its WAV, every file stamped from one clock; one SRT captions file per check-in or session; a slate on start (a white flash and a short beep, with its time logged); export by AirDrop from History; never uploaded, never committed; no change to timing or behaviour.
+- [x] **Photos** as in §7: hands-free capture with the head-to-toe framing check and "retake front"; the collage, alignment and outline out of the flow; `/photos/segment` no longer called.
+- [x] **Check-in morning** (§7 and P2) plus the three-step send `[plan message]`, `[questionnaire text + four photos]`, `[two videos]`, the weekly period, the free-meal draft, and "Current Goal(s)".
+- [x] **Readiness, before the 6 PM build:** a scripted run in tests (a pause, a two-field answer, a correction, a question for the coach, every number from the transcript); a format check against a real past check-in in `backend/private/` (labels, order, carried blocks, the plan message as its own message), differences reported; a Facts screen (debug) with every data field and the raw values behind it; Rehearsal mode on Review and send (off by default) that sends all three steps to the athlete's own chat; a deadline guard: not sent by 8:40 AM Central, Review and send opens with what's ready and the missing fields can be typed.
+- [x] **Today:** the cycle follows the day of the week when it is seven days long (Day 1 on Monday), with "Change day" as the override; a clean loading indicator wherever data is being read (Import, the check-in draft, Review and send).
 - Keep the current build working for the Wednesday workout (2–3 filmed sets for SAM data and timing).
 
 **Block 2, Thursday** (the first real check-in that morning).
 - [ ] P1b as above, plus **camera speed:** write the counting clip during recording (a second writer at 480p and 15 fps, cropped to the body-pose box) so nothing is exported at set end; clip window start − 1 s to end + 0.5 s; stage timings for export, upload, SAM and math; 30 s or less to the measured line.
 - [ ] P1c as above, plus the add-on as a general **PlanItem**: what (lifts, holds, cardio, supplement, meal or habit), when (cycle days, N per week, daily or set weekdays, plus an anchor: on waking, before, during or after the session, with meals, a clock time, before bed), the coach's quote, and tracking (by session, Apple Health, voice, or none). The import builds PlanItems from the sheet, the form's carried blocks and the email; items anchored to the session are spoken when it starts ("Intra-workout: EAAs, sodium, creatine").
 - [ ] **Default filming:** the tripod only for the top set of the day's 1–2 main lifts, everything else by voice; Today names which sets to film.
-- [ ] The coach reply loop (P2) on TestFlight by Thursday evening; his real reply is its first test.
+- [x] The coach reply loop (P2) on TestFlight by Thursday evening; his real reply is its first test. *In every build since 202610271428; his real reply is still its first test.*
 
 **Block 3, Friday** (the first full camera test in the gym): P4 as above.
 
@@ -887,38 +895,38 @@ Report after each numbered block: what passed, what didn't, the measured latenci
 - [ ] **G7 SAM reps.** `scripts/sam_reps_probe.py <mov> --equipment barbell` (built in P1) downscales the clip to 720p at 15 fps, calls SAM with "weight plate", runs `reps.py`, and prints the count, the rep times and the seconds from upload to count. Raw output goes to `backend/private/`; `--fixture` saves only the per-frame centroid series. **Pass:** the count matches the human's count of a real set of 8, one plate is tracked on every frame, and it takes under 60 s.
 
 ### P1 — Rep counting (Tue Oct 27, built)
-- [ ] `scripts/sam_reps_probe.py` (G7: §6 SAM on video, §5 `/sets/count`).
-- [ ] `backend/app/reps.py` and `/sets/count`, with the synthetic series and tests.
-- [ ] `SetDetector`: continuous recording split at set ends, the real start and end, and the two exports (§7, Set detection). Today it starts `AVCaptureMovieFileOutput` at set start, which loses the first rep.
-- [ ] `RepCounter` on the pose frames, extending `WristSignal` to every joint.
-- [ ] `LoggedSet.repCount` with its migration; the measured-count rules and callouts; `SourceChip` on Session and History.
+- [x] `scripts/sam_reps_probe.py` (G7: §6 SAM on video, §5 `/sets/count`).
+- [x] `backend/app/reps.py` and `/sets/count`, with the synthetic series and tests.
+- [x] `SetDetector`: continuous recording split at set ends, the real start and end, and the two exports (§7, Set detection). Today it starts `AVCaptureMovieFileOutput` at set start, which loses the first rep.
+- [x] `RepCounter` on the pose frames, extending `WristSignal` to every joint.
+- [x] `LoggedSet.repCount` with its migration; the measured-count rules and callouts; `SourceChip` on Session and History.
 - **Done when:** G7 passes on the human's clip, and a simulated session in `SessionEngineTests` logs a phone count, then applies a measured correction with undo.
 
 ### P1b — SAM as the record (Wed Oct 28 morning, small)
-- [ ] The rep-counting rules in §7: SAM as the record, the silent phone fallback at 60 s, and the set-end callout without the count.
-- [ ] 15 fps clip export, and `/sets/count` returning `repSpeeds` and `velocityLossPct` (§5, steps 8–9).
-- [ ] Report the median SAM time from set end to result, on the G7 clips and one real session.
+- [x] The rep-counting rules in §7: SAM as the record, the silent phone fallback at 60 s, and the set-end callout without the count.
+- [x] 15 fps clip export, and `/sets/count` returning `repSpeeds` and `velocityLossPct` (§5, steps 8–9).
+- [ ] Report the median SAM time from set end to result, on the G7 clips and one real session. *G7: 33 s through Fly. The real session is owed: History → session → Share exports its debug JSON with every SAM latency.*
 - **Done when:** `SessionEngineTests` cover SAM on time, SAM late (the phone count spoken at 60 s, then replaced), SAM at low confidence, and "that was N".
 
 ### P1c — His real sheet (Wed Oct 28, before Check-in morning)
 His sheet has an abs tab first, two rest days, timed holds, top and back-down sets and rest-pause sets (§7, Training cycle and add-ons). Today it would import with abs as Day 1, and Today would show it forever.
-- [ ] The import: the cycle, `kind`, `cardio`, `addOns`, `seconds`, `totalReps`, `role`, the day-level rest period, slash names; the prompt and schema changes; the Import review for the cycle and add-on days.
-- [ ] `PlanState.cycle` replacing `Store.nextDay`; "Change day"; the rest-day card; add-ons joining sessions, catch-up, "add abs" / "skip abs".
-- [ ] Warm-up sets: warm-up mode, the `topSet` and `warmup` intents, the phone classification, no SAM upload for warm-ups.
-- [ ] `/import/rules` with its validator, run on his onboarding email, and the Import review for each rule found.
-- [ ] Timed sets in `SessionEngine`; the morning add-on session with its App Shortcut; rest-pause sets held open in `SetDetector`; `setRole` sent to `/sets/count`.
+- [x] The import: the cycle, `kind`, `cardio`, `addOns`, `seconds`, `totalReps`, `role`, the day-level rest period, slash names; the prompt and schema changes; the Import review for the cycle and add-on days.
+- [x] `PlanState.cycle` replacing `Store.nextDay`; "Change day"; the rest-day card; add-ons joining sessions, catch-up, "add abs" / "skip abs".
+- [x] Warm-up sets: warm-up mode, the `topSet` and `warmup` intents, the phone classification, no SAM upload for warm-ups.
+- [x] `/import/rules` with its validator, run on his onboarding email, and the Import review for each rule found.
+- [x] Timed sets in `SessionEngine`; the morning add-on session with its App Shortcut; rest-pause sets held open in `SetDetector`; `setRole` sent to `/sets/count`.
 - **Done when:** the human's sheet imports with 7 cycle days (5 training, 2 rest) and 2 add-ons, nothing flagged that's clearly written. A simulated week shows the right day each morning (a missed day waits, rest days pass with the calendar), abs join the two days he confirmed, and the vacuums session runs 4 × 20 s hands-free.
 - **If it threatens Check-in morning's Wednesday-evening ship:** the import, the cycle and Today go first; timed sets and the morning session move to Thursday.
 
 ### P2 — Check-in morning, coach reply and voice cues (Wed Oct 28 – Thu Oct 29)
 Order matters. **Check-in morning ships to TestFlight by Wednesday evening,** because Thursday morning is its first real use. The coach reply loop ships by Thursday evening, because his reply to that check-in is its first real test.
-- [ ] `PlanState` and its migration (§4). Every plan reader goes through `store.plan`.
-- [ ] `/coach/reply` with changes, unclear items and cues; the validator; prompts; tests on synthetic replies.
-- [ ] The Coach reply screen, the Today card, the MacroFactor reminder, and revert under History → Plan changes.
-- [ ] Getting replies in: paste and audio file import first, then the `SetechoShare` share extension.
-- [ ] Voice cues: cutting, review, playback rules, `replayCue`, and the Settings switch.
-- [ ] **First:** Check-in morning (§7) with `/checkin/turn`, the App Shortcut, pause and resume, and the voice picker.
-- [ ] **Also before Thursday:** the send in his order (the plan message, then the questionnaire with the four photos, then the videos), the check-in period since the last check-in, the free-meal draft, and "Current Goal(s)" drafted from the last check-in if his form has it (§7, Check-in).
+- [x] `PlanState` and its migration (§4). Every plan reader goes through `store.plan`.
+- [x] `/coach/reply` with changes, unclear items and cues; the validator; prompts; tests on synthetic replies.
+- [x] The Coach reply screen, the Today card, the MacroFactor reminder, and revert under History → Plan changes.
+- [ ] Getting replies in: paste and audio file import first, then the `SetechoShare` share extension. *Paste and audio import are built; the share extension is built but not embedded until the App Group is registered in Xcode (`ios/SetechoShare/README.md`).*
+- [x] Voice cues: cutting, review, playback rules, `replayCue`, and the Settings switch.
+- [x] **First:** Check-in morning (§7) with `/checkin/turn`, the App Shortcut, pause and resume, and the voice picker.
+- [x] **Also before Thursday:** the send in his order (the plan message, then the questionnaire with the four photos, then the videos), the check-in period since the last check-in, the free-meal draft, and "Current Goal(s)" drafted from the last check-in if his form has it (§7, Check-in).
 - **Done when:** two of his past replies (one text, one voice note) produce the right changes and cues, and a simulated session plays the cue before the right exercise and never during a set. A scripted run of Check-in morning, with a pause, a two-field answer, a correction and a question for the coach, finishes with every number taken from the transcript.
 
 ### P3 — First real check-in (Thu Oct 29 morning)
@@ -927,12 +935,12 @@ Order matters. **Check-in morning ships to TestFlight by Wednesday evening,** be
 - **When the coach replies,** the human shares it in and screen-records the Coach reply screen.
 
 ### P4 — Measured effort, the coach's rules and the spotter (Thu Oct 29 – Fri Oct 30)
-- [ ] The effort map and calibration; `RuleEngine` with rounding and limits; rules drafted at import and confirmed; the one-time question when there's no rule; set roles and the role-targets question (§7, Measured effort).
-- [ ] The rest-time line (measured count, effort, suggestion); the "go with it" / "keep it" intents; the `LoadSuggestion` log; the Settings switch.
-- [ ] `/spotter/line` with its validator; the set-end callout variants; session memory for PRs and streaks.
-- [ ] Videos for your coach: `flagSet`, the crop to the reps from `repTimes`, the Review and send card; the adjustments line in `/checkin/render`.
-- [ ] His rules in the engine: the back-off load, rest after a top set, the logbook line, and the next-session steps (§7, Measured effort).
-- [ ] The `Speaker` protocol with `SystemSpeaker`. `NaturalVoiceSpeaker` only if the human asks for it after Wednesday's voice test.
+- [x] The effort map and calibration; `RuleEngine` with rounding and limits; rules drafted at import and confirmed; the one-time question when there's no rule; set roles and the role-targets question (§7, Measured effort).
+- [x] The rest-time line (measured count, effort, suggestion); the "go with it" / "keep it" intents; the `LoadSuggestion` log; the Settings switch.
+- [x] `/spotter/line` with its validator; the set-end callout variants; session memory for PRs and streaks.
+- [x] Videos for your coach: `flagSet`, the crop to the reps from `repTimes`, the Review and send card; the adjustments line in `/checkin/render`.
+- [x] His rules in the engine: the back-off load, rest after a top set, the logbook line, and the next-session steps (§7, Measured effort).
+- [x] The `Speaker` protocol with `SystemSpeaker`. `NaturalVoiceSpeaker` only if the human asks for it after Wednesday's voice test.
 - **Done when:**
   - In a real session, warm-ups log as warm-ups, every top set gets its measured line against his failure target and a back-off load from his 20–25% rule, and nothing is suggested without a confirmed rule.
   - The check-in carries the two flagged videos cropped to the reps, and the adjustments line.
