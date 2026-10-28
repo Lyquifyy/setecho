@@ -279,6 +279,11 @@ final class Store {
         write(photoSets, "photoSets.json")
     }
 
+    func remove(checkInId: UUID) {
+        checkIns.removeAll { $0.id == checkInId }
+        write(checkIns, "checkIns.json")
+    }
+
     func upsert(checkIn: CheckInDraft) {
         if let i = checkIns.firstIndex(where: { $0.id == checkIn.id }) {
             checkIns[i] = checkIn

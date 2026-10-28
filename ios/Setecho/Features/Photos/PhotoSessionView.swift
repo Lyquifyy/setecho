@@ -30,6 +30,15 @@ struct PhotoSessionView: View {
             }
         }
         .task { await coordinator.start() }
+        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        // The screen locked or the app left the front: stop, rather than cue an empty frame on repeat.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            if coordinator.phase != .review {
+                coordinator.cancel()
+                dismiss()
+            }
+        }
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
     }

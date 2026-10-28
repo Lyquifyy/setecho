@@ -55,7 +55,7 @@ struct RenderResponse: Codable {
 // MARK: - /checkin/turn (HANDOFF.md §5): one spoken turn of Check-in morning
 
 enum TurnIntent: String, Codable {
-    case answer, correction, pause, resume, skip, goBack, repeat_ = "repeat", forCoach, ready, chitchat, unclear
+    case answer, correction, change, pause, resume, skip, goBack, repeat_ = "repeat", forCoach, ready, chitchat, unclear
 }
 
 struct TurnContext: Codable {
@@ -79,9 +79,11 @@ struct TurnResponse: Codable, Equatable {
     var timings: [String: Double]
     /// Code answered a plain number; Spark was not called.
     var fastPath: Bool
+    /// For `change`: the field the athlete wants to redo.
+    var changeFieldId: String?
 
     init(transcript: String, intent: TurnIntent, answers: [FieldAnswer], reply: String, confidence: Double,
-         timings: [String: Double] = [:], fastPath: Bool = false) {
+         timings: [String: Double] = [:], fastPath: Bool = false, changeFieldId: String? = nil) {
         self.transcript = transcript
         self.intent = intent
         self.answers = answers
@@ -89,6 +91,7 @@ struct TurnResponse: Codable, Equatable {
         self.confidence = confidence
         self.timings = timings
         self.fastPath = fastPath
+        self.changeFieldId = changeFieldId
     }
 
     private enum CodingKeys: String, CodingKey { case transcript, intent, answers, reply, confidence, timings, fastPath }

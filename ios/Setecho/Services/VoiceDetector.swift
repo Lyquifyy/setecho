@@ -8,8 +8,9 @@ final class VoiceDetector {
         var sampleRate: Double
         var blockMs = 20
         var calibrationSeconds = 2.0
-        var thresholdAboveFloorDB = 10.0
-        var onsetMs = 300
+        /// 13 dB over the room and 350 ms of it before a turn starts: a dog at the water bowl is not a turn.
+        var thresholdAboveFloorDB = 13.0
+        var onsetMs = 350
         var hangoverMs = 700
         var preRollMs = 300
         var maxUtteranceSeconds = 10.0

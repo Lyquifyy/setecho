@@ -86,6 +86,12 @@ final class NaturalVoiceSpeaker: Speaker {
         }
     }
 
+    /// Cut whatever is playing (the app went to the background, or the session was cancelled).
+    func stop() {
+        pcmPlayer.cancel()
+        fallback.stopSpeaking()
+    }
+
     func speak(_ text: String) async {
         guard isConfigured else {
             await fallback.speak(text)

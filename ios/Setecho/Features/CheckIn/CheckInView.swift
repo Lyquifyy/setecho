@@ -106,7 +106,7 @@ struct CheckInView: View {
 }
 
 /// Tapping a field opens it to edit, with its source values listed.
-private struct FieldEditSheet: View {
+struct FieldEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     let field: FieldSpec
     let coordinator: CheckInCoordinator

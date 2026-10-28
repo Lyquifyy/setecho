@@ -23,7 +23,8 @@ from app.schemas import CheckInTemplate, FieldSpec, StrictModel, strict_schema
 router = APIRouter()
 
 TurnIntent = Literal[
-    "answer", "correction", "pause", "resume", "skip", "goBack", "repeat", "forCoach", "ready", "chitchat", "unclear"
+    "answer", "correction", "change", "pause", "resume", "skip", "goBack", "repeat", "forCoach", "ready", "chitchat",
+    "unclear",
 ]  # fmt: skip
 INTENTS: tuple[str, ...] = TurnIntent.__args__  # type: ignore[attr-defined]
 
@@ -77,6 +78,9 @@ class TurnResponse(StrictModel):
         default_factory=dict, description="Seconds per stage: transcribe, spark, validate"
     )
     fastPath: bool = Field(default=False, description="Code answered a plain number; Spark was not called")
+    changeFieldId: str | None = Field(
+        default=None, description="For `change`: the field the athlete wants to redo; the phone asks it again"
+    )
 
 
 SYSTEM = (
@@ -86,7 +90,9 @@ SYSTEM = (
     "the athlete said. Return the intent, any answers (the field id plus the number or words they used), "
     "and a reply of one short, friendly, casual sentence. Use only numbers the athlete said. One "
     'utterance can answer several fields ("180.8, and glucose was 91"). A correction names a field '
-    'already answered ("wait, it was 180.6"). pause is "give me a couple of minutes"; resume is "I\'m '
+    'already answered ("wait, it was 180.6"). change is asking to redo a field without giving its new value '
+    '("let me change my biggest win", "I want to redo energy"): put that field in answers with empty text '
+    'and no number, and say you will ask it again. pause is "give me a couple of minutes"; resume is "I\'m '
     'back"; ready is "ready" or "I\'m off the scale"; repeat is "say that again"; forCoach is a question '
     'meant for the coach ("should I bump my carbs?"): say it\'s one for their coach and offer to add it '
     "to their notes, with their question in `text` for the notes field. If they need a minute, tell them "
@@ -151,6 +157,16 @@ def validate_turn(out: TurnOut, transcript: str, context: TurnContext) -> TurnRe
         return unclear()
     if any(not _number_is_spoken(n, said) for n in _text_numbers(out.reply)):
         return unclear()
+
+    if out.intent == "change":
+        # The field to ask again, by code: an unknown field is unclear, no field means "which one?".
+        field_id = out.answers[0].fieldId if out.answers else None
+        if field_id is not None and field_id not in fields:
+            return unclear()
+        return TurnResponse(
+            transcript=transcript, intent="change", answers=[], reply=out.reply.strip(),
+            confidence=out.confidence, changeFieldId=field_id,
+        )  # fmt: skip
 
     answers: list[checkin.FieldAnswer] = []
     for a in out.answers:

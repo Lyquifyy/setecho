@@ -10,9 +10,9 @@ struct CheckInMorningView: View {
     @State private var model: CheckInMorningModel
     let coordinator: CheckInCoordinator
 
-    init(coordinator: CheckInCoordinator, store: Store) {
+    init(coordinator: CheckInCoordinator, store: Store, fresh: Bool = false) {
         self.coordinator = coordinator
-        _model = State(initialValue: CheckInMorningModel(coordinator: coordinator, store: store))
+        _model = State(initialValue: CheckInMorningModel(coordinator: coordinator, store: store, fresh: fresh))
     }
 
     var body: some View {
@@ -67,7 +67,15 @@ struct CheckInMorningView: View {
         .background(Theme.page.ignoresSafeArea())
         .overlay { if model.showSlate { Color.white.ignoresSafeArea() } } // the filming slate
         .task { await model.start() }
-        .fullScreenCover(isPresented: $model.showPhotos, onDismiss: { Task { await model.photosFinished() } }) {
+        // Hands-free means the screen must not lock mid-conversation.
+        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in model.enterBackground() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in Task { await model.enterForeground() } }
+        .fullScreenCover(isPresented: $model.showPhotos, onDismiss: {
+            UIApplication.shared.isIdleTimerDisabled = true
+            Task { await model.photosFinished() }
+        }) {
             PhotoSessionView(store: store).environment(store)
         }
         .fullScreenCover(isPresented: $model.showReview) {

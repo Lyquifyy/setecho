@@ -65,6 +65,12 @@ final class CheckInCoordinator {
         return groups
     }
 
+    /// A rehearsal starts from nothing: the unsent draft goes, and the next build fills it again from data.
+    func discardDraft() {
+        if let draft { store.remove(checkInId: draft.id) }
+        draft = nil
+    }
+
     // MARK: Build the draft
 
     func buildDraft() async {

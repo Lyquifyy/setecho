@@ -84,6 +84,18 @@ def test_a_correction_names_a_field_already_answered():
     assert r.intent == "correction" and r.answers[0].text == "180.6"
 
 
+def test_a_change_request_names_the_field_to_ask_again():
+    r = checkin_turn.validate_turn(
+        out("change", [{"fieldId": ENERGY, "text": ""}], reply="Sure, I'll ask energy again."),
+        "let me change my energy answer",
+        context(step="review", answered=[(ENERGY, "7/10")]),
+    )
+    assert r.intent == "change" and r.changeFieldId == ENERGY and r.answers == []
+    unknown = checkin_turn.TurnOut(intent="change", answers=[], reply="Which one?", confidence=0.5)
+    r2 = checkin_turn.validate_turn(unknown, "I want to change something", context(step="review"))
+    assert r2.intent == "change" and r2.changeFieldId is None
+
+
 def test_a_question_for_the_coach_is_offered_for_the_notes():
     r = checkin_turn.validate_turn(
         out("forCoach", [{"fieldId": NOTES_FIELD, "text": "Should I bump my carbs?"}],

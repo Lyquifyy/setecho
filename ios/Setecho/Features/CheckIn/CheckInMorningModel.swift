@@ -131,6 +131,10 @@ final class CheckInMorningModel {
     private(set) var pendingForCoach: String?
     private(set) var awaitingWeightReading = false
     private(set) var questionIndex = 0
+    /// A fresh rehearsal: today's photo set is set aside until a new one is taken.
+    private var ignorePhotosToday = false
+    private let fresh: Bool
+    private let openedAt = Date.now
 
     let coordinator: CheckInCoordinator
     let flow: CheckInMorningFlow
@@ -154,8 +158,10 @@ final class CheckInMorningModel {
     /// The slate flash, shown by the view for a moment.
     private(set) var showSlate = false
 
-    init(coordinator: CheckInCoordinator, store: Store, api: APIClient = APIClient(), speak: ((String) async -> Void)? = nil) {
+    init(coordinator: CheckInCoordinator, store: Store, api: APIClient = APIClient(), fresh: Bool = false,
+         speak: ((String) async -> Void)? = nil) {
         self.coordinator = coordinator
+        self.fresh = fresh
         self.store = store
         self.api = api
         self.flow = CheckInMorningFlow(template: coordinator.template ?? CheckInTemplate(fields: [], carriedBlocks: []))
@@ -186,7 +192,7 @@ final class CheckInMorningModel {
     var stepIndex: Int { step.rawValue }
     private var draft: CheckInDraft? { coordinator.draft }
     private var photosTakenToday: Bool {
-        guard let set = store.lastPhotoSet else { return false }
+        guard !ignorePhotosToday, let set = store.lastPhotoSet else { return false }
         return Calendar.current.isDateInToday(set.takenAt)
     }
     var questionGroups: [[FieldSpec]] { flow.questionGroups(draft: draft) }
@@ -202,12 +208,18 @@ final class CheckInMorningModel {
     // MARK: Lifecycle
 
     func start() async {
+        TurnTimings.shared.opened()
         Task { [api] in _ = try? await api.health() } // warm the backend before the first turn
+        if fresh {
+            coordinator.discardDraft()
+            ignorePhotosToday = true
+        }
         // The draft (Apple Health, the log, Spark for the notes) takes seconds: build it under the
         // introduction, which needs none of it, so the voice is heard the moment the screen opens.
         let draft = Task { [coordinator] in if coordinator.draft == nil { await coordinator.buildDraft() } }
         await natural.prepare()
         await natural.warm([intro])
+        TurnTimings.shared.stage("voice")
         if let filming {
             showSlate = true
             filming.slate()
@@ -222,12 +234,33 @@ final class CheckInMorningModel {
         audio.startListening()
         // A beat for the session and the input engine to settle before the first line plays.
         try? await Task.sleep(for: .milliseconds(250))
+        TurnTimings.shared.stage("intro")
         await say(intro)
         if coordinator.draft == nil { status = "Reading Apple Health and the training log…" }
         await draft.value
+        TurnTimings.shared.stage("draft")
         status = nil
         pregenerate()
         await resume(opening: true)
+        TurnTimings.shared.stage("first question")
+    }
+
+    /// The app left the front (the screen locked, a call): nothing plays or listens until it is back.
+    func enterBackground() {
+        silenceTask?.cancel()
+        realtime.cancel()
+        audio.stopListening()
+        natural.stop()
+        isListening = false
+        if !isDone { isPaused = true }
+    }
+
+    /// Back in front: listen again and pick up at the current step. The photo session and review
+    /// handle their own return.
+    func enterForeground() async {
+        guard !showPhotos, !showReview, !isDone, isPaused else { return }
+        audio.startListening()
+        await resume()
     }
 
     func stop() {
@@ -320,6 +353,11 @@ final class CheckInMorningModel {
             TurnTimings.shared.received(response)
             filming?.transcribed(response.transcript)
             status = nil
+            // Nothing was said (a bump, the dog): keep listening and say nothing.
+            guard response.transcript.contains(where: { $0.isLetter || $0.isNumber }) else {
+                isListening = true
+                return
+            }
             await apply(response)
         } catch {
             status = error.localizedDescription
@@ -418,6 +456,21 @@ final class CheckInMorningModel {
             } else {
                 await advance()
             }
+        case .change:
+            // The field to ask again, picked by code: it goes back to missing and its question comes next.
+            if let id = response.changeFieldId, flow.template.fields.contains(where: { $0.id == id }) {
+                coordinator.set(id, text: "", state: .missing)
+                if let index = questionGroups.firstIndex(where: { $0.contains { $0.id == id } }) {
+                    step = .questions
+                    questionIndex = index
+                    echo = "\(label(for: id)) → asked again"
+                    await ask("\(label(for: id)). What should it say?")
+                } else {
+                    await resume()
+                }
+            } else {
+                await ask(response.reply.isEmpty ? "Which one do you want to change?" : response.reply)
+            }
         case .chitchat:
             await say(response.reply)
             isListening = true
@@ -469,10 +522,13 @@ final class CheckInMorningModel {
 
     /// Back from the photo session: carry on with the questions.
     func photosFinished() async {
-        if let set = store.lastPhotoSet, Calendar.current.isDateInToday(set.takenAt) {
+        if let set = store.lastPhotoSet, Calendar.current.isDateInToday(set.takenAt), set.takenAt > openedAt || !ignorePhotosToday {
+            ignorePhotosToday = false
             coordinator.attachPhotoSet(set.id)
             await say("Got the photos.")
         }
+        // Dismissed because the app left the front: the return to the front picks the step up.
+        guard !isPaused else { return }
         await resume()
     }
 

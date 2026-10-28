@@ -102,6 +102,9 @@ private struct TurnTimingsCard: View {
                 LabeledRow("Round trip → first audio", "\(seconds(last.roundTrip)) → \(seconds(last.firstAudio))")
             }
             CardDivider()
+            if !timings.openStages.isEmpty {
+                LabeledRow("Open → stages", timings.openStages.map { "\($0.name) \(seconds($0.seconds))" }.joined(separator: " · "))
+            }
             LabeledRow("Natural voice", voiceState)
             LabeledRow("Lines cached / live / system", "\(timings.voiceCached) / \(timings.voiceLive) / \(timings.voiceFallbacks)")
             if let reason = timings.voiceLastFallback {

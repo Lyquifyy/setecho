@@ -30,8 +30,8 @@ struct RootView: View {
         .sheet(item: $router.openReply) { reply in
             CoachReplyView(reply: reply).environment(store)
         }
-        .fullScreenCover(isPresented: $router.showCheckInMorning) {
-            CheckInMorningView(coordinator: CheckInCoordinator(store: store), store: store).environment(store)
+        .fullScreenCover(isPresented: $router.showCheckInMorning, onDismiss: { router.morningFresh = false }) {
+            CheckInMorningView(coordinator: CheckInCoordinator(store: store), store: store, fresh: router.morningFresh).environment(store)
         }
         .fullScreenCover(isPresented: $router.showMorningSession) {
             if let morning = store.morningAddOnDue() {

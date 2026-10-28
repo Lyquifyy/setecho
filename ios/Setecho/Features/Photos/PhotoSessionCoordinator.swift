@@ -26,6 +26,8 @@ final class PhotoSessionCoordinator {
 
     let capture = PhotoCapture()
     let audio = AudioService()
+    /// The natural voice when the backend has one; the system voice otherwise.
+    let natural: NaturalVoiceSpeaker
     private let store: Store
     private let api: APIClient
     private var loop: Task<Void, Never>?
@@ -35,7 +37,12 @@ final class PhotoSessionCoordinator {
     init(store: Store, api: APIClient = APIClient()) {
         self.store = store
         self.api = api
+        self.natural = NaturalVoiceSpeaker(api: api, fallback: audio, cacheDirectory: store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
     }
+
+    /// Every line the session can say, generated once and cached.
+    private static let fixedLines = ["Got it", "All four. Say retake and a pose, or you're done.", "Step into frame", "Step back a little",
+                                     "Move left", "Move right"]
 
     var currentPose: Pose? {
         if case .posing(let pose) = phase { return pose }
@@ -68,6 +75,9 @@ final class PhotoSessionCoordinator {
         }
         _ = await audio.requestMicrophone()
         audio.configure()
+        await natural.prepare()
+        natural.pregenerate(Pose.allCases.map(\.spokenCue) + Self.fixedLines)
+        await natural.warm([Pose.allCases[0].spokenCue])
         capture.start()
         if let error = capture.lastError {
             phase = .failed(error)
@@ -80,7 +90,7 @@ final class PhotoSessionCoordinator {
         cancelled = true
         loop?.cancel()
         capture.stop()
-        audio.stopSpeaking()
+        natural.stop()
     }
 
     private func run() async {
@@ -88,13 +98,13 @@ final class PhotoSessionCoordinator {
             guard !cancelled else { return }
             phase = .posing(pose)
             capture.resetStillness()
-            await audio.speak(pose.spokenCue)
-            guard await waitUntilStill() else { return }
+            await natural.speak(pose.spokenCue)
+            guard await waitUntilStill(poseCueAt: .now) else { return }
             do {
                 let data = try await capture.capture()
                 captured[pose] = data
                 thumbnails[pose] = UIImage(data: data).map { Self.thumbnail($0) }
-                await audio.speak("Got it")
+                await natural.speak("Got it")
             } catch {
                 phase = .failed("Capture failed: \(error.localizedDescription)")
                 return
@@ -112,12 +122,12 @@ final class PhotoSessionCoordinator {
             capture.start()
             phase = .posing(pose)
             capture.resetStillness()
-            await audio.speak(pose.spokenCue)
-            guard await waitUntilStill() else { return }
+            await natural.speak(pose.spokenCue)
+            guard await waitUntilStill(poseCueAt: .now) else { return }
             if let data = try? await capture.capture() {
                 captured[pose] = data
                 thumbnails[pose] = UIImage(data: data).map { Self.thumbnail($0) }
-                await audio.speak("Got it")
+                await natural.speak("Got it")
             }
             capture.stop()
             await save()
@@ -148,25 +158,43 @@ final class PhotoSessionCoordinator {
         photoSet = set
         phase = .review
         loop = nil
-        await audio.speak("All four. Say retake and a pose, or you're done.")
+        await natural.speak("All four. Say retake and a pose, or you're done.")
     }
 
-    /// Framing cues at most every 3 s, then capture when still for 1.2 s. False if cancelled.
-    private func waitUntilStill() async -> Bool {
+    /// Guidance that sounds like a person at the camera (Oct 27 rehearsal): four seconds to get into
+    /// position after the pose cue, a cue only once the framing has held for a second, the same cue
+    /// no sooner than 8 s later and at most twice in a row, a different cue after 2.5 s, and nothing
+    /// said once the framing is good. Capture when still for 1.2 s. False if cancelled.
+    private func waitUntilStill(poseCueAt: Date) async -> Bool {
+        var candidate: Framing?
+        var candidateSince = Date.now
+        var lastSpoken: Framing?
+        var repeats = 0
         while !cancelled {
             try? await Task.sleep(for: .milliseconds(100))
             if Task.isCancelled { return false }
             let framing = capture.framing
-            if framing != .good {
-                cue = framing.spoken
-                if let line = framing.spoken, Date.now.timeIntervalSince(lastCueAt) > 3 {
-                    lastCueAt = .now
-                    await audio.speak(line)
-                }
+            if framing != candidate {
+                candidate = framing
+                candidateSince = .now
+            }
+            if framing == .good {
+                cue = capture.stillness.isStill ? nil : "Hold still"
+                if capture.stillness.isStill { return true }
                 continue
             }
-            cue = capture.stillness.isStill ? nil : "Hold still"
-            if capture.stillness.isStill { return true }
+            cue = framing.spoken
+            guard let line = framing.spoken,
+                  Date.now.timeIntervalSince(candidateSince) >= 1.0,
+                  Date.now.timeIntervalSince(poseCueAt) >= 4.0
+            else { continue }
+            if framing != lastSpoken { repeats = 0 }
+            let gap = framing == lastSpoken ? 8.0 : 2.5
+            guard repeats < 2, Date.now.timeIntervalSince(lastCueAt) >= gap else { continue }
+            lastSpoken = framing
+            repeats += 1
+            lastCueAt = .now
+            await natural.speak(line)
         }
         return false
     }
@@ -221,7 +249,7 @@ final class PhotoSessionCoordinator {
         photoSet = set
         collage = collageImage
         phase = .review
-        await audio.speak("Done. Your collage is ready.")
+        await natural.speak("Done. Your collage is ready.")
     }
 
     private static func thumbnail(_ image: UIImage) -> UIImage {

@@ -39,6 +39,20 @@ final class TurnTimings {
     private(set) var voiceFallbacks = 0
     private(set) var voiceLastFallback: String?
 
+    /// Seconds from opening Check-in morning to each stage (voice ready, intro, draft, first question).
+    private(set) var openStages: [(name: String, seconds: Double)] = []
+    private var openedAt: Date?
+
+    func opened(at: Date = .now) {
+        openedAt = at
+        openStages = []
+    }
+
+    func stage(_ name: String, at: Date = .now) {
+        guard let openedAt else { return }
+        openStages.append((name, at.timeIntervalSince(openedAt)))
+    }
+
     func voice(configured: Bool, provider: String?, failure: String?) {
         voiceConfigured = configured
         voiceProvider = provider

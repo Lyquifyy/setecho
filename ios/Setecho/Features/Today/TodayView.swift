@@ -154,7 +154,10 @@ struct TodayView: View {
                 } else {
                     LinkButton(title: "Open check-in") { AppRouter.shared.tab = .checkIn }
                     // The morning flow on any other day, for rehearsals: same screens, nothing sent to him.
-                    LinkButton(title: "Rehearse the morning", chevron: .none) { AppRouter.shared.showCheckInMorning = true }
+                    LinkButton(title: "Rehearse the morning", chevron: .none) {
+                        AppRouter.shared.morningFresh = true
+                        AppRouter.shared.showCheckInMorning = true
+                    }
                 }
             } else {
                 Text("Import your coach's check-in form to see what fills itself.")

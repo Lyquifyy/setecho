@@ -11,6 +11,7 @@ struct ReviewSendView: View {
     @Environment(Store.self) private var store
     let coordinator: CheckInCoordinator
     @State private var messages: [String] = []
+    @State private var editing: FieldSpec?
     @State private var error: String?
     @State private var showShare = false
     @State private var includeText = true
@@ -154,6 +155,22 @@ struct ReviewSendView: View {
                     }
                 }
             }
+            if let template = coordinator.template, let draft = coordinator.draft {
+                let answered = template.orderedFields.filter { field in
+                    draft.answers.contains { $0.fieldId == field.id && $0.state != .missing && !$0.text.isEmpty }
+                }
+                if !answered.isEmpty {
+                    SectionCard("Change an answer") {
+                        Text("Tap one to change it before it goes out; the message is rewritten.").font(.footnote).secondaryText()
+                        ForEach(Array(answered.enumerated()), id: \.element.id) { index, field in
+                            if index > 0 { CardDivider() }
+                            FieldRow(field: field, answer: coordinator.answer(for: field))
+                                .contentShape(Rectangle())
+                                .onTapGesture { editing = field }
+                        }
+                    }
+                }
+            }
             let missing = coordinator.questions.count
             if missing > 0 {
                 SectionCard("Still to answer") {
@@ -192,6 +209,9 @@ struct ReviewSendView: View {
                 Text("Step \(sendStep + 1) of \(stepCount): \(stepName). One WhatsApp message each, in his order.")
                     .font(.footnote).secondaryText()
             }
+        }
+        .sheet(item: $editing, onDismiss: { Task { await render() } }) { field in
+            FieldEditSheet(field: field, coordinator: coordinator)
         }
         .task {
             picks = coordinator.draft?.videoPicks ?? []

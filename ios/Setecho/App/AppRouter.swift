@@ -16,6 +16,8 @@ final class AppRouter {
     var openReply: CoachReply?
     /// "Hey Siri, start my Setecho check-in" (HANDOFF.md §7, Check-in morning).
     var showCheckInMorning = false
+    /// A rehearsal from the top: the unsent draft and today's photos are set aside first.
+    var morningFresh = false
     /// "Hey Siri, start my Setecho morning": the on-waking add-on's own session.
     var showMorningSession = false
 }
