@@ -5,6 +5,14 @@ import Foundation
 struct CheckInTemplate: Codable, Equatable {
     var fields: [FieldSpec]
     var carriedBlocks: [CarriedBlock]
+    /// A heading the coach puts before the questions ("Overview:"), sent verbatim.
+    var questionnaireHeading: String?
+
+    init(fields: [FieldSpec], carriedBlocks: [CarriedBlock], questionnaireHeading: String? = nil) {
+        self.fields = fields
+        self.carriedBlocks = carriedBlocks
+        self.questionnaireHeading = questionnaireHeading
+    }
 }
 
 /// Macro targets, supplements: the coach's own text, copied verbatim into every check-in.

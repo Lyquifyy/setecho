@@ -3,22 +3,23 @@ import CryptoKit
 import Foundation
 import Observation
 
-/// The natural voice (HANDOFF.md §9, block 1): lines fetched from /voice/speak as MP3 and played
-/// as they arrive, cached on the phone by a text hash, with the fixed lines pre-generated when
-/// Check-in morning starts. If no audio arrives within 700 ms the line falls back to the system
-/// voice. The service receives only the text being spoken.
+/// The natural voice (HANDOFF.md §9, block 1): a live line streams from /voice/speak as PCM 24 kHz
+/// and plays chunk by chunk as it arrives; the fixed lines are pre-generated as MP3 when Check-in
+/// morning starts and cached by a text hash. If no audio arrives within 700 ms the line falls back
+/// to the system voice. The service receives only the text; numbers become words on the backend.
 @MainActor
 @Observable
 final class NaturalVoiceSpeaker: Speaker {
     static let fallbackMilliseconds = 700
+    static let sampleRate = 24_000.0
     private(set) var isConfigured = false
     private(set) var lastFallbackReason: String?
 
     private let api: APIClient
     private let fallback: AudioService
     private let cacheDirectory: URL
-    private var player: AVAudioPlayer?
     private var inFlight: Set<String> = []
+    private let pcmPlayer = PCMStreamPlayer(sampleRate: sampleRate)
 
     init(api: APIClient, fallback: AudioService, cacheDirectory: URL) {
         self.api = api
@@ -45,26 +46,19 @@ final class NaturalVoiceSpeaker: Speaker {
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
-    /// Generate the fixed lines in the background so they play at once.
+    /// Generate the fixed lines as MP3 in the background so they play at once.
     func pregenerate(_ lines: [String]) {
         guard isConfigured else { return }
         for line in lines where !FileManager.default.fileExists(atPath: cacheURL(for: line).path) && !inFlight.contains(line) {
             inFlight.insert(line)
             Task { [weak self] in
                 guard let self else { return }
-                _ = try? await self.fetch(line, deadline: nil)
+                if let data = try? await self.api.speak(text: line, mode: "cache", firstByteWithin: nil, onChunk: nil) {
+                    try? data.write(to: self.cacheURL(for: line), options: .atomic)
+                }
                 self.inFlight.remove(line)
             }
         }
-    }
-
-    /// Fetch one line's audio to the cache. With a deadline, the first byte must arrive in time.
-    private func fetch(_ text: String, deadline: Duration?) async throws -> URL {
-        let url = cacheURL(for: text)
-        if FileManager.default.fileExists(atPath: url.path) { return url }
-        let data = try await api.speak(text: text, firstByteWithin: deadline)
-        try data.write(to: url, options: .atomic)
-        return url
     }
 
     func speak(_ text: String) async {
@@ -72,15 +66,93 @@ final class NaturalVoiceSpeaker: Speaker {
             await fallback.speak(text)
             return
         }
-        let url: URL
-        do {
-            url = try await fetch(text, deadline: .milliseconds(Self.fallbackMilliseconds))
-        } catch {
-            lastFallbackReason = error.localizedDescription
-            await fallback.speak(text)
+        if let cached = cachedAudio(for: text) {
+            await fallback.play(file: cached)
             return
         }
-        await fallback.play(file: url)
+        // Live: PCM chunks play as they arrive; the first must land within 700 ms.
+        await fallback.duck()
+        pcmPlayer.begin()
+        do {
+            _ = try await api.speak(text: text, mode: "live", firstByteWithin: .milliseconds(Self.fallbackMilliseconds)) { [pcmPlayer] chunk in
+                pcmPlayer.enqueue(chunk)
+            }
+            await pcmPlayer.finish()
+            await fallback.restore()
+        } catch {
+            pcmPlayer.cancel()
+            await fallback.restore()
+            lastFallbackReason = error.localizedDescription
+            await fallback.speak(text)
+        }
+    }
+}
+
+/// Plays PCM16 mono chunks as they arrive, through its own engine, with no gap between chunks.
+@MainActor
+final class PCMStreamPlayer {
+    private let engine = AVAudioEngine()
+    private let node = AVAudioPlayerNode()
+    private let format: AVAudioFormat
+    private var pending = Data()
+    private var scheduled = 0
+    private var played = 0
+    private var ended = false
+    private var waiter: CheckedContinuation<Void, Never>?
+
+    init(sampleRate: Double) {
+        format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate, channels: 1, interleaved: false)!
+        engine.attach(node)
+        engine.connect(node, to: engine.mainMixerNode, format: format)
+    }
+
+    func begin() {
+        pending.removeAll()
+        scheduled = 0
+        played = 0
+        ended = false
+        if !engine.isRunning { try? engine.start() }
+        node.play()
+    }
+
+    /// Raw PCM16 little-endian bytes; an odd trailing byte waits for the next chunk.
+    func enqueue(_ chunk: Data) {
+        pending.append(chunk)
+        let frames = pending.count / 2
+        guard frames > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)) else { return }
+        buffer.frameLength = AVAudioFrameCount(frames)
+        pending.withUnsafeBytes { raw in
+            let samples = raw.bindMemory(to: Int16.self)
+            for i in 0..<frames { buffer.floatChannelData![0][i] = Float(samples[i]) / 32768 }
+        }
+        pending.removeFirst(frames * 2)
+        scheduled += 1
+        node.scheduleBuffer(buffer) { [weak self] in
+            Task { @MainActor in self?.bufferDone() }
+        }
+    }
+
+    private func bufferDone() {
+        played += 1
+        if ended, played >= scheduled, let waiter {
+            self.waiter = nil
+            waiter.resume()
+        }
+    }
+
+    /// No more chunks: wait for the last scheduled buffer to play out.
+    func finish() async {
+        ended = true
+        if played >= scheduled { return }
+        await withCheckedContinuation { waiter = $0 }
+        node.stop()
+    }
+
+    func cancel() {
+        ended = true
+        node.stop()
+        waiter?.resume()
+        waiter = nil
     }
 }
 
@@ -95,20 +167,22 @@ extension APIClient {
         return try JSONCoding.decoder.decode(SpeakStatus.self, from: data)
     }
 
-    /// The line as MP3, streamed. `firstByteWithin` turns a slow start into an error so the caller
-    /// can fall back; the rest of the bytes may take as long as they take.
-    func speak(text: String, firstByteWithin deadline: Duration?) async throws -> Data {
+    /// The line's audio, streamed. `mode` is live (PCM 24 kHz) or cache (MP3). `firstByteWithin`
+    /// turns a slow start into an error so the caller can fall back; `onChunk` gets each chunk as
+    /// it lands (about 4 KB each), and the whole is returned at the end.
+    func speak(text: String, mode: String, firstByteWithin deadline: Duration?, onChunk: (@MainActor (Data) -> Void)?) async throws -> Data {
         var request = URLRequest(url: baseURL.appendingPathComponent("/voice/speak"))
         request.httpMethod = "POST"
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONCoding.encoder.encode(["text": text])
+        request.httpBody = try JSONCoding.encoder.encode(["text": text, "mode": mode])
         let started = ContinuousClock.now
         let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw APIError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, message: "no natural voice")
         }
         var data = Data()
+        var chunk = Data()
         var first = true
         for try await byte in bytes {
             if first {
@@ -117,7 +191,16 @@ extension APIClient {
                     throw APIError(status: 0, message: "first audio after \(deadline)")
                 }
             }
-            data.append(byte)
+            chunk.append(byte)
+            if chunk.count >= 4096 {
+                data.append(chunk)
+                if let onChunk { await onChunk(chunk) }
+                chunk = Data()
+            }
+        }
+        if !chunk.isEmpty {
+            data.append(chunk)
+            if let onChunk { await onChunk(chunk) }
         }
         guard !data.isEmpty else { throw APIError(status: 0, message: "empty audio") }
         return data

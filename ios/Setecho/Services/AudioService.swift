@@ -239,6 +239,28 @@ final class AudioService {
         synth.stopSpeaking(at: .immediate)
     }
 
+    /// Duck the music before a natural-voice line plays through its own engine, and restore after.
+    func duck() async {
+        while isSpeaking { try? await Task.sleep(for: .milliseconds(50)) }
+        isSpeaking = true
+        do {
+            try session.setCategory(.playAndRecord, mode: .default, options: [.duckOthers, .allowBluetoothA2DP])
+            try session.setActive(true)
+        } catch {
+            lastError = "Duck: \(error.localizedDescription)"
+        }
+    }
+
+    func restore() async {
+        do {
+            try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetoothA2DP])
+            try session.setActive(true)
+        } catch {
+            lastError = "Restore: \(error.localizedDescription)"
+        }
+        isSpeaking = false
+    }
+
     /// A soft system tick the moment a turn ends, so the athlete knows he was heard.
     func playTurnEndSound() {
         AudioServicesPlaySystemSound(1104)

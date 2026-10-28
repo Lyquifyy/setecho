@@ -55,7 +55,7 @@ final class Settings {
         barbellStepLb = defaults.object(forKey: "barbellStepLb") as? Double ?? 5
         dumbbellStepLb = defaults.object(forKey: "dumbbellStepLb") as? Double ?? 5
         machineStepLb = defaults.object(forKey: "machineStepLb") as? Double ?? 10
-        athleteFirstName = defaults.string(forKey: "athleteFirstName") ?? ""
+        athleteFirstName = defaults.string(forKey: "athleteFirstName") ?? "Zander"
         cycleFirstWeekday = defaults.object(forKey: "cycleFirstWeekday") as? Int ?? 2
         rehearsalMode = defaults.bool(forKey: "rehearsalMode")
         ownWhatsAppNumber = defaults.string(forKey: "ownWhatsAppNumber") ?? ""
