@@ -93,6 +93,7 @@ struct SessionView: View {
         .padding(Theme.gutter)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.page.ignoresSafeArea())
+        .overlay { if coordinator.showSlate { Color.white.ignoresSafeArea() } } // the filming slate
         .task { await coordinator.start() }
         .onChange(of: engine.state) { _, state in
             if state == .ended {

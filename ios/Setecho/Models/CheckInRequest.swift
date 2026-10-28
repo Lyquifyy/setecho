@@ -75,6 +75,34 @@ struct TurnResponse: Codable, Equatable {
     var answers: [FieldAnswer]
     var reply: String
     var confidence: Double
+    /// Seconds per backend stage: transcribe, spark, validate.
+    var timings: [String: Double]
+    /// Code answered a plain number; Spark was not called.
+    var fastPath: Bool
+
+    init(transcript: String, intent: TurnIntent, answers: [FieldAnswer], reply: String, confidence: Double,
+         timings: [String: Double] = [:], fastPath: Bool = false) {
+        self.transcript = transcript
+        self.intent = intent
+        self.answers = answers
+        self.reply = reply
+        self.confidence = confidence
+        self.timings = timings
+        self.fastPath = fastPath
+    }
+
+    private enum CodingKeys: String, CodingKey { case transcript, intent, answers, reply, confidence, timings, fastPath }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        transcript = try c.decode(String.self, forKey: .transcript)
+        intent = try c.decode(TurnIntent.self, forKey: .intent)
+        answers = try c.decode([FieldAnswer].self, forKey: .answers)
+        reply = try c.decode(String.self, forKey: .reply)
+        confidence = try c.decode(Double.self, forKey: .confidence)
+        timings = try c.decodeIfPresent([String: Double].self, forKey: .timings) ?? [:]
+        fastPath = try c.decodeIfPresent(Bool.self, forKey: .fastPath) ?? false
+    }
 }
 
 struct AnswerResponse: Codable, Equatable {

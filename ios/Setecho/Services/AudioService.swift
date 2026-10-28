@@ -1,3 +1,4 @@
+import AudioToolbox
 import AVFoundation
 import Foundation
 import Observation
@@ -215,6 +216,19 @@ final class AudioService {
     func stopSpeaking() {
         speechQueue.removeAll()
         synth.stopSpeaking(at: .immediate)
+    }
+
+    /// A soft system tick the moment a turn ends, so the athlete knows he was heard.
+    func playTurnEndSound() {
+        AudioServicesPlaySystemSound(1104)
+    }
+
+    /// "DJI Mic RX · USB → AirPods Pro · Bluetooth A2DP": the live route for the Probes screen.
+    var routeDescription: String {
+        let route = session.currentRoute
+        let ins = route.inputs.map { "\($0.portName) · \($0.portType.rawValue)" }.joined(separator: ", ")
+        let outs = route.outputs.map { "\($0.portName) · \($0.portType.rawValue)" }.joined(separator: ", ")
+        return "\(ins.isEmpty ? "no input" : ins) → \(outs.isEmpty ? "no output" : outs)"
     }
 }
 

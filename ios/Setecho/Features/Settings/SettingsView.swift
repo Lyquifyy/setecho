@@ -57,6 +57,15 @@ struct SettingsView: View {
                 CardDivider()
                 StepField(label: "Machines", value: $settings.machineStepLb)
             }
+            SectionCard("Rehearsal and filming") {
+                Text("Your own WhatsApp number, digits only, so a rehearsal can send to you and never to him.").font(.subheadline).secondaryText()
+                SettingsField(placeholder: "1316…", text: $settings.ownWhatsAppNumber)
+                CardDivider()
+                Toggle("Filming mode", isOn: $settings.filmingMode)
+                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+                Text("Saves every line Setecho speaks and every answer as audio with one clock, plus captions, for the demo edit. Stays on the phone; export by AirDrop from History. No change to timing.")
+                    .font(.footnote).secondaryText()
+            }
             SectionCard("Voice") {
                 Text("Your first name, for the spotter to use sparingly. It goes only in the line request.").font(.subheadline).secondaryText()
                 SettingsField(placeholder: "First name", text: $settings.athleteFirstName)

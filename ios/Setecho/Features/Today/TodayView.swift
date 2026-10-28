@@ -99,7 +99,14 @@ struct TodayView: View {
         .onAppear {
             store.refreshCycle()
             Task {
-                if await Reminders.requestPermission() { Reminders.scheduleEveReminder(schedule: schedule) }
+                if await Reminders.requestPermission() {
+                    Reminders.scheduleEveReminder(schedule: schedule)
+                    Reminders.scheduleDeadlineGuard(schedule: schedule)
+                }
+            }
+            if Reminders.deadlinePassed(schedule: schedule), store.lastSentCheckIn.map({ !Calendar.current.isDateInToday($0.sentAt ?? .distantPast) }) ?? true {
+                AppRouter.shared.tab = .checkIn
+                NotificationCenter.default.post(name: .checkInDeadline, object: nil)
             }
         }
         .fullScreenCover(isPresented: $showPhotos) {

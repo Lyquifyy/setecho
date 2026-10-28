@@ -51,6 +51,8 @@ targets:
         # The Connect IQ SDK is Objective-C with categories; it needs -ObjC to link.
         OTHER_LDFLAGS: "$(inherited) -ObjC"
         INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Setecho talks to your Garmin watch through Garmin Connect."
+        # The probes screen shows app-only cards (turn timings) behind this flag; the standalone Probes app lacks them.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SETECHO_APP"
     dependencies:
       # The share extension needs the App Group registered on the team's App IDs, which only Xcode's
       # Signing & Capabilities pane does. Until then it is built but not embedded (SetechoShare/README.md).

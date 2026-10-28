@@ -9,6 +9,7 @@ struct CheckInView: View {
     @State private var editing: FieldSpec?
     @State private var showWrapUp = false
     @State private var showReview = false
+    @State private var showFacts = false
 
     init(store: Store) {
         _coordinator = State(initialValue: CheckInCoordinator(store: store))
@@ -65,6 +66,13 @@ struct CheckInView: View {
         .fullScreenCover(isPresented: $showReview) {
             NavigationStack { ReviewSendView(coordinator: coordinator) }.environment(store)
         }
+        .sheet(isPresented: $showFacts) {
+            FactsView(facts: coordinator.facts, draft: coordinator.draft, template: coordinator.template)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .checkInDeadline)) { _ in
+            // 8:40 AM on the due day and nothing sent: Review and send opens with what is ready.
+            if coordinator.draft?.isSent != true { showReview = true }
+        }
     }
 
     private var headerCard: some View {
@@ -89,6 +97,7 @@ struct CheckInView: View {
                     LinkButton(title: "Start 2-minute wrap-up") { showWrapUp = true }
                         .disabled(coordinator.questions.isEmpty)
                     Spacer()
+                    LinkButton(title: "Facts", chevron: .none) { showFacts = true }
                     LinkButton(title: "Refresh", chevron: .none) { Task { await coordinator.buildDraft() } }
                 }
             }

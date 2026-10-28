@@ -28,6 +28,11 @@ struct ProbeHomeView: View {
                     WatchProbeView()
                 }
             }
+            #if SETECHO_APP
+            SectionCard("Check-in turns") {
+                TurnTimingsCard()
+            }
+            #endif
             SectionCard("Elsewhere") {
                 Text("G1 is a question for office hours. G4 (SAM), G5 (import) and the voice smoke run from backend/scripts on the Mac.")
                     .font(.subheadline)
@@ -72,3 +77,40 @@ private struct ProbeRow<Destination: View>: View {
 #Preview {
     NavigationStack { ProbeHomeView() }
 }
+
+
+#if SETECHO_APP
+/// Live stage timings and medians for the check-in turns (HANDOFF.md §9, block 1).
+private struct TurnTimingsCard: View {
+    @State private var timings = TurnTimings.shared
+    @State private var route = "—"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            Text("Targets: 1 s to first audio on a number, 2 s otherwise.").font(.footnote).secondaryText()
+            LabeledRow("Turns", "\(timings.turns.count)")
+            LabeledRow("First audio, numbers", seconds(timings.medianFirstAudio(fastPath: true)))
+            LabeledRow("First audio, the rest", seconds(timings.medianFirstAudio(fastPath: false)))
+            LabeledRow("Round trip (median)", seconds(timings.median(\.roundTrip)))
+            LabeledRow("Upload", seconds(timings.median(\.upload)))
+            LabeledRow("Transcribe", seconds(timings.median(\.transcribe)))
+            LabeledRow("Spark", seconds(timings.median(\.spark, fastPath: false)))
+            if let last = timings.turns.last {
+                CardDivider()
+                Text("Last turn · \(last.intent)\(last.fastPath ? " · fast path" : "")").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.navy)
+                LabeledRow("Upload / transcribe / Spark", "\(seconds(last.upload)) / \(seconds(last.transcribe)) / \(seconds(last.spark))")
+                LabeledRow("Round trip → first audio", "\(seconds(last.roundTrip)) → \(seconds(last.firstAudio))")
+            }
+            CardDivider()
+            LabeledRow("Audio route", route)
+            LinkButton(title: "Refresh route", chevron: .none) { route = AudioService().routeDescription }
+        }
+        .onAppear { route = AudioService().routeDescription }
+    }
+
+    private func seconds(_ value: Double?) -> String {
+        guard let value else { return "—" }
+        return String(format: "%.2f s", value)
+    }
+}
+#endif

@@ -65,6 +65,7 @@ struct CheckInMorningView: View {
         .padding(Theme.gutter)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.page.ignoresSafeArea())
+        .overlay { if model.showSlate { Color.white.ignoresSafeArea() } } // the filming slate
         .task { await model.start() }
         .fullScreenCover(isPresented: $model.showPhotos, onDismiss: { Task { await model.photosFinished() } }) {
             PhotoSessionView(store: store).environment(store)

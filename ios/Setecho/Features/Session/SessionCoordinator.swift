@@ -18,6 +18,9 @@ final class SessionCoordinator {
     private(set) var started = false
     private(set) var didSave = false
     private(set) var countsInFlight = 0
+    /// Filming mode: every line and utterance saved with one clock, off the speaking path.
+    private(set) var filming: FilmingRecorder?
+    private(set) var showSlate = false
 
     private let api: APIClient
     private let store: Store
@@ -82,6 +85,13 @@ final class SessionCoordinator {
         }
         started = true
         Task { [api] in _ = try? await api.health() } // warm the backend's route before the first set
+        if Settings.shared.filmingMode {
+            let recorder = FilmingRecorder(root: store.mediaDirectory, kind: "session")
+            filming = recorder
+            showSlate = true
+            recorder.slate()
+            Task { try? await Task.sleep(for: .milliseconds(300)); showSlate = false }
+        }
         audio.configure()
         audio.onUtterance = { [weak self] utterance in
             Task { await self?.handle(utterance) }
@@ -278,11 +288,13 @@ final class SessionCoordinator {
         guard engine.state.isListeningAllowed, !isUploading else { return }
         let pcm = Resample.toInt16Mono(utterance.samples, from: utterance.sampleRate, to: 16_000)
         guard pcm.count > 16_000 / 4 else { return } // under a quarter second: a clank, not a word
+        filming?.heard(pcm16: pcm, sampleRate: 16_000)
         let wav = WAVFile.data(pcm16: pcm, sampleRate: 16_000)
         isUploading = true
         defer { isUploading = false }
         do {
             let response = try await api.voiceCommand(wav: wav, context: engine.context)
+            filming?.transcribed(response.transcript)
             apply(response)
         } catch {
             show(.init(speech: nil, echo: "Couldn't hear the backend: \(error.localizedDescription)", askBack: nil))
@@ -352,6 +364,7 @@ final class SessionCoordinator {
     private(set) var spokenLine: String?
 
     private func speak(_ text: String) async {
+        filming?.spoke(text, voice: AudioService.preferredVoice())
         await audio.speak(text)
     }
 }

@@ -6,6 +6,7 @@ struct HistoryView: View {
     @Environment(Store.self) private var store
     @State private var openCheckIn: CheckInDraft?
     @State private var comparePhotos = false
+    @State private var exportTake: TakeExport?
 
     private var weekStart: Date { CheckInSchedule().week(endingBefore: CheckInSchedule().nextDue(from: .now)).start }
 
@@ -46,6 +47,20 @@ struct HistoryView: View {
                             Text("Sent \(Format.shortDate(draft.sentAt!))").font(.body).foregroundStyle(Theme.navy)
                             Spacer()
                             LinkButton(title: "Open") { openCheckIn = draft }
+                        }
+                    }
+                }
+            }
+            let takes = FilmingRecorder.takes(in: store.mediaDirectory)
+            if !takes.isEmpty {
+                SectionCard("Filming takes") {
+                    Text("Every line and answer as audio, with captions. Stays on the phone until you AirDrop it.").font(.footnote).secondaryText()
+                    ForEach(takes, id: \.self) { take in
+                        CardDivider()
+                        HStack {
+                            Text(take.lastPathComponent).font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
+                            Spacer()
+                            LinkButton(title: "AirDrop", chevron: .none) { exportTake = TakeExport(url: take) }
                         }
                     }
                 }
@@ -94,6 +109,9 @@ struct HistoryView: View {
                     }
                 }
             }
+        }
+        .sheet(item: $exportTake) { take in
+            ShareSheet(image: nil, text: nil, files: [take.url]) { _ in }
         }
         .sheet(item: $openCheckIn) { draft in
             SentCheckInView(draft: draft).environment(store)
@@ -190,4 +208,10 @@ struct SentCheckInView: View {
             }
         }
     }
+}
+
+/// A filming take to AirDrop, by its folder.
+private struct TakeExport: Identifiable {
+    let url: URL
+    var id: String { url.path }
 }

@@ -157,8 +157,9 @@ struct ReviewSendView: View {
             let missing = coordinator.questions.count
             if missing > 0 {
                 SectionCard("Still to answer") {
-                    Text("\(missing) question\(missing == 1 ? "" : "s") left for the wrap-up. They go out blank if you send now.")
+                    Text("\(missing) question\(missing == 1 ? "" : "s") left. They go out blank if you send now; tap a field on the Check-in tab to type it.")
                         .font(.subheadline).foregroundStyle(Theme.navy)
+                    LinkButton(title: "Type the rest") { dismiss(); AppRouter.shared.tab = .checkIn }
                 }
             }
         } footer: {
@@ -167,6 +168,9 @@ struct ReviewSendView: View {
                 banner = nil
                 if isVideoStep {
                     Task { await exportVideos(); showShare = true }
+                } else if settings.rehearsalMode, !settings.ownWhatsAppNumber.isEmpty, isPlanStep, let planMessage {
+                    // Rehearsal: a text-only step goes straight to the athlete's own chat.
+                    openOwnChat(with: planMessage)
                 } else {
                     showShare = true
                 }
@@ -230,6 +234,18 @@ struct ReviewSendView: View {
             VideoPickerSheet(sessions: periodSessions, picks: $picks, names: exerciseName)
         }
         .onChange(of: picks) { _, new in coordinator.setVideoPicks(new) }
+    }
+
+    /// whatsapp://send to the athlete's own number: nothing can reach the coach from here.
+    private func openOwnChat(with text: String) {
+        let digits = settings.ownWhatsAppNumber.filter(\.isNumber)
+        guard let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "whatsapp://send?phone=\(digits)&text=\(encoded)") else { return }
+        UIApplication.shared.open(url) { opened in
+            guard opened else { return }
+            sendStep += 1
+            banner = sendStep >= stepCount ? "Rehearsal sent to your own chat." : "Rehearsal: next, \(stepName). Pick your own chat in the share sheet."
+        }
     }
 
     private func render() async {

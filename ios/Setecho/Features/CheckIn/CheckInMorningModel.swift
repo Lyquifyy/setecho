@@ -135,6 +135,14 @@ final class CheckInMorningModel {
 
     static let silenceMinutes: TimeInterval = 10 * 60
 
+    /// The natural voice when the backend has one configured; the system voice otherwise, and for
+    /// any line whose audio does not arrive within 700 ms (HANDOFF.md §9, block 1).
+    let natural: NaturalVoiceSpeaker
+    /// Filming mode: every line and utterance saved with one clock, off the speaking path.
+    private(set) var filming: FilmingRecorder?
+    /// The slate flash, shown by the view for a moment.
+    private(set) var showSlate = false
+
     init(coordinator: CheckInCoordinator, store: Store, api: APIClient = APIClient(), speak: ((String) async -> Void)? = nil) {
         self.coordinator = coordinator
         self.store = store
@@ -142,7 +150,26 @@ final class CheckInMorningModel {
         self.flow = CheckInMorningFlow(template: coordinator.template ?? CheckInTemplate(fields: [], carriedBlocks: []))
         let audio = AudioService()
         self.audio = audio
-        self.speak = speak ?? { text in await audio.speak(text) }
+        let natural = NaturalVoiceSpeaker(api: api, fallback: audio, cacheDirectory: store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
+        self.natural = natural
+        let filming = Settings.shared.filmingMode ? FilmingRecorder(root: store.mediaDirectory, kind: "checkin") : nil
+        self.filming = filming
+        self.speak = speak ?? { text in
+            filming?.spoke(text, audio: natural.cachedAudio(for: text), voice: AudioService.preferredVoice())
+            await natural.speak(text)
+            TurnTimings.shared.firstAudio()
+        }
+    }
+
+    /// The coach's questions and the fixed lines, generated once and cached by a text hash.
+    private func pregenerate() {
+        var lines = ["Morning. Step on the scale, and tell me when you're off.", "What did it say?", "Fasted glucose?",
+                     "Set up your tripod for photos, and tell me when you're ready.", "Got the photos.",
+                     "That's everything. Want me to read it back, or open it to send?", "No worries, just tell me whenever you're ready.",
+                     "Welcome back.", "Sorry, say that again?", "Skipped.", "Got it.", "Added to your notes.", "Okay, leaving it out.",
+                     "Take your time.", "What should it say?"]
+        lines += questionGroups.map { flow.prompt(for: $0, draft: draft) }
+        natural.pregenerate(lines)
     }
 
     var stepIndex: Int { step.rawValue }
@@ -158,6 +185,14 @@ final class CheckInMorningModel {
     func start() async {
         Task { [api] in _ = try? await api.health() } // warm the backend before the first turn
         if coordinator.draft == nil { await coordinator.buildDraft() }
+        await natural.prepare()
+        pregenerate()
+        if let filming {
+            showSlate = true
+            filming.slate()
+            try? await Task.sleep(for: .milliseconds(300))
+            showSlate = false
+        }
         _ = await audio.requestMicrophone()
         audio.configure()
         audio.onUtterance = { [weak self] utterance in Task { await self?.handle(utterance) } }
@@ -169,6 +204,7 @@ final class CheckInMorningModel {
         silenceTask?.cancel()
         audio.stopListening()
         audio.stopSpeaking()
+        TurnTimings.shared.write(to: store.mediaDirectory, name: DayKey.string(.now))
     }
 
     /// Pick up at the next pending step, on start and after the photos or a pause.
@@ -235,10 +271,16 @@ final class CheckInMorningModel {
         busy = true
         defer { busy = false }
         isListening = false
+        TurnTimings.shared.endOfSpeech()
+        audio.playTurnEndSound() // a soft sound the moment a turn ends
+        filming?.heard(pcm16: pcm, sampleRate: 16_000)
         status = "Hearing that…"
         let wav = WAVFile.data(pcm16: pcm, sampleRate: 16_000)
         do {
+            TurnTimings.shared.sent()
             let response = try await api.checkInTurn(wav: wav, context: context())
+            TurnTimings.shared.received(response)
+            filming?.transcribed(response.transcript)
             status = nil
             await apply(response)
         } catch {

@@ -36,7 +36,36 @@ enum Reminders {
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: waitingId, content: content, trigger: nil), withCompletionHandler: nil)
     }
 
+    static let deadlineId = "checkin-deadline"
+    /// Not sent by 8:40 AM Central on the due day: one notification, and Review and send opens.
+    static let deadlineGuard = (hour: 8, minute: 40)
+
+    static func scheduleDeadlineGuard(schedule: CheckInSchedule, now: Date = .now) {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [deadlineId])
+        let due = schedule.nextDue(from: now)
+        guard let at = Calendar.current.date(bySettingHour: deadlineGuard.hour, minute: deadlineGuard.minute, second: 0, of: due), at > now else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Check-in due at \(schedule.dueBy)"
+        content.body = "Open Setecho to send what's ready. Anything missing can be typed."
+        content.sound = .default
+        let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: at)
+        center.add(UNNotificationRequest(identifier: deadlineId, content: content, trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)), withCompletionHandler: nil)
+    }
+
+    /// True on the due day once the guard time has passed.
+    static func deadlinePassed(schedule: CheckInSchedule, now: Date = .now, calendar: Calendar = .current) -> Bool {
+        guard schedule.isCheckInMorning(on: now, calendar: calendar) else { return false }
+        let guardTime = calendar.date(bySettingHour: deadlineGuard.hour, minute: deadlineGuard.minute, second: 0, of: now) ?? now
+        return now >= guardTime
+    }
+
     static func clearWaiting() {
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [waitingId])
     }
+}
+
+extension Notification.Name {
+    /// Posted when the app comes to the foreground past the deadline guard with the check-in unsent.
+    static let checkInDeadline = Notification.Name("setecho.checkInDeadline")
 }
