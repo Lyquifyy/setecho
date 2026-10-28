@@ -13,6 +13,8 @@ enum Theme {
     static let cobaltPressed = Color(hex: 0x1A2FA0)
     /// Light cobalt fill for play buttons and the user's chat bubble.
     static let cobaltTint = Color(hex: 0xE6ECFD)
+    /// Pressed state of a cobalt-tint button.
+    static let cobaltPressedTint = Color(hex: 0xD3DCFA)
     static let page = Color(hex: 0xEEF2F9)
     static let surface = Color.white
     static let nearWhite = Color(hex: 0xFAFCFF)

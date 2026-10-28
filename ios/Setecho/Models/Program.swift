@@ -277,11 +277,27 @@ extension PlannedSet {
 extension PlannedExercise {
     /// "4 × 8 · 185 lb · RPE 8", or "2 × 6–8 · top + back-off", straight from the sheet.
     var summary: String {
+        guard sets.first != nil else { return "No sets" }
+        return ([setsText] + summaryDetails).joined(separator: " · ")
+    }
+
+    private var sameReps: Bool {
+        guard let first = sets.first else { return true }
+        return sets.allSatisfy { $0.reps == first.reps && $0.repsMin == first.repsMin && $0.repsMax == first.repsMax && $0.seconds == first.seconds }
+    }
+
+    /// The first part of `summary`: "4 × 8", or "2 sets" when the sets differ.
+    var setsText: String {
         guard let first = sets.first else { return "No sets" }
+        return sameReps ? "\(sets.count) × \(first.repsText)" : "\(sets.count) sets"
+    }
+
+    /// The rest of `summary`: the set roles, then the load and intensity when every set shares them.
+    var summaryDetails: [String] {
+        guard let first = sets.first else { return [] }
         let roles = sets.compactMap(\.role)
-        let sameReps = sets.allSatisfy { $0.reps == first.reps && $0.repsMin == first.repsMin && $0.repsMax == first.repsMax && $0.seconds == first.seconds }
         let uniform = sets.allSatisfy { $0 == first }
-        var parts = [sameReps ? "\(sets.count) × \(first.repsText)" : "\(sets.count) sets"]
+        var parts: [String] = []
         if !roles.isEmpty {
             var names: [String] = []
             for role in roles where !names.contains(role.roleWord) { names.append(role.roleWord) }
@@ -290,7 +306,7 @@ extension PlannedExercise {
         }
         if uniform, let load = first.loadLb { parts.append(Format.load(load)) }
         if uniform, let intensity = first.intensityText { parts.append(intensity) }
-        return parts.joined(separator: " · ")
+        return parts
     }
 
     var restText: String? {

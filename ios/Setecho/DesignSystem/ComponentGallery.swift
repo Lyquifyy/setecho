@@ -37,6 +37,32 @@ struct ComponentGallery: View {
                 }
             }
 
+            SegmentTabs(items: [.init(value: 0, title: "All"), .init(value: 1, title: "To do", badge: 4, highlight: true),
+                                .init(value: 2, title: "Ready", badge: 18)], selection: .constant(0))
+
+            SectionCard("Day 2", accessory: { TargetTag(text: "Up next") }) {
+                ExerciseDisclosureRow(number: 1, exercise: PlannedExercise(
+                    id: "bench", name: "Bench press",
+                    sets: Array(repeating: PlannedSet(reps: 8, repsMin: nil, repsMax: nil, loadLb: 185, rpe: 8, rir: nil), count: 4),
+                    restSeconds: 150, notes: nil), expanded: true) {}
+                CardDivider()
+                HStack(spacing: Theme.Space.xs) {
+                    Button("Change day", systemImage: "arrow.left.arrow.right") {}.buttonStyle(.setechoTonalWide)
+                    IconButton(systemImage: "rectangle.expand.vertical", accessibilityLabel: "Show every exercise's details") {}
+                }
+            }
+
+            HStack(spacing: Theme.gutter) {
+                TileCard(title: "Check-in", systemImage: "checklist", action: {}) {
+                    Text("11 of 22 ready").font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
+                    MeterBar(value: 11, total: 22)
+                }
+                TileCard(title: "Photos", systemImage: "camera", action: {}) {
+                    Text("Next due Thu").font(.subheadline).secondaryText()
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+
             SectionCard("Colors") {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: Theme.Space.s)], spacing: Theme.Space.s) {
                     swatch("cobalt", Theme.cobalt)

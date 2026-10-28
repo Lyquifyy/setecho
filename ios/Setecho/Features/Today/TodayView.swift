@@ -7,32 +7,46 @@ struct TodayView: View {
     @State private var showSession = false
     @State private var showMorning = false
     @State private var showPhotos = false
+    /// Exercises opened to their details; closed by default so the whole day fits on screen.
+    @State private var expanded: Set<String> = []
     private var schedule: CheckInSchedule { CheckInSchedule(plan: store.plan, lastSentAt: store.lastSentCheckIn?.sentAt) }
 
     private var today: (week: ProgramWeek, day: ProgramDay)? { store.todayDay }
     private var addOnsDue: [AddOnPlanner.Due] { today.map { store.addOnsDue(on: $0.day.id) } ?? [] }
     private var canStart: Bool { today.map { !$0.day.isRest } ?? false }
 
+    /// One yellow tag at a time on Today, in this order: a coach reply to review, MacroFactor to update,
+    /// the check-in due, then today's session when it's still to do.
+    private enum Highlight { case reply, macroFactor, checkIn, session }
+    private var highlight: Highlight? {
+        if store.pendingReply != nil { return .reply }
+        if !store.macroFactorReminders.isEmpty { return .macroFactor }
+        if schedule.isCheckInMorning(on: .now) || schedule.isWrapUpDue(on: .now) { return .checkIn }
+        if let next = today, canStart, !store.isDoneToday(dayId: next.day.id) { return .session }
+        return nil
+    }
+
     var body: some View {
         ScreenScaffold {
             TitleBlock(eyebrow: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()), title: "Today")
             if let reply = store.pendingReply {
-                // One yellow tag at a time on Today: a coach reply to review comes first.
                 SectionCard("Coach reply", accessory: { TargetTag(text: "Review") }) {
                     Text(reply.summary(duration: reply.audioFile.flatMap { CoachReplyModel.duration(of: store.mediaDirectory.appendingPathComponent($0)) }))
                         .font(.subheadline).foregroundStyle(Theme.navy)
                     Text("\(reply.changes.count) change\(reply.changes.count == 1 ? "" : "s") to review").font(.subheadline).monospacedDigit().secondaryText()
-                    LinkButton(title: "Review changes") { AppRouter.shared.openReply = reply }
+                    Button("Review changes", systemImage: "text.badge.checkmark") { AppRouter.shared.openReply = reply }
+                        .buttonStyle(.setechoTonalWide)
                 }
             }
             if !store.macroFactorReminders.isEmpty {
-                SectionCard("MacroFactor", accessory: { if store.pendingReply == nil { TargetTag(text: "Update") } }) {
+                SectionCard("MacroFactor", accessory: { if highlight == .macroFactor { TargetTag(text: "Update") } }) {
                     ForEach(Array(store.macroFactorReminders.enumerated()), id: \.offset) { index, line in
                         if index > 0 { CardDivider() }
                         Text(line).font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
                     }
                     Text("Setecho can't change MacroFactor itself.").font(.footnote).secondaryText()
-                    LinkButton(title: "Done", chevron: .none) { store.clearMacroFactorReminders() }
+                    Button("Done, it's updated", systemImage: "checkmark") { store.clearMacroFactorReminders() }
+                        .buttonStyle(.setechoTonalWide)
                 }
             }
             if let morning = store.morningAddOnDue() {
@@ -40,47 +54,24 @@ struct TodayView: View {
                 SectionCard("This morning", accessory: {
                     if morning.catchUp { Text("Catch-up").font(.subheadline.weight(.semibold)).secondaryText() }
                 }) {
-                    Text("\(morning.addOn.name) · \(morning.addOn.exercises.map(\.summary).joined(separator: ", ")) · \(morning.done) of \(morning.addOn.perWeek) this week")
-                        .font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
+                    HStack(alignment: .center, spacing: Theme.Space.s) {
+                        VStack(alignment: .leading, spacing: Theme.Space.xxs) {
+                            Text(morning.addOn.name).font(.body.weight(.semibold)).foregroundStyle(Theme.navy)
+                            Text("\(morning.addOn.exercises.map(\.summary).joined(separator: ", ")) · \(morning.done) of \(morning.addOn.perWeek) this week")
+                                .font(.subheadline).monospacedDigit().secondaryText()
+                        }
+                        Spacer(minLength: Theme.Space.xs)
+                        Button("Start", systemImage: "play.fill") { showMorning = true }.buttonStyle(.setechoTonal)
+                    }
                     Text(morning.addOn.quote.trimmingCharacters(in: CharacterSet(charactersIn: ": "))).font(.footnote).secondaryText()
-                    LinkButton(title: "Start") { showMorning = true }
                 }
             }
-            if let next = today {
-                SectionCard(next.day.isRest ? "Rest day" : "Today's session", accessory: {
-                    HStack(spacing: Theme.Space.s) {
-                        if !next.day.isRest, store.isDoneToday(dayId: next.day.id) {
-                            Text("Done today").font(.subheadline.weight(.semibold)).secondaryText()
-                        }
-                        Text(store.currentProgram?.weeks.count ?? 1 > 1 ? "\(next.day.name) · Week \(next.week.number)" : next.day.name)
-                            .font(.subheadline).monospacedDigit().secondaryText()
-                    }
-                }) {
-                    if next.day.isRest {
-                        Text(next.day.cardio ?? "No lifting today.").font(.body).foregroundStyle(Theme.navy)
-                    } else {
-                        ForEach(Array(next.day.exercises.enumerated()), id: \.element.id) { index, exercise in
-                            if index > 0 { CardDivider() }
-                            ExerciseRow(exercise: exercise)
-                            if LastTimeRow.applies(to: exercise) { LastTimeRow(exercise: exercise) }
-                        }
-                        ForEach(addOnsDue, id: \.addOn.id) { due in
-                            CardDivider()
-                            Text("+ \(due.addOn.name) · \(due.done + 1) of \(due.addOn.perWeek) this week\(due.catchUp ? " · catch-up" : "")")
-                                .font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
-                        }
-                    }
-                    changeDayMenu
-                }
-            } else {
-                SectionCard("Today's session") {
-                    Text("Import your coach's program to see today's session.")
-                        .font(.subheadline).secondaryText()
-                    LinkButton(title: "Import the program") { AppRouter.shared.showImport = true }
-                }
+            sessionCard
+            HStack(alignment: .top, spacing: Theme.gutter) {
+                checkInTile
+                photosTile
             }
-            checkInCard
-            photosCard
+            .fixedSize(horizontal: false, vertical: true)
         } footer: {
             // The only tap of a training day.
             Button(today?.day.isRest == true ? "Rest day" : "Start session") { showSession = true }
@@ -116,6 +107,82 @@ struct TodayView: View {
         }
     }
 
+    // MARK: - Session
+
+    @ViewBuilder private var sessionCard: some View {
+        if let next = today {
+            let title = store.currentProgram?.weeks.count ?? 1 > 1 ? "\(next.day.name) · Week \(next.week.number)" : next.day.name
+            SectionCard(next.day.isRest ? "Rest day" : title, accessory: {
+                if !next.day.isRest, store.isDoneToday(dayId: next.day.id) {
+                    Label("Done today", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+                } else if highlight == .session {
+                    TargetTag(text: "Up next")
+                }
+            }) {
+                if next.day.isRest {
+                    Label(next.day.cardio ?? "No lifting today.", systemImage: "figure.walk")
+                        .font(.body).foregroundStyle(Theme.navy)
+                        .frame(minHeight: 44, alignment: .leading)
+                } else {
+                    sessionOverview(next.day)
+                    ForEach(Array(next.day.exercises.enumerated()), id: \.element.id) { index, exercise in
+                        CardDivider()
+                        ExerciseDisclosureRow(number: index + 1, exercise: exercise, expanded: expanded.contains(exercise.id)) {
+                            withAnimation(.snappy(duration: 0.25)) {
+                                if expanded.contains(exercise.id) { expanded.remove(exercise.id) } else { expanded.insert(exercise.id) }
+                            }
+                        }
+                        if expanded.contains(exercise.id), LastTimeRow.applies(to: exercise) {
+                            LastTimeRow(exercise: exercise).padding(.leading, 18 + Theme.Space.s)
+                        }
+                    }
+                    ForEach(addOnsDue, id: \.addOn.id) { due in
+                        CardDivider()
+                        Label {
+                            Text("\(due.addOn.name) · \(due.done + 1) of \(due.addOn.perWeek) this week\(due.catchUp ? " · catch-up" : "")")
+                                .font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
+                        } icon: {
+                            Image(systemName: "plus.circle").foregroundStyle(Theme.textSecondary)
+                        }
+                        .frame(minHeight: 44, alignment: .leading)
+                    }
+                }
+                CardDivider()
+                HStack(spacing: Theme.Space.xs) {
+                    changeDayMenu
+                    if !next.day.isRest {
+                        expandAllButton(next.day)
+                    }
+                }
+            }
+        } else {
+            SectionCard("Today's session") {
+                Text("Import your coach's program to see today's session.")
+                    .font(.subheadline).secondaryText()
+                Button("Import the program", systemImage: "square.and.arrow.down") { AppRouter.shared.showImport = true }
+                    .buttonStyle(.setechoTonalWide)
+            }
+        }
+    }
+
+    /// "5 exercises · 17 sets · tap one for its details".
+    private func sessionOverview(_ day: ProgramDay) -> some View {
+        let setCount = day.exercises.reduce(0) { $0 + $1.sets.count }
+        return Text("\(day.exercises.count) exercise\(day.exercises.count == 1 ? "" : "s") · \(setCount) sets · tap one for its details")
+            .font(.subheadline).monospacedDigit().secondaryText()
+    }
+
+    /// The one toggle that opens or closes every exercise at once.
+    private func expandAllButton(_ day: ProgramDay) -> some View {
+        let ids = Set(day.exercises.map(\.id))
+        let allOpen = !ids.isEmpty && ids.isSubset(of: expanded)
+        return IconButton(systemImage: allOpen ? "rectangle.compress.vertical" : "rectangle.expand.vertical",
+                          accessibilityLabel: allOpen ? "Hide every exercise's details" : "Show every exercise's details") {
+            withAnimation(.snappy(duration: 0.25)) { expanded = allOpen ? [] : ids }
+        }
+    }
+
     /// "Change day": any day of the cycle, by hand (HANDOFF.md §7, Which day is today).
     private var changeDayMenu: some View {
         Menu {
@@ -123,57 +190,66 @@ struct TodayView: View {
                 Button(day.isRest ? "\(day.name) (rest)" : day.name) { store.changeDay(to: day.id) }
             }
         } label: {
-            HStack(spacing: Theme.Space.xxs) {
-                Text("Change day").font(.subheadline.weight(.semibold))
-                Image(systemName: "chevron.down").font(.caption.weight(.semibold))
-            }
-            .foregroundStyle(Theme.cobalt)
-            .frame(minHeight: 44)
+            Label("Change day", systemImage: "arrow.left.arrow.right")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.cobalt)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(Theme.cobaltTint, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
         }
     }
 
-    private var checkInCard: some View {
+    // MARK: - Check-in and photos
+
+    private var checkInTile: some View {
         let due = schedule.nextDue(from: .now)
         let morning = schedule.isCheckInMorning(on: .now)
-        let wrapUpDue = schedule.isWrapUpDue(on: .now)
-        let yellowTaken = store.pendingReply != nil || !store.macroFactorReminders.isEmpty
-        let tag = morning ? "Due today" : wrapUpDue ? "Wrap-up due" : nil
-        return SectionCard(schedule.everyWeeks > 1 ? "This check-in" : "This week's check-in", accessory: {
-            if let tag {
-                if yellowTaken { Text(tag).font(.subheadline.weight(.semibold)).secondaryText() } else { TargetTag(text: tag) }
+        let tag = morning ? "Due today" : schedule.isWrapUpDue(on: .now) ? "Wrap-up due" : nil
+        return TileCard(title: "Check-in", systemImage: "checklist") {
+            if store.currentTemplate == nil {
+                AppRouter.shared.showImport = true
+            } else if morning {
+                AppRouter.shared.showCheckInMorning = true
+            } else {
+                // Rehearsing the morning on another day lives in Settings → Developer.
+                AppRouter.shared.tab = .checkIn
             }
-        }) {
+        } content: {
             if let template = store.currentTemplate {
                 let ready = CheckInCoordinator.currentDraft(in: store, schedule: schedule)?.answers
                     .filter { $0.state == .filled || $0.state == .confirmed }.count ?? 0
-                HStack(alignment: .firstTextBaseline) {
-                    MetricText(value: "\(ready)", unit: "of \(template.fields.count) ready")
+                HStack(alignment: .firstTextBaseline, spacing: Theme.Space.xxs) {
+                    Text("\(ready)").font(.title.weight(.bold)).monospacedDigit().foregroundStyle(Theme.navy)
+                    Text("of \(template.fields.count) ready").font(.subheadline).monospacedDigit().secondaryText()
                 }
-                Text("Due \(due.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) morning, by \(Format.clock(schedule.dueBy))")
-                    .font(.subheadline).monospacedDigit().secondaryText()
-                if morning {
-                    LinkButton(title: "Start check-in") { AppRouter.shared.showCheckInMorning = true }
-                    Text("Or say \"Hey Siri, start my Setecho check-in\"").font(.footnote).secondaryText()
+                MeterBar(value: ready, total: template.fields.count)
+                if let tag {
+                    if highlight == .checkIn { TargetTag(text: tag) } else { Text(tag).font(.subheadline.weight(.semibold)).secondaryText() }
                 } else {
-                    // Rehearsing the morning on another day lives in Settings → Developer.
-                    LinkButton(title: "Open check-in") { AppRouter.shared.tab = .checkIn }
+                    Text("Due \(due.formatted(.dateTime.weekday(.abbreviated))) by \(Format.clock(schedule.dueBy))")
+                        .font(.subheadline).monospacedDigit().secondaryText()
                 }
             } else {
-                Text("Import your coach's check-in form to see what fills itself.")
-                    .font(.subheadline).secondaryText()
-                LinkButton(title: "Import the form") { AppRouter.shared.showImport = true }
+                Text("Import your coach's form to see what fills itself.").font(.subheadline).secondaryText()
             }
         }
+        .accessibilityHint(morning ? "Starts the check-in. Or say \"Hey Siri, start my Setecho check-in\"" : "Opens the check-in")
     }
 
-    private var photosCard: some View {
+    private var photosTile: some View {
         let due = schedule.nextDue(from: .now)
-        return SectionCard("Check-in photos") {
-            LabeledValue("Last taken", store.lastPhotoSet.map { Format.shortDate($0.takenAt) } ?? "Not yet")
-            CardDivider()
-            LabeledValue("Next due", Format.shortDate(due))
-            LinkButton(title: "Take photos") { showPhotos = true }
+        return TileCard(title: "Photos", systemImage: "camera") { showPhotos = true } content: {
+            VStack(alignment: .leading, spacing: Theme.Space.xxs) {
+                Text("Last taken").font(.footnote).secondaryText()
+                Text(store.lastPhotoSet.map { Format.shortDate($0.takenAt) } ?? "Not yet")
+                    .font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(Theme.navy)
+            }
+            VStack(alignment: .leading, spacing: Theme.Space.xxs) {
+                Text("Next due").font(.footnote).secondaryText()
+                Text(Format.shortDate(due)).font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(Theme.navy)
+            }
         }
+        .accessibilityHint("Takes the check-in photos")
     }
 }
 

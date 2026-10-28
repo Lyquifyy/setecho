@@ -35,7 +35,8 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 |---|---|---|
 | `Theme.cobalt` | #2541D8 | Primary actions, links, selected tab, lockup, source chips |
 | `Theme.cobaltPressed` | #1A2FA0 | Pressed primary button |
-| `Theme.cobaltTint` | #E6ECFD | Source chip fill, play discs, listening indicator |
+| `Theme.cobaltTint` | #E6ECFD | Source chip fill, play discs, listening indicator, tonal buttons |
+| `Theme.cobaltPressedTint` | #D3DCFA | Pressed tonal button |
 | `Theme.page` | #EEF2F9 | Screen background |
 | `Theme.surface` | #FFFFFF | Cards, footer surface |
 | `Theme.nearWhite` | #FAFCFF | Fields |
@@ -59,6 +60,9 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 - `ScreenScaffold`, `BrandHeader`, `TitleBlock`, `SectionCard`, `CardDivider`, `VerticalCardDivider`, `FooterBar`
 - `.setechoPrimary`, `.setechoOutline`, `LinkButton`, `PlayButton`
 - `TargetTag`, `LoadRepsText`, `MetricText`, `SetThumbnail`, `Format`
+- `.setechoTonal` / `.setechoTonalWide` (the in-card action: cobalt text on a cobalt-tint fill, with an icon; use it instead of a bare text link when a card offers something to do), `IconButton` (44 pt round tonal icon, always labeled)
+- `SegmentTabs` (tabs inside a screen; the selected tab is cobalt; a count badge goes yellow only when that count is waiting on the athlete), `TileCard` (a half-width card that is one tappable thing; two side by side), `MeterBar` (a thin cobalt progress bar), `DisclosureChevron`
+- `ExerciseDisclosureRow` (one exercise as a single line, "Bench press · 4 × 8", that opens to the sheet's details)
 
 **To add** (same folder, tokens only, each with a preview):
 
@@ -93,16 +97,15 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 
 ### Today (tab)
 - **Purpose:** the home base. What's planned today, and where the current check-in stands.
-- **Today's session card:** the coach's day, e.g. "Day 2", with each exercise as "2 × 6–8 · top + back-down", straight from the imported spreadsheet, and any add-on joining it below a `CardDivider` ("+ Abs · 1 of 2 this week"). A "Change day" link.
+- **Today's session card:** the coach's day, e.g. "Day 2", titled in the card, with "4 exercises · 9 sets". Each exercise is one `ExerciseDisclosureRow` ("Lat Pulldown · 2 × 8–10"), closed by default so the whole day fits on screen; tapping one opens the sheet's details (load, RPE, equipment, rest, his "or" options, notes, last time). Any add-on joining it sits below a `CardDivider` ("+ Abs · 1 of 2 this week"). A bottom row of tonal buttons: "Change day", "What to say" and an icon to open or close every exercise.
 - **Morning card,** on a day an on-waking add-on is due: "This morning: stomach vacuums · 4 × 20 s · 2 of 4 this week", with "Start".
 - **Rest day:** the session card becomes "Rest day" with his cardio line ("25 minutes of fasted LISS"). No Start button.
-- **This week's check-in card:** "11 of 22 ready", the due day, an "Open check-in" link. On check-in morning, a "Start check-in" link with a yellow "Due today" tag.
+- **Check-in and Photos tiles,** side by side (`TileCard`): Check-in shows "11 of 22 ready", a `MeterBar` and the due day, and opens the Check-in tab; on check-in morning it shows a yellow "Due today" tag and starts the check-in. Photos shows last taken and next due, and opens Photo session.
 - **Which day:** a seven-day cycle follows the day of the week (Day 1 on Monday); "Change day" overrides it for today.
 - **Loading:** while anything is being read (Import, the draft, Review and send), one `LoadingCard` with a short line, never a bare spinner.
-- **Check-in photos card:** last taken, next due, a "Take photos" link that opens Photo session.
 - **Coach reply card,** only when one is waiting: "Coach replied · voice note 1:12", a "Review changes" link to Coach reply.
 - **MacroFactor reminder,** after a macro change is applied: "Update MacroFactor: training-day carbs 250 → 225 g", with a "Done" link. Setecho can't change MacroFactor itself.
-- **One yellow tag at a time on Today,** in this order: a coach reply to review, MacroFactor to update, the check-in due. The others show as secondary text.
+- **One yellow tag at a time on Today,** in this order: a coach reply to review, MacroFactor to update, the check-in due, then today's session ("Up next") when it's still to do. The others show as secondary text.
 - **Footer:** "Start session". This is the only tap of a training day.
 
 ### Import (More menu, and first run)
@@ -146,7 +149,8 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 
 ### Check-in (tab)
 - **Purpose:** the current check-in, filling itself as the days go.
-- **Header card:** "11 of 22 ready · 11 to answer", the due day, and a "Start 2-minute wrap-up" link.
+- **Header card:** "11 of 22 ready" with a `MeterBar`, "11 to answer out loud", the due day, a tonal "Start 2-minute wrap-up" button and a Refresh `IconButton`.
+- **Tabs over the form** (`SegmentTabs`): All · To do (its count on yellow) · Ready.
 - **The coach's form, in his order:** the carried-over blocks (macro targets, supplements) collapsed at the top, then one `FieldRow` per field. Drafted fields show yellow "Confirm"; missing ones show "Ask in wrap-up".
 - **Tapping a field** opens it to edit, with its source values listed.
 - **Footer:** "Review and send".
@@ -210,8 +214,8 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 - **Input:** a tap anywhere is "done" (ends the set or skips the rest). The back button is undo, confirmed on screen.
 
 ### History (tab)
-- **Sections:** This week · Previous sessions · Sent check-ins · Photos · Plan changes.
-- **Sessions** keep the board's grouped-card layout, with each set's clip and its count's `SourceChip`.
+- **Tabs** (`SegmentTabs`): Sessions (this week, previous sessions, last time) · Check-ins · Photos · Plan. One kind of history at a time.
+- **Sessions** keep the board's grouped-card layout. Each session is one line (date, day, sets) that opens to every set's clip and its count's `SourceChip`.
 - **Sent check-ins** reopen read-only.
 - **Photos** show each week's four photos as a timeline.
 - **Plan changes** list each applied coach reply with its changes. The latest one has "Revert", which restores the previous plan.

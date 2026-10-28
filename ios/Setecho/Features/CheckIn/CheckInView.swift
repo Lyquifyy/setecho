@@ -10,6 +10,10 @@ struct CheckInView: View {
     @State private var showWrapUp = false
     @State private var showReview = false
     @State private var showFacts = false
+    @State private var filter: FieldFilter = .all
+
+    /// The tabs over the form: every field, the ones still waiting on the athlete, or the ones ready.
+    enum FieldFilter: Hashable { case all, toDo, ready }
 
     init(store: Store) {
         _coordinator = State(initialValue: CheckInCoordinator(store: store))
@@ -22,7 +26,10 @@ struct CheckInView: View {
                 headerCard
                 if !template.carriedBlocks.isEmpty {
                     SectionCard("Carried over from the coach", accessory: {
-                        LinkButton(title: showCarried ? "Hide" : "Show", chevron: .none) { showCarried.toggle() }
+                        Button(showCarried ? "Hide" : "Show", systemImage: showCarried ? "chevron.up" : "chevron.down") {
+                            withAnimation(.snappy(duration: 0.25)) { showCarried.toggle() }
+                        }
+                        .buttonStyle(.setechoTonal)
                     }) {
                         ForEach(Array(template.carriedBlocks.enumerated()), id: \.offset) { index, block in
                             if index > 0 { CardDivider() }
@@ -33,8 +40,24 @@ struct CheckInView: View {
                         }
                     }
                 }
+                let readyIds = Set(template.orderedFields.filter { isReady($0) }.map(\.id))
+                let shown = template.orderedFields.filter {
+                    switch filter {
+                    case .all: true
+                    case .toDo: !readyIds.contains($0.id)
+                    case .ready: readyIds.contains($0.id)
+                    }
+                }
+                SegmentTabs(items: [
+                    .init(value: FieldFilter.all, title: "All"),
+                    .init(value: FieldFilter.toDo, title: "To do", badge: template.orderedFields.count - readyIds.count, highlight: true),
+                    .init(value: FieldFilter.ready, title: "Ready", badge: readyIds.count),
+                ], selection: $filter)
                 SectionCard("The coach's form") {
-                    ForEach(Array(template.orderedFields.enumerated()), id: \.element.id) { index, field in
+                    if shown.isEmpty {
+                        Text(filter == .toDo ? "Nothing left to answer." : "Nothing ready yet.").font(.subheadline).secondaryText()
+                    }
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, field in
                         if index > 0 { CardDivider() }
                         FieldRow(field: field, answer: coordinator.answer(for: field))
                             .onTapGesture { editing = field }
@@ -43,7 +66,8 @@ struct CheckInView: View {
             } else {
                 SectionCard("No form yet") {
                     Text("Import your coach's check-in form to see what fills itself.").font(.subheadline).secondaryText()
-                    LinkButton(title: "Import the form") { AppRouter.shared.showImport = true }
+                    Button("Import the form", systemImage: "square.and.arrow.down") { AppRouter.shared.showImport = true }
+                        .buttonStyle(.setechoTonalWide)
                 }
             }
         } footer: {
@@ -75,6 +99,13 @@ struct CheckInView: View {
         }
     }
 
+    private func isReady(_ field: FieldSpec) -> Bool {
+        switch coordinator.answer(for: field)?.state {
+        case .filled, .confirmed: true
+        case .drafted, .missing, nil: false
+        }
+    }
+
     private var headerCard: some View {
         SectionCard("This week", accessory: {
             if coordinator.schedule.isWrapUpDue(on: .now) { TargetTag(text: "Wrap-up due") }
@@ -84,6 +115,7 @@ struct CheckInView: View {
                     MetricText(value: "\(coordinator.readyCount)", unit: "of \(coordinator.fieldCount) ready")
                     Spacer()
                 }
+                MeterBar(value: coordinator.readyCount, total: coordinator.fieldCount)
                 Text("\(coordinator.toAnswerCount) to answer out loud").font(.subheadline).monospacedDigit().secondaryText()
                 if coordinator.weightMissingToday {
                     Text(CheckInCoordinator.weightMissingMessage).font(.subheadline).secondaryText()
@@ -93,16 +125,17 @@ struct CheckInView: View {
                 LoadingRow(title: "Filling the check-in", detail: "Reading Apple Health and your training log, then drafting the notes.")
             } else if let error = coordinator.error {
                 Text(error).font(.subheadline).foregroundStyle(Theme.navy)
-                LinkButton(title: "Try again", chevron: .none) { Task { await coordinator.buildDraft() } }
+                Button("Try again", systemImage: "arrow.clockwise") { Task { await coordinator.buildDraft() } }
+                    .buttonStyle(.setechoTonal)
             } else {
-                HStack {
-                    LinkButton(title: "Start 2-minute wrap-up") { showWrapUp = true }
+                HStack(spacing: Theme.Space.xs) {
+                    Button("Start 2-minute wrap-up", systemImage: "mic.fill") { showWrapUp = true }
+                        .buttonStyle(.setechoTonalWide)
                         .disabled(coordinator.questions.isEmpty)
-                    Spacer()
                     if Settings.shared.developerTools {
-                        LinkButton(title: "Facts", chevron: .none) { showFacts = true }
+                        IconButton(systemImage: "list.bullet.rectangle", accessibilityLabel: "Facts") { showFacts = true }
                     }
-                    LinkButton(title: "Refresh", chevron: .none) { Task { await coordinator.buildDraft() } }
+                    IconButton(systemImage: "arrow.clockwise", accessibilityLabel: "Refresh") { Task { await coordinator.buildDraft() } }
                 }
             }
         }

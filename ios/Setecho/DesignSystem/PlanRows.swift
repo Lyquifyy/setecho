@@ -85,3 +85,55 @@ struct AddOnRow: View {
     .padding(Theme.gutter)
     .background(Theme.page)
 }
+
+/// One exercise of today's session as a single line ("Bench press · 4 × 8") that opens to the sheet's details:
+/// load and intensity, equipment and rest, his "or" options and notes. Keeps a long day readable without scrolling.
+struct ExerciseDisclosureRow: View {
+    let number: Int
+    let exercise: PlannedExercise
+    let expanded: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) {
+            VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                HStack(alignment: .center, spacing: Theme.Space.s) {
+                    Text("\(number)")
+                        .font(.footnote.weight(.semibold)).monospacedDigit()
+                        .secondaryText()
+                        .frame(width: 18, alignment: .leading)
+                    Text(exercise.name)
+                        .font(.body.weight(.semibold)).foregroundStyle(Theme.navy)
+                        .multilineTextAlignment(.leading)
+                    Spacer(minLength: Theme.Space.xs)
+                    Text(exercise.setsText).font(.subheadline.weight(.medium)).monospacedDigit().foregroundStyle(Theme.navy)
+                    DisclosureChevron(expanded: expanded)
+                }
+                if expanded {
+                    VStack(alignment: .leading, spacing: Theme.Space.xxs) {
+                        if !exercise.summaryDetails.isEmpty {
+                            Text(exercise.summaryDetails.joined(separator: " · "))
+                                .font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
+                        }
+                        Text([exercise.equipment.label, exercise.restText].compactMap { $0 }.joined(separator: " · "))
+                            .font(.footnote).monospacedDigit().secondaryText()
+                        ForEach(exercise.alternates, id: \.name) { alternate in
+                            Text("or \(alternate.name) · “\(alternate.quote)”").font(.footnote).secondaryText()
+                        }
+                        if let notes = exercise.notes, !notes.isEmpty {
+                            Text(notes).font(.footnote).secondaryText()
+                        }
+                    }
+                    .padding(.leading, 18 + Theme.Space.s)
+                    .multilineTextAlignment(.leading)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(exercise.name), \(exercise.summary)")
+        .accessibilityHint(expanded ? "Hides the details" : "Shows the details")
+    }
+}
