@@ -107,11 +107,13 @@ struct CheckInMorningFlow: Equatable {
     /// The first opens the read-back: "Quick check on your data. Average daily steps came in at 9.4k. Sound right?"
     /// The tail changes line to line ("Sound right?", "Look right?", "That right?") so a run of them
     /// doesn't sound stamped out.
-    static func readBackPrompt(_ field: FieldSpec, _ answer: FieldAnswer, index: Int, first: Bool) -> String {
+    /// With one fact from the log where there is one: "Average daily steps came in at 9.4k, up 500 from last week."
+    static func readBackPrompt(_ field: FieldSpec, _ answer: FieldAnswer, index: Int, first: Bool, fact: String? = nil) -> String {
         let label = WrapUpModel.spokenLabel(field).capitalizedFirst
         let verb = answer.text.first?.isNumber == true ? "came in at" : "is"
         let tails = ["Sound right?", "Look right?", "That right?"]
-        return (first ? "Quick check on your data. " : "") + "\(label) \(verb) \(answer.text). \(tails[index % tails.count])"
+        let value = answer.text + (fact.map { ", \($0)" } ?? "")
+        return (first ? "Quick check on your data. " : "") + "\(label) \(verb) \(value). \(tails[index % tails.count])"
     }
 
     /// The notes field a question for the coach lands in ("Additional notes or concerns").
@@ -175,6 +177,8 @@ final class CheckInMorningModel {
     private var dataReadBackStarted = false
     /// Apple Health's weigh-in on offer: a yes takes it, a number replaces it, a no asks for the reading.
     private(set) var offeredWeight: String?
+    /// The acknowledgment said last, so the next one is different (`SpokenFacts.next`).
+    private var lastAcknowledgment: String?
     private(set) var questionIndex = 0
     /// A fresh rehearsal: today's photo set is set aside until a new one is taken.
     private var ignorePhotosToday = false
@@ -228,12 +232,13 @@ final class CheckInMorningModel {
         var lines = ["Hop on the scale, and tell me when you're off.", "What does it say?", "What's your fasted glucose?",
                      "Time for photos. Set up the tripod, and tell me when you're ready.", "Nice, the photos are done.",
                      "That's everything. Want me to read it back, or are you ready to send?", "No rush. Tell me when you're ready.",
+                     "Okay.", "Nice.",
                      "Welcome back. Let's pick up where we left off.", "Sorry, can you say that again?", "Okay, we'll skip that one.", "Got it.", "I'll add that to your notes.", "Okay, I'll leave that out.",
                      "Take your time.", "What should it say?"]
         lines += questionGroups.map { flow.prompt(for: $0, draft: draft) }
         // The data read-back, each line as it will be said, so they play at once.
         lines += flow.readBackFields(draft: draft).enumerated().map { index, item in
-            CheckInMorningFlow.readBackPrompt(item.field, item.answer, index: index, first: index == 0)
+            CheckInMorningFlow.readBackPrompt(item.field, item.answer, index: index, first: index == 0, fact: fact(for: item.field, now: item.answer.text))
         }
         voice.prerender([intro] + lines)
     }
@@ -288,7 +293,7 @@ final class CheckInMorningModel {
         await draft.value
         TurnTimings.shared.stage("draft")
         await coordinator.refreshWeightToday()
-        if let known = coordinator.weightTodayText { await voice.warm([Self.weightOffer(known)], within: .seconds(1)) }
+        if let known = coordinator.weightTodayText { await voice.warm([weightOfferLine(known)], within: .seconds(1)) }
         status = nil
         prerender()
         await resume(opening: true)
@@ -357,7 +362,8 @@ final class CheckInMorningModel {
                 dataReadBackStarted = true
                 // The same index as the pre-rendered line, so it plays from its file.
                 let index = flow.readBackFields(draft: draft).firstIndex { $0.field.id == id } ?? 0
-                await ask(CheckInMorningFlow.readBackPrompt(item.field, item.answer, index: index, first: first))
+                await ask(CheckInMorningFlow.readBackPrompt(item.field, item.answer, index: index, first: first,
+                                                            fact: fact(for: item.field, now: item.answer.text)))
                 return
             }
             isDone = true
@@ -521,7 +527,7 @@ final class CheckInMorningModel {
                 dataQueue.removeFirst()
                 coordinator.apply(response.answers)
                 echo = response.answers.map { "\(label(for: $0.fieldId)) → \($0.text) · You said" }.joined(separator: "\n")
-                await say(response.reply.isEmpty ? Self.readBack(response.answers, labels: label(for:)) : response.reply)
+                await say(acknowledged(response))
                 await resume()
                 return
             }
@@ -540,7 +546,7 @@ final class CheckInMorningModel {
                                     provenance: [Provenance(source: "Apple Health", detail: "This morning's weigh-in, \(known) lb")])
                 }
                 echo = "Weight → \(known) lb · Apple Health"
-                await say("Got it.")
+                await say(acknowledgment(beforeAFact: false) + ".")
                 await resume()
                 return
             }
@@ -557,7 +563,7 @@ final class CheckInMorningModel {
                 coordinator.confirm(group[0].id)
                 echo = "\(WrapUpModel.shortLabel(group).capitalized) → \(drafted.text) · Confirmed"
                 questionIndex += 1
-                await say("Got it.")
+                await say(acknowledgment(beforeAFact: false) + ".")
                 await askCurrentQuestion()
                 return
             }
@@ -595,7 +601,7 @@ final class CheckInMorningModel {
                 "\(self.label(for: answer.fieldId)) → \(answer.text) · You said"
             }
             echo = lines.joined(separator: "\n")
-            await say(response.reply.isEmpty ? Self.readBack(response.answers, labels: label(for:)) : response.reply)
+            await say(acknowledged(response))
             if response.intent == .correction {
                 isListening = true
                 armSilenceTimer()
@@ -658,10 +664,60 @@ final class CheckInMorningModel {
     private func offerWeight(_ known: String) async {
         offeredWeight = known
         awaitingWeightReading = false
-        await ask(Self.weightOffer(known))
+        await ask(weightOfferLine(known))
     }
 
-    static func weightOffer(_ known: String) -> String { "Apple Health has you at \(known). Should I use that?" }
+    /// "Apple Health has you at 180.8, down 0.4 from last week. Should I use that?"
+    nonisolated static func weightOffer(_ known: String, fact: String? = nil) -> String {
+        "Apple Health has you at \(known)\(fact.map { ", \($0)" } ?? ""). Should I use that?"
+    }
+
+    private func weightOfferLine(_ known: String) -> String {
+        Self.weightOffer(known, fact: flow.weightField.flatMap { fact(for: $0, now: known) })
+    }
+
+    // MARK: Sounding like a person (SpokenFacts)
+
+    /// His last check-in that was actually sent before today: what "last week" means. A rehearsal sent
+    /// this morning doesn't count.
+    private var previousCheckIn: CheckInDraft? {
+        let today = Calendar.current.startOfDay(for: .now)
+        return store.checkIns.filter { $0.isSent && ($0.sentAt ?? .distantFuture) < today && $0.id != draft?.id }
+            .max { $0.sentAt! < $1.sentAt! }
+    }
+
+    /// One fact from the log for this value, computed from his last check-in; nil when there's nothing to compare.
+    func fact(for field: FieldSpec, now text: String) -> String? {
+        guard let previous = previousCheckIn else { return nil }
+        return SpokenFacts.comparison(field, now: text, last: previous.answers.first { $0.fieldId == field.id }?.text,
+                                      lastSentAt: previous.sentAt)
+    }
+
+    /// The next acknowledgment in turn, never the last one again.
+    private func acknowledgment(beforeAFact: Bool) -> String {
+        let ack = SpokenFacts.next(after: lastAcknowledgment, beforeAFact: beforeAFact)
+        lastAcknowledgment = ack
+        return ack
+    }
+
+    /// The reply to an answer: its "got it" swapped for the acknowledgment in turn, then one fact from the
+    /// log when he answered one field that has one: "Okay, 180.8, down 0.4 from last week."
+    private func acknowledged(_ response: TurnResponse) -> String {
+        let reply = response.reply.isEmpty ? Self.readBack(response.answers, labels: label(for:)) : response.reply
+        var fact: String?
+        if response.answers.count == 1, let answer = response.answers.first,
+           let field = flow.template.fields.first(where: { $0.id == answer.fieldId }) {
+            fact = self.fact(for: field, now: answer.text)
+        }
+        let line: String
+        if let swapped = SpokenFacts.reacknowledged(reply, with: SpokenFacts.next(after: lastAcknowledgment, beforeAFact: fact != nil)) {
+            _ = acknowledgment(beforeAFact: fact != nil)
+            line = swapped
+        } else {
+            line = reply
+        }
+        return SpokenFacts.joined(line, fact: fact)
+    }
 
     /// After an answer: the next pending step or question, by the draft, never by the model.
     private func advance() async {

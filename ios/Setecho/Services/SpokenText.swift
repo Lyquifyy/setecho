@@ -106,13 +106,13 @@ enum SpokenText {
         return "\(tens[t]) \(ordinal(o))"
     }
 
-    /// One numeric token: "180.8" → "one eighty point eight"; "0.5" → "zero point five".
+    /// One numeric token: "180.8" → "one eighty point eight"; "0.4" → "point four", as people say it.
     static func number(_ token: String) -> String {
         let parts = token.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
         let whole = integer(Int(parts[0]) ?? 0)
         guard parts.count == 2 else { return whole }
         let digits = parts[1].compactMap(\.wholeNumberValue).map { units[$0] }.joined(separator: " ")
-        return "\(whole) point \(digits)"
+        return (Int(parts[0]) ?? 0) == 0 ? "point \(digits)" : "\(whole) point \(digits)"
     }
 
     private static let token = try! NSRegularExpression(pattern: [

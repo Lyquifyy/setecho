@@ -40,6 +40,9 @@ final class VoiceOutput {
         componentManufacturer: kAudioUnitManufacturer_Apple, componentFlags: 0, componentFlagsMask: 0))
     private let synth = AVSpeechSynthesizer()
     private var format: AVAudioFormat?
+    /// The turn-heard chime: its own node straight into the mixer, so it never waits on a line.
+    private let chimeNode = AVAudioPlayerNode()
+    private let chimeBuffer = VoiceOutput.makeChime()
 
     /// Bumped at every line: callbacks from an earlier line are ignored.
     private var generation = 0
@@ -60,6 +63,8 @@ final class VoiceOutput {
         engine.attach(player)
         engine.attach(eq)
         engine.attach(compressor)
+        engine.attach(chimeNode)
+        engine.connect(chimeNode, to: engine.mainMixerNode, format: chimeBuffer.format)
         let warmth = eq.bands[0]
         warmth.filterType = .lowShelf
         warmth.frequency = 180
@@ -110,6 +115,34 @@ final class VoiceOutput {
         ended = true
         player.play()
         await finish(line, limit: Double(file.length) / file.processingFormat.sampleRate + 1.5)
+    }
+
+    /// A soft chime the moment a turn is heard, in place of any spoken filler: two quiet sine partials
+    /// (880 and 1320 Hz) with a fast attack and a quarter-second fade, generated here (no file, no model).
+    func chime() {
+        do {
+            if !engine.isRunning { try engine.start() }
+        } catch {
+            return
+        }
+        chimeNode.scheduleBuffer(chimeBuffer, at: nil, options: .interrupts)
+        chimeNode.play()
+    }
+
+    nonisolated static func makeChime(sampleRate: Double = 44_100) -> AVAudioPCMBuffer {
+        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
+        let frames = AVAudioFrameCount(sampleRate * 0.32)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)!
+        buffer.frameLength = frames
+        let samples = buffer.floatChannelData![0]
+        for i in 0..<Int(frames) {
+            let t = Double(i) / sampleRate
+            let attack = min(1, t / 0.008)
+            let fade = exp(-t / 0.09)
+            let tone = sin(2 * .pi * 880 * t) + 0.35 * sin(2 * .pi * 1320 * t)
+            samples[i] = Float(0.09 * attack * fade * tone)
+        }
+        return buffer
     }
 
     /// Cut the line now.

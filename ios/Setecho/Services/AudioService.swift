@@ -348,9 +348,9 @@ final class AudioService {
         return min(1, max(0, (levelDB - floor) / 30))
     }
 
-    /// A soft system tick the moment a turn ends, so the athlete knows he was heard.
+    /// A soft chime the moment a turn ends, so he knows he was heard; nothing is spoken until the reply.
     func playTurnEndSound() {
-        AudioServicesPlaySystemSound(1104)
+        output.chime()
     }
 
     /// "DJI Mic RX · USB → AirPods Pro · Bluetooth A2DP": the live route for the Probes screen.
