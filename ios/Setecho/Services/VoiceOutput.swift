@@ -47,8 +47,12 @@ final class VoiceOutput {
     private var played = 0
     private var ended = false
     private var lastActivity = Date.now
+    /// Seconds of audio scheduled for the live line, and when it started playing: the safety net if a
+    /// completion never comes.
+    private var scheduledSeconds = 0.0
+    private var playStartedAt: Date?
 
-    /// A line whose synthesizer goes quiet this long without finishing is over (a route change, a stall).
+    /// A synthesizer that goes quiet this long before it finishes writing has stalled.
     static let stallSeconds = 4.0
 
     init() {
@@ -125,16 +129,23 @@ final class VoiceOutput {
         played = 0
         ended = false
         lastActivity = .now
+        scheduledSeconds = 0
+        playStartedAt = nil
         return generation
     }
 
+    /// Voices write at different sample rates. The EQ and compressor can't change format while the
+    /// engine runs (Oct 28: picking another voice and pressing Play sample threw error -10868), so a
+    /// new format stops the engine, rewires the chain and starts it again. Same voice, no stop.
     private func connect(_ newFormat: AVAudioFormat) throws {
         if format != newFormat {
             player.stop()
+            if engine.isRunning { engine.stop() }
             engine.connect(player, to: eq, format: newFormat)
             engine.connect(eq, to: compressor, format: newFormat)
             engine.connect(compressor, to: engine.mainMixerNode, format: newFormat)
             format = newFormat
+            engine.prepare()
         }
         if !engine.isRunning { try engine.start() }
     }
@@ -154,10 +165,14 @@ final class VoiceOutput {
             return
         }
         scheduled += 1
+        scheduledSeconds += Double(buffer.frameLength) / buffer.format.sampleRate
         player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             Task { @MainActor in self?.bufferPlayed(line) }
         }
-        if !player.isPlaying { player.play() }  // the first buffer starts the line
+        if !player.isPlaying {  // the first buffer starts the line
+            player.play()
+            playStartedAt = .now
+        }
     }
 
     private func bufferPlayed(_ line: Int) {
@@ -166,13 +181,22 @@ final class VoiceOutput {
         lastActivity = .now
     }
 
-    /// Wait until everything written has played, or the line stalls, or `limit` passes.
+    /// Wait until everything has played. The safety nets: a file gets its length plus `limit`; a live
+    /// line ends if the synthesizer stalls before it finishes writing, or if a completion never comes
+    /// (the audio scheduled plus 1.5 s). Oct 28: the stall check also ran during a file's playback,
+    /// where nothing reports until the end, so every pre-rendered line over 4 s (the intro) was cut.
     private func finish(_ line: Int, limit: Double? = nil) async {
         let started = Date.now
         while line == generation {
             if ended, played >= scheduled { break }
-            if Date.now.timeIntervalSince(lastActivity) > Self.stallSeconds { break }
-            if let limit, Date.now.timeIntervalSince(started) > limit { break }
+            let now = Date.now
+            if let limit {
+                if now.timeIntervalSince(started) > limit { break }
+            } else if !ended {
+                if now.timeIntervalSince(lastActivity) > Self.stallSeconds { break }
+            } else if let playStartedAt, now.timeIntervalSince(playStartedAt) > scheduledSeconds + 1.5 {
+                break
+            }
             try? await Task.sleep(for: .milliseconds(15))
         }
         if line == generation { player.stop() }
