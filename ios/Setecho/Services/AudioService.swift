@@ -34,20 +34,16 @@ final class AudioService {
 
     private let session = AVAudioSession.sharedInstance()
     private let capture = CaptureBuffer()
-    private let synth = AVSpeechSynthesizer()
-    private let speechDelegate = SpeechFinishDelegate()
+    /// Every line, live or pre-rendered, goes out through this: player → EQ → compressor.
+    let output = VoiceOutput()
     private var engine: AVAudioEngine?
     private var detector: VoiceDetector?
     private var drainTask: Task<Void, Never>?
     private var speechQueue: [String] = []
     @ObservationIgnored private var routeObserver: NSObjectProtocol?
-    private var speechContinuation: CheckedContinuation<Void, Never>?
     private var cuePlayer: AVAudioPlayer?
 
     init() {
-        synth.usesApplicationAudioSession = true
-        synth.delegate = speechDelegate
-        speechDelegate.onFinish = { [weak self] in self?.speechFinished() }
         // AirPods dropping to call quality, or the output vanishing, mid-run: check and fall back.
         routeObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
@@ -186,11 +182,9 @@ final class AudioService {
                 lastError = "Duck: \(error.localizedDescription)"
             }
         }
-        let utterance = SpokenText.utterance(text, voice: Self.preferredVoice(), rate: Settings.shared.voiceRate)
-        await withCheckedContinuation { continuation in
-            speechContinuation = continuation
-            synth.speak(utterance)
-        }
+        let voice = Self.preferredVoice()
+        let tone = Self.currentTone
+        await output.speak(SpokenText.utterance(text, voice: voice, tone: tone), tone: tone)
         if !holdsDucking {
             do {
                 try AirPodsMic.shared.apply(to: session, ducking: false)
@@ -201,11 +195,6 @@ final class AudioService {
         }
         isSpeaking = false
         micOpenedAt = .now
-    }
-
-    private func speechFinished() {
-        speechContinuation?.resume()
-        speechContinuation = nil
     }
 
     /// One voice everywhere (HANDOFF.md §7, The spotter voice): the athlete's pick from Settings,
@@ -236,6 +225,12 @@ final class AudioService {
     static let defaultVoices: [(name: String, quality: AVSpeechSynthesisVoiceQuality)] = [
         ("Ava", .premium), ("Zoe", .premium), ("Ava", .enhanced), ("Zoe", .enhanced), ("Evan", .enhanced),
     ]
+
+    /// The identifier tones are saved under: the voice in use, or "default" when none is installed.
+    static var currentVoiceId: String { preferredVoice()?.identifier ?? "default" }
+
+    /// His tone for the voice in use (Settings → Voice).
+    static var currentTone: VoiceTone { Settings.shared.tone(for: currentVoiceId) }
 
     /// "Ava (Premium)" or "Zander (Personal Voice)": the voice every line uses right now, for the
     /// check-in screen and Probes.
@@ -318,7 +313,7 @@ final class AudioService {
 
     func stopSpeaking() {
         speechQueue.removeAll()
-        synth.stopSpeaking(at: .immediate)
+        output.cancel()
     }
 
     /// Duck the music before a pre-rendered line plays through its own engine, and restore after.

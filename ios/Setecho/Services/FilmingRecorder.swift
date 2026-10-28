@@ -45,7 +45,7 @@ final class FilmingRecorder {
     /// A line Setecho spoke. With `audio` its pre-rendered file is copied as played; without it the
     /// same utterance is rendered to a file, off the speaking path.
     func spoke(_ text: String, at now: Date = .now, audio: URL? = nil, voice: AVSpeechSynthesisVoice? = nil) {
-        let rate = Settings.shared.voiceRate
+        let tone = AudioService.currentTone
         index += 1
         let name = String(format: "%03d-setecho", index)
         var line = Line(at: stamp(now), duration: nil, speaker: "setecho", text: text, file: nil)
@@ -64,7 +64,7 @@ final class FilmingRecorder {
         let position = lines.count - 1
         save()
         Task.detached(priority: .utility) {
-            let seconds = await SpokenText.render(text, voice: voice, rate: rate, to: dest)
+            let seconds = await SpokenText.render(text, voice: voice, tone: tone, to: dest)
             await MainActor.run {
                 if self.lines.indices.contains(position) { self.lines[position].duration = seconds }
                 self.save()

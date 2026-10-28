@@ -126,13 +126,16 @@ struct SettingsView: View {
                 Text(personalVoiceNote ?? "Your own voice, made on this iPhone in Settings → Accessibility → Personal Voice. It runs on the phone like the others.")
                     .font(.footnote).secondaryText()
                 CardDivider()
+                Text("Tone for \(AudioService.voiceDescription). Saved for this voice.").font(.subheadline).secondaryText()
+                ToneSlider(label: "Speed", value: tone(\.rate), range: SpokenText.rateRange, step: 0.01, format: "%.2f")
+                ToneSlider(label: "Pitch", value: tone(\.pitch), range: VoiceTone.pitchRange, step: 0.01, format: "%.2f")
+                ToneSlider(label: "Warmth", value: tone(\.warmthDB), range: VoiceTone.warmthRange, step: 0.5, format: "%+.1f dB")
+                ToneSlider(label: "Clarity", value: tone(\.clarityDB), range: VoiceTone.clarityRange, step: 0.5, format: "%+.1f dB")
                 HStack {
-                    Text("Speed").font(.subheadline).foregroundStyle(Theme.navy)
+                    LinkButton(title: "Play sample", chevron: .none) { VoiceSample.play() }
                     Spacer()
-                    Text(String(format: "%.2f", settings.voiceRate)).font(.subheadline).monospacedDigit().secondaryText()
+                    LinkButton(title: "Reset", chevron: .none) { settings.setTone(VoiceTone(), for: AudioService.currentVoiceId) }
                 }
-                Slider(value: $settings.voiceRate, in: SpokenText.rateRange, step: 0.01).tint(Theme.cobalt)
-                LinkButton(title: "Play sample", chevron: .none) { VoiceSample.play() }
             }
             SectionCard("Behind the scenes") {
                 Toggle("Filming mode", isOn: $settings.filmingMode)
@@ -146,6 +149,16 @@ struct SettingsView: View {
         .sheet(isPresented: $showDiagnostics) {
             NavigationStack { ProbeHomeView() }.tint(Theme.cobalt)
         }
+    }
+
+    /// One part of the current voice's tone, saved per voice as it moves.
+    private func tone(_ key: WritableKeyPath<VoiceTone, Double>) -> Binding<Double> {
+        Binding(get: { settings.tone(for: AudioService.currentVoiceId)[keyPath: key] },
+                set: { value in
+                    var tone = settings.tone(for: AudioService.currentVoiceId)
+                    tone[keyPath: key] = value
+                    settings.setTone(tone, for: AudioService.currentVoiceId)
+                })
     }
 
     private var usingPersonalVoice: Bool {
@@ -222,14 +235,36 @@ private struct StepField: View {
     }
 }
 
-/// "Play sample": one check-in line in the chosen voice and speed, the way every line is said.
+/// "Play sample": one check-in line in the chosen voice and tone, through the same chain as every line.
 @MainActor
 private enum VoiceSample {
-    static let synth = AVSpeechSynthesizer()
+    static let output = VoiceOutput()
 
     static func play() {
-        synth.stopSpeaking(at: .immediate)
-        synth.speak(SpokenText.utterance("Apple Health says 180.8. Use that, or say the number.", voice: AudioService.preferredVoice(),
-                                           rate: Settings.shared.voiceRate))
+        output.cancel()
+        let tone = AudioService.currentTone
+        let line = "Apple Health has you at 180.8. Should I use that?"
+        Task { await output.speak(SpokenText.utterance(line, voice: AudioService.preferredVoice(), tone: tone), tone: tone) }
     }
 }
+
+/// A labelled slider with its value: "Warmth  +2.0 dB".
+private struct ToneSlider: View {
+    let label: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let format: String
+
+    var body: some View {
+        VStack(spacing: Theme.Space.xxs) {
+            HStack {
+                Text(label).font(.subheadline).foregroundStyle(Theme.navy)
+                Spacer()
+                Text(String(format: format, value)).font(.subheadline).monospacedDigit().secondaryText()
+            }
+            Slider(value: $value, in: range, step: step).tint(Theme.cobalt)
+        }
+    }
+}
+

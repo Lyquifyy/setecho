@@ -6,8 +6,8 @@ import Foundation
 /// (the organizers' rule, Oct 28), so lines are spoken by Apple's on-device speech, made as human as
 /// it gets: Ava (Premium) or his pick in Settings, numbers as words, lines written the way people
 /// talk, and never the same line twice in a row (`SpokenText`). The fixed lines are
-/// rendered to files with `AVSpeechSynthesizer.write` when a flow starts and play at once through one
-/// engine; anything else is spoken live. What happened to each line is counted on `TurnTimings`.
+/// rendered to files with `AVSpeechSynthesizer.write` when a flow starts and play at once; anything
+/// else is spoken live. Both go out through `VoiceOutput` (his warmth and clarity, light compression). What happened to each line is counted on `TurnTimings`.
 @MainActor
 final class SystemSpeaker: Speaker {
     private let audio: AudioService
@@ -17,7 +17,6 @@ final class SystemSpeaker: Speaker {
     private var renderQueue: [String] = []
     private var renderingNow: String?
     private var renderLoop: Task<Void, Never>?
-    private let player = LinePlayer()
     private var lastLine: String?
 
     /// A line still rendering is waited for this long before it is spoken live.
@@ -31,14 +30,15 @@ final class SystemSpeaker: Speaker {
 
     private var voice: AVSpeechSynthesisVoice? { AudioService.preferredVoice() }
 
-    /// The file name covers the words, the voice, the rate and how lines are built: a change renders afresh.
-    static func key(for text: String, voice: String, rate: Double) -> String {
-        let seed = "plain|\(voice)|\(rate)|\(text)"
+    /// The file name covers the words, the voice, the rate and pitch and how lines are built: a change
+    /// renders afresh. Warmth and clarity are applied as it plays, so they need no new file.
+    static func key(for text: String, voice: String, tone: VoiceTone) -> String {
+        let seed = "prosody|\(voice)|\(tone.clamped.rate)|\(tone.clamped.pitch)|\(text)"
         return SHA256.hash(data: Data(seed.utf8)).map { String(format: "%02x", $0) }.joined().prefix(24).description
     }
 
     private func fileURL(for text: String) -> URL {
-        cacheDirectory.appendingPathComponent("\(Self.key(for: text, voice: voice?.identifier ?? "default", rate: Settings.shared.voiceRate)).caf")
+        cacheDirectory.appendingPathComponent("\(Self.key(for: text, voice: voice?.identifier ?? "default", tone: AudioService.currentTone)).caf")
     }
 
     /// The rendered audio for a line, if it is ready (filming mode copies it as played).
@@ -76,9 +76,9 @@ final class SystemSpeaker: Speaker {
                 self.renderingNow = line
                 let url = self.fileURL(for: line)
                 let voice = self.voice
-                let rate = Settings.shared.voiceRate
+                let tone = AudioService.currentTone
                 _ = await Task.detached(priority: .userInitiated) {
-                    await SpokenText.render(line, voice: voice, rate: rate, to: url)
+                    await SpokenText.render(line, voice: voice, tone: tone, to: url)
                 }.value
                 self.renderingNow = nil
             }
@@ -89,7 +89,6 @@ final class SystemSpeaker: Speaker {
     /// Cut whatever is playing (the app went to the background, or the flow was cancelled).
     func stop() {
         renderQueue.removeAll()
-        player.cancel()
         audio.stopSpeaking()
     }
 
@@ -100,7 +99,7 @@ final class SystemSpeaker: Speaker {
         if let file = cachedAudio(for: line) {
             await audio.duck()
             do {
-                try await player.play(file: file)
+                try await audio.output.play(file: file, tone: AudioService.currentTone)
                 await audio.restore()
                 TurnTimings.shared.voiceLine(.prerendered)
                 return
@@ -112,58 +111,5 @@ final class SystemSpeaker: Speaker {
             TurnTimings.shared.voiceLine(.live)
         }
         await audio.speak(line)
-    }
-}
-
-/// Plays one rendered line through its own engine: one playback path for every pre-rendered line.
-/// Oct 27: an `AVAudioPlayer` started as the input engine came up was dropped, silencing the opening.
-@MainActor
-final class LinePlayer {
-    private let engine = AVAudioEngine()
-    private let node = AVAudioPlayerNode()
-    private var format: AVAudioFormat?
-    private var waiter: CheckedContinuation<Void, Never>?
-    /// Bumped at every line: a completion from an earlier line is ignored.
-    private var generation = 0
-
-    init() {
-        engine.attach(node)
-    }
-
-    /// Play one file to the end. A file that cannot be read throws; a playback that stalls (a route
-    /// change mid-line) returns after the file's length plus a second and a half.
-    func play(file url: URL) async throws {
-        let file = try AVAudioFile(forReading: url)
-        if format != file.processingFormat {
-            engine.connect(node, to: engine.mainMixerNode, format: file.processingFormat)
-            format = file.processingFormat
-        }
-        if !engine.isRunning { try engine.start() }
-        generation += 1
-        let line = generation
-        let seconds = Double(file.length) / file.processingFormat.sampleRate + 1.5
-        await withCheckedContinuation { continuation in
-            waiter = continuation
-            node.scheduleFile(file, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
-                Task { @MainActor in self?.done(line) }
-            }
-            node.play()
-            Task { [weak self] in
-                try? await Task.sleep(for: .seconds(seconds))
-                self?.done(line)
-            }
-        }
-        node.stop()
-    }
-
-    private func done(_ line: Int) {
-        guard line == generation else { return }
-        waiter?.resume()
-        waiter = nil
-    }
-
-    func cancel() {
-        node.stop()
-        done(generation)
     }
 }

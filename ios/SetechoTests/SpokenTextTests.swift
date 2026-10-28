@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Setecho
 
@@ -21,11 +22,42 @@ import Testing
     #expect(SpokenText.words("Slowed 46 percent, that's failure. About 2 left.") == "Slowed forty six percent, that's failure. About two left.")
 }
 
-@Test func everyUtteranceHasHisRateAndNoDelays() {
-    let u = SpokenText.utterance("Fasted glucose?", voice: nil, rate: 0.49)
-    #expect(u.speechString == "Fasted glucose?") // no SSML: the voice phrases it
-    #expect(abs(u.rate - 0.49) < 0.0001 && u.pitchMultiplier == 1 && u.volume == 1 && u.preUtteranceDelay == 0 && u.postUtteranceDelay == 0)
-    #expect(abs(SpokenText.utterance("x", voice: nil, rate: 0.9).rate - 0.55) < 0.0001) // clamped to the slider's range
+@Test func theRateSliderFollowsTheMeasuredCurve() {
+    #expect(SpokenText.ratePercent(0.42) == 91 && SpokenText.ratePercent(0.50) == 100 && SpokenText.ratePercent(0.55) == 129)
+    #expect(abs(SpokenText.ratePercent(0.46) - 95.5) < 0.01)
+    #expect(SpokenText.ratePercent(0.30) == 91 && SpokenText.ratePercent(0.9) == 129) // clamped to the slider
+}
+
+@Test func eachLineVariesALittleAndAlwaysTheSameWay() {
+    let lines = (0..<200).map { "Line number \($0)?" }
+    let all = lines.map(SpokenText.variation(for:))
+    #expect(all.allSatisfy { (-3...3).contains($0.rate) && (-2...2).contains($0.pitch) })
+    #expect(Set(all.map { "\($0.rate),\($0.pitch)" }).count > 10) // they do differ
+    #expect(lines.map(SpokenText.variation(for:)).map(\.rate) == all.map(\.rate)) // and are stable
+}
+
+@Test func theLineIsSSMLWithHisRateAndPitchAndNoBreaks() {
+    let text = "Apple Health has you at 180.8. Should I use that?"
+    let v = SpokenText.variation(for: text)
+    let tone = VoiceTone(rate: 0.50, pitch: 1.05, warmthDB: 2, clarityDB: -1)
+    let ssml = SpokenText.ssml(text, tone: tone)
+    let pitch = 5 + v.pitch
+    #expect(ssml == "<speak><prosody rate=\"\(100 + v.rate)%\" pitch=\"\(pitch >= 0 ? "+" : "")\(pitch)%\">Apple Health has you at one eighty point eight. Should I use that?</prosody></speak>")
+    #expect(!ssml.contains("break"))
+    #expect(SpokenText.ssml("Waist & hips <3", tone: tone).contains("Waist &amp; hips &lt;three"))
+    let u = SpokenText.utterance(text, voice: nil, tone: tone)
+    #expect(u.volume == 1 && u.preUtteranceDelay == 0 && u.postUtteranceDelay == 0)
+}
+
+@Test @MainActor func tonesAreSavedPerVoiceAndClamped() {
+    let settings = Settings.shared
+    let id = "test.voice.\(UUID().uuidString)"
+    defer { settings.voiceTones[id] = nil }
+    #expect(settings.tone(for: id).pitch == 1.0 && settings.tone(for: id).warmthDB == 2 && settings.tone(for: id).clarityDB == -1)
+    settings.setTone(VoiceTone(rate: 0.9, pitch: 0.5, warmthDB: 10, clarityDB: -10), for: id)
+    let saved = settings.tone(for: id)
+    #expect(saved.rate == 0.55 && saved.pitch == 0.90 && saved.warmthDB == 6 && saved.clarityDB == -4)
+    #expect(settings.tone(for: id + ".other") != saved) // another voice keeps its own
 }
 
 @Test func noLineTwiceInARow() {

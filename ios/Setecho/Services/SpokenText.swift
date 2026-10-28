@@ -120,14 +120,62 @@ enum SpokenText {
     static let defaultRate = 0.49
     static let rateRange = 0.42...0.55
 
-    /// The utterance every line is spoken or rendered with: the words as written, numbers as words,
-    /// his rate, pitch and volume at 1, no delay before or after. No added pauses (Oct 28: SSML breaks
-    /// on top of the voice's own made every comma stall); the voice phrases the punctuation itself.
-    static func utterance(_ text: String, voice: AVSpeechSynthesisVoice?, rate: Double) -> AVSpeechUtterance {
-        let utterance = AVSpeechUtterance(string: words(text))
+    // MARK: Prosody
+
+    /// The rate slider as an SSML speed, from measured durations (Oct 28, on the device's synthesizer):
+    /// 0.42 → 91%, 0.50 → 100%, 0.52 → 108%, 0.53 → 118%, 0.55 → 129%. An SSML utterance ignores
+    /// `utterance.rate` and `pitchMultiplier` (same audio at 0.42 and 0.55), so both go into `<prosody>`.
+    static let rateCurve: [(rate: Double, percent: Double)] = [(0.42, 91), (0.50, 100), (0.51, 104), (0.52, 108), (0.53, 118), (0.55, 129)]
+
+    static func ratePercent(_ rate: Double) -> Double {
+        let r = min(max(rate, rateRange.lowerBound), rateRange.upperBound)
+        for (a, b) in zip(rateCurve, rateCurve.dropFirst()) where r <= b.rate {
+            return a.percent + (r - a.rate) / (b.rate - a.rate) * (b.percent - a.percent)
+        }
+        return rateCurve.last!.percent
+    }
+
+    /// A small, steady difference per line, so a run of lines doesn't sound stamped out: speed within
+    /// ±3% and pitch within ±2%, the same for the same words every time (pre-rendered files stay valid).
+    static func variation(for text: String) -> (rate: Int, pitch: Int) {
+        var hash: UInt64 = 0xcbf29ce484222325 // FNV-1a: stable across launches, unlike hashValue
+        for byte in text.utf8 { hash = (hash ^ UInt64(byte)) &* 0x100000001b3 }
+        return (Int(hash % 7) - 3, Int((hash / 7) % 5) - 2)
+    }
+
+    /// The line as SSML: numbers as words, XML escaped, one `<prosody>` with his rate and pitch plus the
+    /// line's variation. No `<break>`: the voice phrases the punctuation itself (Oct 28, added pauses
+    /// made every comma stall).
+    static func ssml(_ text: String, tone: VoiceTone) -> String {
+        let tone = tone.clamped
+        let v = variation(for: text)
+        let rate = Int((ratePercent(tone.rate) * (1 + Double(v.rate) / 100)).rounded())
+        let pitch = Int(((tone.pitch - 1) * 100).rounded()) + v.pitch
+        var escaped = ""
+        for c in words(text) {
+            switch c {
+            case "&": escaped += "&amp;"
+            case "<": escaped += "&lt;"
+            case ">": escaped += "&gt;"
+            default: escaped.append(c)
+            }
+        }
+        return "<speak><prosody rate=\"\(rate)%\" pitch=\"\(pitch >= 0 ? "+" : "")\(pitch)%\">\(escaped)</prosody></speak>"
+    }
+
+    /// The utterance every line is spoken or rendered with: SSML with his rate and pitch, volume 1, no
+    /// delay before or after. If the voice refuses the SSML, the plain words with the same rate and pitch.
+    static func utterance(_ text: String, voice: AVSpeechSynthesisVoice?, tone: VoiceTone) -> AVSpeechUtterance {
+        let tone = tone.clamped
+        let utterance: AVSpeechUtterance
+        if let ssml = AVSpeechUtterance(ssmlRepresentation: ssml(text, tone: tone)) {
+            utterance = ssml
+        } else {
+            utterance = AVSpeechUtterance(string: words(text))
+            utterance.rate = Float(tone.rate)
+            utterance.pitchMultiplier = Float(tone.pitch)
+        }
         utterance.voice = voice
-        utterance.rate = Float(min(max(rate, rateRange.lowerBound), rateRange.upperBound))
-        utterance.pitchMultiplier = 1.0
         utterance.volume = 1.0
         utterance.preUtteranceDelay = 0
         utterance.postUtteranceDelay = 0
@@ -171,7 +219,7 @@ enum SpokenText {
     // MARK: Rendering
 
     /// Render the line with the voice to a CAF file, off the speaking path; returns its seconds.
-    nonisolated static func render(_ text: String, voice: AVSpeechSynthesisVoice?, rate: Double, to url: URL) async -> TimeInterval? {
+    nonisolated static func render(_ text: String, voice: AVSpeechSynthesisVoice?, tone: VoiceTone, to url: URL) async -> TimeInterval? {
         await withCheckedContinuation { continuation in
             let synth = AVSpeechSynthesizer()
             let partial = url.deletingPathExtension().appendingPathExtension("part.caf") // the extension names the file type
@@ -179,7 +227,7 @@ enum SpokenText {
             var frames: AVAudioFramePosition = 0
             var rate: Double = 0
             var resumed = false
-            synth.write(utterance(text, voice: voice, rate: rate)) { buffer in
+            synth.write(utterance(text, voice: voice, tone: tone)) { buffer in
                 _ = synth // held until the last buffer
                 guard let pcm = buffer as? AVAudioPCMBuffer, !resumed else { return }
                 if pcm.frameLength == 0 {

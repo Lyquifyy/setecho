@@ -19,8 +19,19 @@ final class Settings {
     var coachVoiceInSessions: Bool { didSet { defaults.set(coachVoiceInSessions, forKey: "coachVoiceInSessions") } }
     /// The voice Setecho speaks with everywhere; empty means the best installed voice, premium first.
     var voiceIdentifier: String { didSet { defaults.set(voiceIdentifier, forKey: "voiceIdentifier") } }
-    /// The speaking rate of every line, 0.42–0.55 (Settings → Voice); 0.49 by default.
-    var voiceRate: Double { didSet { defaults.set(voiceRate, forKey: "voiceRate") } }
+    /// Rate, pitch, warmth and clarity, saved per voice identifier (Settings → Voice).
+    var voiceTones: [String: VoiceTone] {
+        didSet { if let data = try? JSONEncoder().encode(voiceTones) { defaults.set(data, forKey: "voiceTones") } }
+    }
+    /// The rate slider from before tones were per voice: the starting rate for a voice not tuned yet.
+    private let legacyRate: Double?
+
+    /// The tone for one voice: what he set, or the defaults.
+    func tone(for voiceId: String) -> VoiceTone {
+        voiceTones[voiceId] ?? VoiceTone(rate: legacyRate ?? SpokenText.defaultRate)
+    }
+
+    func setTone(_ tone: VoiceTone, for voiceId: String) { voiceTones[voiceId] = tone.clamped }
     /// Next-set suggestions (P4). On by default; only with a confirmed coach's rule.
     var nextSetSuggestions: Bool { didSet { defaults.set(nextSetSuggestions, forKey: "nextSetSuggestions") } }
     /// What the athlete can load (§13): barbell 5 lb, dumbbells 5 lb, machines from here.
@@ -65,7 +76,8 @@ final class Settings {
         useSevenDayAverageWeight = defaults.bool(forKey: "useSevenDayAverageWeight")
         coachVoiceInSessions = defaults.object(forKey: "coachVoiceInSessions") as? Bool ?? true
         voiceIdentifier = defaults.string(forKey: "voiceIdentifier") ?? ""
-        voiceRate = defaults.object(forKey: "voiceRate") as? Double ?? SpokenText.defaultRate
+        legacyRate = defaults.object(forKey: "voiceRate") as? Double
+        voiceTones = (defaults.data(forKey: "voiceTones")).flatMap { try? JSONDecoder().decode([String: VoiceTone].self, from: $0) } ?? [:]
         nextSetSuggestions = defaults.object(forKey: "nextSetSuggestions") as? Bool ?? true
         barbellStepLb = defaults.object(forKey: "barbellStepLb") as? Double ?? 5
         dumbbellStepLb = defaults.object(forKey: "dumbbellStepLb") as? Double ?? 5
