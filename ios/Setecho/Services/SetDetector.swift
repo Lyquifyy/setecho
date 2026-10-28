@@ -50,6 +50,12 @@ final class SetDetector: NSObject {
     /// The set whose clip lives in the segment that is being finalized.
     private var pendingSets: [URL: (start: Double, end: Double, segmentStart: Double)] = [:]
     private var stopping = false
+    /// The tuning record (HANDOFF.md §7): the whole session's wrist series (the live signal keeps
+    /// only 10 minutes), set events, the pose around each set, and the capture clock against the wall.
+    private var debugWrist: [[Double]] = []
+    private var debugEvents: [[String: Any]] = []
+    private var debugSetWindows: [[String: Any]] = []
+    private var clockAnchor: (t: Double, epoch: Double)?
 
     static let preRollSeconds = 3.0
     static let postRollSeconds = 1.0
@@ -128,7 +134,9 @@ final class SetDetector: NSObject {
 
     /// The instant count over the set that just ended (HANDOFF.md §7, Rep counting).
     func phoneCount(from start: Double, to end: Double) -> RepCounter.Result? {
-        joints.phoneCount(from: start, to: end)
+        let result = joints.phoneCount(from: start, to: end)
+        recordSetWindow(from: start, to: end, result: result)
+        return result
     }
 
     // MARK: Frames
@@ -136,6 +144,7 @@ final class SetDetector: NSObject {
     private func handle(_ sample: JointSeries.Sample) {
         framesSeen += 1
         lastFrameT = sample.t
+        if clockAnchor == nil { clockAnchor = (sample.t, Date.now.timeIntervalSince1970) }
         joints.add(sample)
         if framesSeen % 150 == 0 {
             joints.trim(olderThan: 300, now: sample.t)
@@ -148,6 +157,7 @@ final class SetDetector: NSObject {
         guard !wrists.isEmpty else { return }
         let y = wrists.reduce(0, +) / Double(wrists.count)
         lastWristY = y
+        debugWrist.append([sample.t, y])
         // Between rest-pause rounds: 75 s still ends the set where the last round stopped.
         if let pausedAt = restPausePausedAt, let start = currentSetStart, sample.t - pausedAt >= Self.restPauseStillSeconds {
             restPausePausedAt = nil
@@ -162,6 +172,7 @@ final class SetDetector: NSObject {
             } else {
                 currentSetStart = realStart
                 restPauseRound = 0
+                debugEvents.append(["kind": "start", "t": realStart])
                 onSetStart?(realStart)
             }
         case .end(_, let stillSince):
@@ -183,6 +194,7 @@ final class SetDetector: NSObject {
     private func endSet(realEnd: Double, from start: Double) {
         currentSetStart = nil
         restPausePausedAt = nil
+        debugEvents.append(["kind": "end", "t": realEnd, "start": start])
         onSetEnd?(realEnd)
         rotateSegment(for: (start, realEnd))
     }
@@ -243,10 +255,32 @@ final class SetDetector: NSObject {
         }
     }
 
-    /// The wrist series for tuning thresholds offline (HANDOFF.md §7).
+    /// The pose joints over [start − 3 s, end + 1 s] and the phone's count, for tuning `RepCounter`.
+    private func recordSetWindow(from start: Double, to end: Double, result: RepCounter.Result?) {
+        let names = JointSeries.joints
+        let rows: [[Any]] = joints.samples.filter { $0.t >= start - Self.preRollSeconds && $0.t <= end + Self.postRollSeconds }.map { sample in
+            [sample.t] + names.map { sample.joints[$0].map { $0 as Any } ?? NSNull() }
+        }
+        var window: [String: Any] = ["start": start, "end": end, "columns": ["t"] + names, "rows": rows]
+        if let result {
+            window["phone"] = ["reps": result.reps.map { $0 as Any } ?? NSNull(), "repTimes": result.repTimes, "confidence": result.confidence,
+                               "trackedFrames": result.trackedFrames, "frames": result.frames]
+        }
+        debugSetWindows.append(window)
+    }
+
+    /// The detector's series for tuning thresholds offline (HANDOFF.md §7); History shares it with the session.
     private func exportDebugSeries() {
-        let url = mediaDirectory.appendingPathComponent("wrist-\(sessionId.uuidString.prefix(8)).json")
-        if let data = try? JSONSerialization.data(withJSONObject: ["columns": ["t", "raw", "smoothed"], "rows": signal.debugRows]) {
+        let url = mediaDirectory.appendingPathComponent(SessionDebug.detectorFile(sessionId: sessionId))
+        var json: [String: Any] = [
+            "wrist": ["columns": ["t", "y"], "rows": debugWrist],
+            "events": debugEvents,
+            "sets": debugSetWindows,
+            "config": ["startRange": signal.config.startRange, "endRange": signal.config.endRange,
+                       "startWindowSeconds": signal.config.startWindowSeconds, "endSeconds": signal.config.endSeconds],
+        ]
+        if let clockAnchor { json["clock"] = ["t": clockAnchor.t, "epoch": clockAnchor.epoch] }
+        if let data = try? JSONSerialization.data(withJSONObject: json) {
             try? data.write(to: url)
         }
     }

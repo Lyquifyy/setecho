@@ -63,6 +63,33 @@ private func fixture(_ name: String) throws -> Data {
     #expect(reopened.loadError == nil)
 }
 
+@Test @MainActor func sessionDebugExportCarriesTheLogAndEveryCount() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("store-\(UUID().uuidString)")
+    let store = Store(root: root)
+    let program = try JSONCoding.decoder.decode(Program.self, from: fixture("program"))
+    store.saveProgram(program)
+    let end = Date(timeIntervalSince1970: 1_800_000_000)
+    let set = LoggedSet(id: UUID(), exerciseId: "bench", setIndex: 0, loadLb: 225, reps: 8, rpe: 9,
+                        startedAt: end.addingTimeInterval(-40), endedAt: end, clipFile: nil, edits: [])
+    let session = Session(id: UUID(), programDayId: "w1_upper_a", startedAt: end.addingTimeInterval(-60), endedAt: end,
+                          sets: [set], notes: [])
+    let response = CountResponse(reps: 8, repTimes: [1, 2], confidence: 0.8, trackFound: true, frames: 600, trackedFrames: 598,
+                                 prompt: "weight plate")
+    SessionDebug.append(.init(setId: set.id, attempt: 0, at: end, secondsAfterSetEnd: nil, response: nil, error: "timedOut"),
+                        sessionId: session.id, in: store.mediaDirectory)
+    SessionDebug.append(.init(setId: set.id, attempt: 1, at: end.addingTimeInterval(33), secondsAfterSetEnd: 33,
+                              response: response, error: nil), sessionId: session.id, in: store.mediaDirectory)
+
+    let url = try SessionDebug.export(session: session, store: store)
+    let json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+    let counts = try #require(json["counts"] as? [[String: Any]])
+    #expect(counts.count == 2)
+    #expect(counts[1]["secondsAfterSetEnd"] as? Double == 33)
+    #expect(((json["session"] as? [String: Any])?["sets"] as? [Any])?.count == 1)
+    #expect((json["day"] as? [String: Any])?["id"] as? String == "w1_upper_a")
+    #expect(json["detector"] is NSNull) // no camera this session
+}
+
 @Test func dayKeyRoundTrip() {
     let cal = Calendar(identifier: .gregorian)
     let date = cal.date(from: DateComponents(year: 2026, month: 10, day: 5))!

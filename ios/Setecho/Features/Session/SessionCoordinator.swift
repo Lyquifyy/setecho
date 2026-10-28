@@ -235,18 +235,30 @@ final class SessionCoordinator {
             guard !didSave || attempt == 0 else { break } // the session is over: stop retrying
             do {
                 let response = try await api.countSet(mp4: data, context: context)
+                logCount(setId: setId, attempt: attempt, response: response, error: nil)
                 let outcome = engine.measured(setId: setId, response, now: .now)
                 show(outcome)
                 if didSave { save() }
                 return
             } catch let error as APIError where (400..<500).contains(error.status) {
+                logCount(setId: setId, attempt: attempt, response: nil, error: String(describing: error))
                 break // a bad clip will not get better with retries
             } catch {
+                logCount(setId: setId, attempt: attempt, response: nil, error: String(describing: error))
                 continue
             }
         }
         show(engine.countFailed(setId: setId))
         if didSave { save() }
+    }
+
+    /// Every answer and failure, with its latency, for the session's debug JSON (HANDOFF.md §9, P5).
+    private func logCount(setId: UUID, attempt: Int, response: CountResponse?, error: String?) {
+        let endedAt = engine.session.sets.first { $0.id == setId }?.endedAt
+        let record = SessionDebug.CountAttempt(setId: setId, attempt: attempt, at: .now,
+                                               secondsAfterSetEnd: endedAt.map { Date.now.timeIntervalSince($0) },
+                                               response: response, error: error)
+        SessionDebug.append(record, sessionId: engine.session.id, in: store.mediaDirectory)
     }
 
     /// Median seconds from set end to SAM's result this session (HANDOFF.md §9, P1b latency report).
