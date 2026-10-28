@@ -21,6 +21,8 @@ struct ReviewSendView: View {
     @State private var videoFiles: [UUID: String] = [:]
     @State private var showPicker = false
     @State private var exporting = false
+    @State private var photosFirst = false
+    @State private var settings = Settings.shared
 
     private var text: String? { messages.isEmpty ? nil : messages.joined(separator: "\n\n") }
     private var planMessage: String? { messages.count > 1 ? messages[0] : nil }
@@ -56,18 +58,33 @@ struct ReviewSendView: View {
         }
     }
 
-    private var collage: UIImage? {
-        guard let id = coordinator.draft?.photoSetId ?? store.lastPhotoSet?.id,
-              let set = store.photoSets.first(where: { $0.id == id }),
-              let data = try? Data(contentsOf: store.mediaDirectory.appendingPathComponent(set.collageFile))
-        else { return nil }
-        return UIImage(data: data)
+    /// This week's photo set: the four files as taken, in his order.
+    private var photoSet: PhotoSet? {
+        guard let id = coordinator.draft?.photoSetId ?? store.lastPhotoSet?.id else { return nil }
+        return store.photoSets.first { $0.id == id }
     }
+
+    private var photoURLs: [URL] {
+        guard let photoSet else { return [] }
+        return Pose.allCases.compactMap { pose in photoSet.photo(for: pose).map { store.mediaDirectory.appendingPathComponent($0.file) } }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    /// Only for the on-screen preview; the share sends the files.
+    private var collage: UIImage? { photoURLs.first.flatMap { UIImage(contentsOfFile: $0.path) } }
 
     var body: some View {
         ScreenScaffold {
             LinkButton(title: "Back to check-in", chevron: .leading) { dismiss() }
             TitleBlock(title: "Review and send", subtitle: "Exactly what your coach receives, in his format.")
+            SectionCard("Rehearsal", accessory: { if settings.rehearsalMode { TargetTag(text: "On") } }) {
+                Toggle("Send to my own chat, not his", isOn: Bindable(settings).rehearsalMode)
+                    .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
+                Text(settings.rehearsalMode
+                     ? "Each share opens your own WhatsApp chat\(settings.ownWhatsAppNumber.isEmpty ? " once your number is in Settings" : ""). Nothing reaches your coach."
+                     : "Off: the shares go wherever you pick in the share sheet.")
+                    .font(.footnote).secondaryText()
+            }
             if let banner {
                 SectionCard {
                     HStack(spacing: Theme.Space.s) {
@@ -92,21 +109,27 @@ struct ReviewSendView: View {
                     Text(error).font(.subheadline).foregroundStyle(Theme.navy)
                     LinkButton(title: "Try again", chevron: .none) { Task { await render() } }
                 } else {
-                    HStack(spacing: Theme.Space.xs) {
-                        ProgressView().tint(Theme.cobalt)
-                        Text("Rendering…").font(.subheadline).secondaryText()
-                    }
+                    LoadingCard(title: "Writing the message", detail: "In his format and order.")
                 }
                 CardDivider()
                 Text("Every number comes from Apple Health, the training log or what you said. Tap a field on the Check-in tab to see its source.")
                     .font(.footnote).secondaryText()
             }
-            SectionCard("Photos") {
-                if let collage {
-                    Image(uiImage: collage).resizable().scaledToFit()
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
+            SectionCard("Photos", accessory: { Text("\(photoURLs.count) of 4").font(.subheadline).monospacedDigit().secondaryText() }) {
+                if photoURLs.isEmpty {
+                    Text("No photos this week yet. Take photos from Today.").font(.subheadline).secondaryText()
                 } else {
-                    Text("No photo set this week yet. Take photos from Today.").font(.subheadline).secondaryText()
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Theme.Space.xs) {
+                            ForEach(photoURLs, id: \.self) { url in
+                                if let image = UIImage(contentsOfFile: url.path) {
+                                    Image(uiImage: image).resizable().scaledToFill().frame(width: 90, height: 120)
+                                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
+                                }
+                            }
+                        }
+                    }
+                    Text("Sent exactly as taken, in his order.").font(.footnote).secondaryText()
                 }
             }
             SectionCard("Videos for your coach", accessory: {
@@ -151,14 +174,15 @@ struct ReviewSendView: View {
             .buttonStyle(.setechoPrimary)
             .disabled(text == nil || sendStep >= stepCount || exporting)
             if !isVideoStep, sendStep == (planMessage == nil ? 0 : 1) {
-                Button("Photo first, then paste the text") {
-                    UIPasteboard.general.string = checkInMessage
+                // If WhatsApp splits the text from the photos: the photos first, the text right after.
+                Button("Photos first, then the text") {
                     includeText = false
-                    banner = "Paste the check-in text under the photo."
+                    banner = "Next: the check-in text, right after the photos."
+                    photosFirst = true
                     showShare = true
                 }
                 .buttonStyle(.setechoOutline)
-                .disabled(text == nil || collage == nil)
+                .disabled(text == nil || photoURLs.isEmpty)
             }
             if stepCount > 1, sendStep < stepCount {
                 Text("Step \(sendStep + 1) of \(stepCount): \(stepName). One WhatsApp message each, in his order.")
@@ -179,8 +203,19 @@ struct ReviewSendView: View {
                     banner = "Sent. The check-in is saved under History."
                 }
             } else if let body = isPlanStep ? planMessage : checkInMessage {
-                ShareSheet(image: isPlanStep ? nil : collage, text: includeText ? body : nil) { completed in
+                ShareSheet(image: nil, text: includeText ? body : nil, files: isPlanStep || photosFirst == false && !includeText ? [] : photoURLs) { completed in
                     guard completed else { return }
+                    if photosFirst {
+                        // The photos went; now the text, as its own share.
+                        photosFirst = false
+                        includeText = true
+                        banner = "Now the check-in text."
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(400))
+                            showShare = true
+                        }
+                        return
+                    }
                     sendStep += 1
                     if sendStep >= stepCount {
                         coordinator.markSent()

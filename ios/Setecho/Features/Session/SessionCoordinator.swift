@@ -81,6 +81,7 @@ final class SessionCoordinator {
             return
         }
         started = true
+        Task { [api] in _ = try? await api.health() } // warm the backend's route before the first set
         audio.configure()
         audio.onUtterance = { [weak self] utterance in
             Task { await self?.handle(utterance) }

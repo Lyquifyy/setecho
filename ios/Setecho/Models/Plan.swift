@@ -78,6 +78,23 @@ struct PlanState: Codable, Equatable {
 struct CycleCursor: Codable, Equatable {
     var dayId: String
     var since: Date
+    /// Set by "Change day": holds for the day it was set, even on a cycle that follows the weekday.
+    var manual: Bool
+
+    init(dayId: String, since: Date, manual: Bool = false) {
+        self.dayId = dayId
+        self.since = since
+        self.manual = manual
+    }
+
+    private enum CodingKeys: String, CodingKey { case dayId, since, manual }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        dayId = try c.decode(String.self, forKey: .dayId)
+        since = try c.decode(Date.self, forKey: .since)
+        manual = try c.decodeIfPresent(Bool.self, forKey: .manual) ?? false
+    }
 }
 
 struct AddOnDays: Codable, Equatable {

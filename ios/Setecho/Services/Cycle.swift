@@ -61,7 +61,31 @@ enum Cycle {
 
     /// "Change day" or "I'm doing Day 5 today": the cursor moves by hand and starts today.
     static func changed(to dayId: String, today: Date = .now, calendar: Calendar = .current) -> CycleCursor {
-        CycleCursor(dayId: dayId, since: calendar.startOfDay(for: today))
+        CycleCursor(dayId: dayId, since: calendar.startOfDay(for: today), manual: true)
+    }
+
+    /// A seven-day cycle follows the day of the week: Day 1 on `firstWeekday` (2 = Monday), the
+    /// rest in the sheet's order. A day changed by hand holds for that calendar day only.
+    static func followsWeekday(_ program: Program) -> Bool { program.cycleDays.count == 7 }
+
+    static func weekdayCursor(program: Program, today: Date = .now, firstWeekday: Int = 2, calendar: Calendar = .current) -> CycleCursor? {
+        let days = program.cycleDays
+        guard days.count == 7 else { return nil }
+        let weekday = calendar.component(.weekday, from: today)
+        let index = ((weekday - firstWeekday) % 7 + 7) % 7
+        return CycleCursor(dayId: days[index].id, since: calendar.startOfDay(for: today))
+    }
+
+    /// The cursor for today: on a seven-day cycle the weekday decides, unless the athlete changed
+    /// the day today; otherwise the split rules above.
+    static func current(_ cursor: CycleCursor?, program: Program, sessions: [Session], today: Date = .now, firstWeekday: Int = 2,
+                        calendar: Calendar = .current) -> CycleCursor? {
+        if followsWeekday(program) {
+            if let cursor, cursor.manual, calendar.isDate(cursor.since, inSameDayAs: today) { return cursor }
+            return weekdayCursor(program: program, today: today, firstWeekday: firstWeekday, calendar: calendar)
+        }
+        if let cursor { return advanced(cursor, program: program, sessions: sessions, today: today, calendar: calendar) }
+        return seed(program: program, sessions: sessions, today: today, calendar: calendar)
     }
 }
 

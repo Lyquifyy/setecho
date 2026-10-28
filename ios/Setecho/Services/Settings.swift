@@ -27,6 +27,14 @@ final class Settings {
     var machineStepLb: Double { didSet { defaults.set(machineStepLb, forKey: "machineStepLb") } }
     /// The spotter uses it sparingly; never sent anywhere but the line request.
     var athleteFirstName: String { didSet { defaults.set(athleteFirstName, forKey: "athleteFirstName") } }
+    /// On a seven-day cycle, the weekday Day 1 falls on (1 = Sunday … 7 = Saturday). Monday by default.
+    var cycleFirstWeekday: Int { didSet { defaults.set(cycleFirstWeekday, forKey: "cycleFirstWeekday") } }
+    /// Rehearsal mode on Review and send: every step goes to the athlete's own WhatsApp chat.
+    var rehearsalMode: Bool { didSet { defaults.set(rehearsalMode, forKey: "rehearsalMode") } }
+    /// The athlete's own WhatsApp number, digits only, for rehearsal mode. Never sent anywhere else.
+    var ownWhatsAppNumber: String { didSet { defaults.set(ownWhatsAppNumber, forKey: "ownWhatsAppNumber") } }
+    /// Filming mode (off): save every spoken line and utterance with one clock, plus captions.
+    var filmingMode: Bool { didSet { defaults.set(filmingMode, forKey: "filmingMode") } }
 
     var loadSteps: RuleEngine.LoadSteps {
         RuleEngine.LoadSteps(barbell: barbellStepLb, dumbbell: dumbbellStepLb, machine: machineStepLb, cable: machineStepLb)
@@ -48,6 +56,10 @@ final class Settings {
         dumbbellStepLb = defaults.object(forKey: "dumbbellStepLb") as? Double ?? 5
         machineStepLb = defaults.object(forKey: "machineStepLb") as? Double ?? 10
         athleteFirstName = defaults.string(forKey: "athleteFirstName") ?? ""
+        cycleFirstWeekday = defaults.object(forKey: "cycleFirstWeekday") as? Int ?? 2
+        rehearsalMode = defaults.bool(forKey: "rehearsalMode")
+        ownWhatsAppNumber = defaults.string(forKey: "ownWhatsAppNumber") ?? ""
+        filmingMode = defaults.bool(forKey: "filmingMode")
     }
 
     var showDateOrNil: String? { showDate.trimmingCharacters(in: .whitespaces).isEmpty ? nil : showDate }

@@ -101,9 +101,54 @@ final class PhotoSessionCoordinator {
             }
         }
         capture.stop()
-        phase = .aligning
-        await audio.speak("All four. Lining them up.")
-        await align()
+        await save()
+    }
+
+    /// "Retake front" (or any pose): that one again, then save the four again.
+    func retake(_ pose: Pose) {
+        guard loop == nil || phase == .review else { return }
+        cancelled = false
+        loop = Task {
+            capture.start()
+            phase = .posing(pose)
+            capture.resetStillness()
+            await audio.speak(pose.spokenCue)
+            guard await waitUntilStill() else { return }
+            if let data = try? await capture.capture() {
+                captured[pose] = data
+                thumbnails[pose] = UIImage(data: data).map { Self.thumbnail($0) }
+                await audio.speak("Got it")
+            }
+            capture.stop()
+            await save()
+        }
+    }
+
+    /// The photos exactly as taken, at full resolution, in his order (HANDOFF.md §7, Photo session,
+    /// decided Oct 27): written to the media folder and saved as this week's set. Nothing is cropped,
+    /// aligned or sent to SAM.
+    private func save() async {
+        let setId = photoSet?.id ?? UUID()
+        var poses: [PosePhoto] = []
+        for pose in Pose.allCases {
+            guard let jpeg = captured[pose] else { continue }
+            let file = "pose-\(setId.uuidString.prefix(8))-\(pose.rawValue).jpg"
+            do {
+                try jpeg.write(to: store.mediaDirectory.appendingPathComponent(file))
+            } catch {
+                phase = .failed("Could not save \(pose.title): \(error.localizedDescription)")
+                return
+            }
+            let size = UIImage(data: jpeg)?.size ?? .zero
+            let box = CGRect(origin: .zero, size: size)
+            poses.append(PosePhoto(pose: pose, file: file, bodyBox: box, alignedFile: file, cropRect: box, maskFile: nil))
+        }
+        let set = PhotoSet(id: setId, takenAt: .now, poses: poses, collageFile: "")
+        store.upsert(photoSet: set)
+        photoSet = set
+        phase = .review
+        loop = nil
+        await audio.speak("All four. Say retake and a pose, or you're done.")
     }
 
     /// Framing cues at most every 3 s, then capture when still for 1.2 s. False if cancelled.

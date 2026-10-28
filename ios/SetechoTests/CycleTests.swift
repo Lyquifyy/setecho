@@ -84,7 +84,7 @@ private func session(_ dayId: String?, on day: Int, addOns: [String] = [], empty
 }
 
 @Test func changeDayMovesTheCursorByHandAndADoneDayNeedsASessionSinceTheCursorArrived() {
-    #expect(Cycle.changed(to: "d5", today: date(27), calendar: cal) == CycleCursor(dayId: "d5", since: date(27, hour: 0)))
+    #expect(Cycle.changed(to: "d5", today: date(27), calendar: cal) == CycleCursor(dayId: "d5", since: date(27, hour: 0), manual: true))
     // An old Day 5 session from last cycle does not make this Day 5 done.
     #expect(!Cycle.isDone(dayId: "d5", since: date(27), sessions: [session("d5", on: 20)], calendar: cal))
     #expect(Cycle.isDone(dayId: "d5", since: date(27), sessions: [session("d5", on: 27)], calendar: cal))
@@ -129,16 +129,22 @@ private func session(_ dayId: String?, on day: Int, addOns: [String] = [], empty
 @Test @MainActor func storeSeedsAndAdvancesTheCursorAndChangesDay() {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("cycle-\(UUID().uuidString)")
     let store = Store(root: root)
-    store.saveProgram(cycle)
+    // A five-day cycle keeps the split rules: the first day, then on once it is done.
+    let five = Program(name: "5", weeks: [ProgramWeek(number: 1, days: Array(cycle.cycleDays.prefix(5)))], importedAt: date(26), flags: [])
+    store.saveProgram(five)
     #expect(store.plan?.cycle?.dayId == "d1" && store.todayDay?.day.id == "d1")
     store.changeDay(to: "d5", now: date(26))
     #expect(store.todayDay?.day.name == "Day 5")
     store.upsert(session: session("d5", on: 26))
     store.refreshCycle(now: date(27))
-    #expect(store.todayDay?.day.name == "Day 6")
+    #expect(store.todayDay?.day.name == "Day 1")   // wraps after the last day
     #expect(store.plan?.version == 1) // bookkeeping never makes a new plan version
+    // The seven-day cycle follows the weekday from the moment it is saved.
+    store.saveProgram(cycle)
+    let expected = Cycle.weekdayCursor(program: cycle, today: .now, firstWeekday: Settings.shared.cycleFirstWeekday)?.dayId
+    #expect(store.plan?.cycle?.dayId == expected)
     let reopened = Store(root: root)
-    #expect(reopened.todayDay?.day.name == "Day 6")
+    #expect(reopened.todayDay?.day.id == expected)
 }
 
 @Test @MainActor func storeSavesHisRulesAsANewVersionAndConfirmsInPlace() {
@@ -160,5 +166,28 @@ private func session(_ dayId: String?, on day: Int, addOns: [String] = [], empty
     store.saveRules(imported) // pasted again: his instructions replace the earlier ones
     #expect(store.plan?.version == 3 && store.plan?.rules.count == 1 && store.plan?.rules[0].confirmed == false)
     let reopened = Store(root: root)
-    #expect(reopened.plan?.checkInSchedule?.weekday == 5 && reopened.plan?.cycle?.dayId == "d1")
+    #expect(reopened.plan?.checkInSchedule?.weekday == 5 && reopened.plan?.cycle?.dayId == Cycle.weekdayCursor(program: cycle, today: .now, firstWeekday: Settings.shared.cycleFirstWeekday)?.dayId)
+}
+
+
+@Test func aSevenDayCycleFollowsTheDayOfTheWeek() {
+    // Mon Oct 26 2026 → Day 1; Tue → Day 2 (legs, not chest); Thu → Rest; Sun → Rest 2.
+    #expect(Cycle.followsWeekday(cycle))
+    #expect(Cycle.weekdayCursor(program: cycle, today: date(26), calendar: cal)?.dayId == "d1")
+    #expect(Cycle.weekdayCursor(program: cycle, today: date(27), calendar: cal)?.dayId == "d2")
+    #expect(Cycle.weekdayCursor(program: cycle, today: date(29), calendar: cal)?.dayId == "r1")
+    #expect(Cycle.weekdayCursor(program: cycle, today: cal.date(from: DateComponents(year: 2026, month: 11, day: 1, hour: 9))!, calendar: cal)?.dayId == "r2")
+    // Day 1 on Sunday instead: Tue is Day 3.
+    #expect(Cycle.weekdayCursor(program: cycle, today: date(27), firstWeekday: 1, calendar: cal)?.dayId == "d3")
+    // A missed day never carries over: Tuesday is Day 2 whatever happened Monday.
+    let stale = CycleCursor(dayId: "d1", since: date(26, hour: 0))
+    #expect(Cycle.current(stale, program: cycle, sessions: [], today: date(27), calendar: cal)?.dayId == "d2")
+    // "Change day" holds for that calendar day only.
+    let changed = Cycle.changed(to: "d5", today: date(27), calendar: cal)
+    #expect(changed.manual && Cycle.current(changed, program: cycle, sessions: [], today: date(27, hour: 20), calendar: cal)?.dayId == "d5")
+    #expect(Cycle.current(changed, program: cycle, sessions: [], today: date(28), calendar: cal)?.dayId == "d3")
+    // A cycle that is not seven days keeps the split rules.
+    let five = Program(name: "5", weeks: [ProgramWeek(number: 1, days: Array(cycle.cycleDays.prefix(5)))], importedAt: date(26), flags: [])
+    #expect(!Cycle.followsWeekday(five) && Cycle.weekdayCursor(program: five, today: date(27), calendar: cal) == nil)
+    #expect(Cycle.current(nil, program: five, sessions: [], today: date(27), calendar: cal)?.dayId == "d1")
 }

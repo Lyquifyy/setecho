@@ -167,7 +167,9 @@ def test_schema_uses_the_fields_as_an_enum_and_stays_strict():
 def test_turn_endpoint(monkeypatch):
     seen = {}
     monkeypatch.setattr(
-        meta, "transcribe_wav", lambda data, **k: {"transcript": "one eighty point eight", "sessionId": "s"}
+        meta,
+        "transcribe_wav",
+        lambda data, **k: {"transcript": "one eighty point eight this morning", "sessionId": "s"},
     )
 
     def fake(system, user, schema_name, schema, **kw):
@@ -188,6 +190,7 @@ def test_turn_endpoint(monkeypatch):
         and body["answers"][0]["text"] == "180.8"
         and body["reply"] == "180.8, got it."
     )
+    assert body["fastPath"] is False and set(body["timings"]) == {"transcribe", "spark", "validate"}
     assert "Step: weight" in seen["user"] and WEIGHT in seen["enum"] and GLUCOSE in seen["enum"]
     # An empty transcript is unclear, never acted on.
     monkeypatch.setattr(meta, "transcribe_wav", lambda data, **k: {"transcript": "", "sessionId": "s"})

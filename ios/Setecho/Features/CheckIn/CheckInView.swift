@@ -80,10 +80,7 @@ struct CheckInView: View {
                 Text(CheckInCoordinator.weightMissingMessage).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.navy)
             }
             if coordinator.isDrafting {
-                HStack(spacing: Theme.Space.xs) {
-                    ProgressView().tint(Theme.cobalt)
-                    Text("Filling from Apple Health and the log…").font(.subheadline).secondaryText()
-                }
+                LoadingCard(title: "Filling the check-in", detail: "Apple Health, the training log, then Muse Spark for the notes.")
             } else if let error = coordinator.error {
                 Text(error).font(.subheadline).foregroundStyle(Theme.navy)
                 LinkButton(title: "Try again", chevron: .none) { Task { await coordinator.buildDraft() } }

@@ -17,20 +17,11 @@ struct PhotoSessionView: View {
             Theme.cameraFill.ignoresSafeArea()
             if coordinator.phase != .review {
                 CameraPreview(session: coordinator.capture.captureSession).ignoresSafeArea()
-                if let outline = coordinator.outlineImage {
-                    Image(uiImage: outline)
-                        .resizable()
-                        .scaledToFill()
-                        .opacity(0.25)
-                        .ignoresSafeArea()
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
             }
             switch coordinator.phase {
             case .review:
-                if let set = coordinator.photoSet, let collage = coordinator.collage {
-                    CollageReviewView(photoSet: set, collage: collage, notes: coordinator.alignmentNotes) { dismiss() }
+                if let set = coordinator.photoSet {
+                    PhotoReviewView(photoSet: set, thumbnails: coordinator.thumbnails, onRetake: { coordinator.retake($0) }) { dismiss() }
                 }
             case .failed(let message):
                 failedView(message)
@@ -122,5 +113,46 @@ struct CameraPreview: UIViewRepresentable {
     final class PreviewView: UIView {
         override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
         var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+    }
+}
+
+
+/// The four photos as taken, in his order (DESIGN.md Photo session). A retake per pose; nothing else.
+struct PhotoReviewView: View {
+    @Environment(Store.self) private var store
+    let photoSet: PhotoSet
+    let thumbnails: [Pose: UIImage]
+    let onRetake: (Pose) -> Void
+    let onDone: () -> Void
+
+    var body: some View {
+        ScreenScaffold {
+            TitleBlock(eyebrow: Format.shortDate(photoSet.takenAt), title: "Check-in photos",
+                       subtitle: "Exactly as taken, full resolution, in your coach's order. Nothing is cropped or changed.")
+            SectionCard("This week") {
+                ForEach(Array(Pose.allCases.enumerated()), id: \.element) { index, pose in
+                    if index > 0 { CardDivider() }
+                    HStack(spacing: Theme.Space.s) {
+                        if let image = thumbnails[pose] ?? loaded(pose) {
+                            Image(uiImage: image).resizable().scaledToFill().frame(width: 72, height: 96)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
+                        } else {
+                            SetThumbnail(width: 72, height: 96)
+                        }
+                        Text(pose.title).font(.body).foregroundStyle(Theme.navy)
+                        Spacer()
+                        LinkButton(title: "Retake", chevron: .none) { onRetake(pose) }
+                    }
+                }
+            }
+        } footer: {
+            Button("Done", action: onDone).buttonStyle(.setechoPrimary)
+        }
+    }
+
+    private func loaded(_ pose: Pose) -> UIImage? {
+        guard let file = photoSet.photo(for: pose)?.file,
+              let data = try? Data(contentsOf: store.mediaDirectory.appendingPathComponent(file)) else { return nil }
+        return UIImage(data: data)
     }
 }

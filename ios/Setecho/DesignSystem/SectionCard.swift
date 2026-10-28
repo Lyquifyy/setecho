@@ -79,3 +79,27 @@ struct VerticalCardDivider: View {
     }
     .background(Theme.page)
 }
+
+
+/// One clean loading state wherever data is being read (DESIGN.md Today, Loading): a card with
+/// the cobalt spinner and a short line saying what is happening. Never a bare spinner.
+struct LoadingCard: View {
+    let title: String
+    var detail: String?
+
+    var body: some View {
+        SectionCard {
+            HStack(spacing: Theme.Space.m) {
+                ProgressView().tint(Theme.cobalt).controlSize(.large)
+                VStack(alignment: .leading, spacing: Theme.Space.xxs) {
+                    Text(title).font(.body.weight(.semibold)).foregroundStyle(Theme.navy)
+                    if let detail { Text(detail).font(.subheadline).secondaryText() }
+                }
+                Spacer()
+            }
+            .frame(minHeight: 56)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title). \(detail ?? "")")
+    }
+}

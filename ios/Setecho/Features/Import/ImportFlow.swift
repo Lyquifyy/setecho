@@ -118,7 +118,10 @@ private struct ImportInputView: View {
                 }
             }
             }
-            if let error = model.error {
+            if model.isLoading {
+                LoadingCard(title: isProgram ? "Reading the spreadsheet" : isRules ? "Reading his rules" : "Reading the form",
+                            detail: isProgram ? "Muse Spark reads every tab. About half a minute." : "Muse Spark reads it once. About 20 seconds.")
+            } else if let error = model.error {
                 SectionCard("Couldn't read it") {
                     Text(error).font(.subheadline).foregroundStyle(Theme.navy)
                 }

@@ -20,10 +20,11 @@ struct CheckInSchedule: Equatable {
         self.lastSentAt = lastSentAt
     }
 
-    /// From the plan: his confirmed cadence, else the default.
+    /// From the plan: his confirmed due day and deadline. Check-ins are weekly (decided Oct 27):
+    /// an "every other week" in his email is not applied.
     init(plan: PlanState?, lastSentAt: Date? = nil) {
         if let cadence = plan?.checkInSchedule, cadence.confirmed {
-            self.init(dueWeekday: cadence.weekday, everyWeeks: cadence.everyWeeks, dueBy: cadence.dueBy, lastSentAt: lastSentAt)
+            self.init(dueWeekday: cadence.weekday, everyWeeks: 1, dueBy: cadence.dueBy, lastSentAt: lastSentAt)
         } else {
             self.init(lastSentAt: lastSentAt)
         }

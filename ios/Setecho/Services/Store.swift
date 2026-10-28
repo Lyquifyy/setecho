@@ -163,12 +163,7 @@ final class Store {
     /// Seed or advance the cursor; called on launch and when the app comes to the foreground.
     func refreshCycle(now: Date = .now) {
         guard let plan, !plan.program.cycleDays.isEmpty else { return }
-        let next: CycleCursor?
-        if let cursor = plan.cycle {
-            next = Cycle.advanced(cursor, program: plan.program, sessions: sessions, today: now)
-        } else {
-            next = Cycle.seed(program: plan.program, sessions: sessions, today: now)
-        }
+        let next = Cycle.current(plan.cycle, program: plan.program, sessions: sessions, today: now, firstWeekday: Settings.shared.cycleFirstWeekday)
         if let next, next != plan.cycle { mutatePlan { $0.cycle = next } }
     }
 

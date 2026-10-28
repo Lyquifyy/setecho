@@ -156,6 +156,7 @@ final class CheckInMorningModel {
     // MARK: Lifecycle
 
     func start() async {
+        Task { [api] in _ = try? await api.health() } // warm the backend before the first turn
         if coordinator.draft == nil { await coordinator.buildDraft() }
         _ = await audio.requestMicrophone()
         audio.configure()

@@ -152,6 +152,7 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     plan.checkInSchedule = CheckInCadence(everyWeeks: 2, weekday: 2, dueBy: "08:00", timeZone: "America/Chicago", quote: nil, confirmed: false)
     #expect(CheckInSchedule(plan: plan) == CheckInSchedule())
     plan.checkInSchedule?.confirmed = true
-    #expect(CheckInSchedule(plan: plan).dueWeekday == 2 && CheckInSchedule(plan: plan).everyWeeks == 2)
+    // Weekly, whatever the email said: only his due day and deadline are taken.
+    #expect(CheckInSchedule(plan: plan).dueWeekday == 2 && CheckInSchedule(plan: plan).everyWeeks == 1 && CheckInSchedule(plan: plan).dueBy == "08:00")
     #expect(fortnight.reminderTime(before: date(29), calendar: cal) == cal.date(from: DateComponents(year: 2026, month: 10, day: 28, hour: 19)))
 }
