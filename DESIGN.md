@@ -63,6 +63,7 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 - `.setechoTonal` / `.setechoTonalWide` (the in-card action: cobalt text on a cobalt-tint fill, with an icon; use it instead of a bare text link when a card offers something to do), `IconButton` (44 pt round tonal icon, always labeled)
 - `SegmentTabs` (tabs inside a screen; the selected tab is cobalt; a count badge goes yellow only when that count is waiting on the athlete), `TileCard` (a half-width card that is one tappable thing; two side by side), `MeterBar` (a thin cobalt progress bar), `DisclosureChevron`
 - `ExerciseDisclosureRow` (one exercise as a single line, "Bench press · 4 × 8", that opens to the sheet's details)
+- The spoken check-in (`Conversation.swift`): `ConversationTranscript` with `SetechoLine`, `AthleteLine` and `AnswerCard`; `AnimatedCheck` (the check that draws itself, also on a ready `FieldRow`); `StepTrack`; `VoiceBar` with `WaveformBars` and `ThinkingDots`; `HoldButton`
 
 **Leaving a sheet or cover:**
 - **The first screen of every sheet or cover** gets the X: `ScreenScaffold(onClose: { dismiss() })` puts a `CloseButton` in the header's top-right, where the More menu sits on a tab. There's no "Back", "Cancel" or "Done" link at the top of the content.
@@ -175,13 +176,15 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 ### Check-in morning (full-screen, hands-free)
 - **Purpose:** the whole check-in as one conversation on check-in morning: weight, glucose, photos, the coach's questions, then review.
 - **Start:** "Hey Siri, start my Setecho check-in", the check-in-day notification, or Today's "Start check-in".
-- **Layout, top to bottom:**
-  - five step dots: Weight · Glucose · Photos · Questions · Review
-  - the current question in `.hudState`
-  - the athlete's last words and Setecho's reply, as two short lines (navy, then `textSecondary`)
-  - `ListeningIndicator`
-  - `VoiceEcho` for each stored answer: "Weight → 180.8 lb · You said"
-- **Paused:** "Take your time. Just talk when you're ready." The indicator stays on, dimmed.
+- **Layout, top to bottom** (`ConversationScreen`, shared with the wrap-up):
+  - the lockup, and which check-in this is ("Thursday check-in", or "Practice run" on any other day)
+  - `StepTrack`: Weight · Glucose · Photos · Questions · Review, done steps in cobalt with a check, the current one on yellow
+  - `ConversationTranscript`, sitting at the bottom of its space and growing upward: every line Setecho said (`SetechoLine`; the one being asked now in `.hudState`, earlier ones settled to `.hudLabel` secondary), the athlete's words as heard (`AthleteLine`, on the cobalt-tint bubble, right), and each answer the moment it is stored (`AnswerCard`: the check draws itself, the field, the value, its `SourceChip`)
+  - `VoiceBar`: whose turn it is. A live waveform and "Your turn" / "Hearing you" while the mic is open, Setecho's own pulse while it speaks, a thinking beat while a turn is read, a quiet "Take your time" while he takes his
+  - `HoldButton` "Hold to stop", which fills as it is held; once everything is answered, "Open to send" and "Read it back"
+- **Voice:** an acknowledgment and the next question go out in one breath ("Okay, 180.8. And your fasted glucose?"); the coach's questions follow each other the way a person asks them ("Now, your coach's questions. …", "And how's your recovery been?", "Last one. …"), and "say that again" asks plainly.
+- **Paused:** the voice bar reads "Take your time. Just talk when you're ready." The mic stays open.
+- **No typing.** The screen is speech only; there is no text field, in rehearsal or otherwise.
 - **Photos step:** the Photo session, full-screen, then back here.
 - **It understands:** "give me a couple of minutes" · "180.8, and glucose was 91" · "wait, it was 180.6" · "should I bump my carbs?" (→ "That's one for your coach. Want me to add it to your notes?") · "skip" · "go back" · "say that again".
 - **Never:** advice, judgment, or a voice made to sound like the coach.

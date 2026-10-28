@@ -203,10 +203,13 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     #expect(m.pendingForCoach == "Should I bump my carbs?" && spoken.last == "That's a good one for your coach. Want me to add it to your notes?")
     await m.apply(turn(.chitchat, "yes", reply: "Sure."))
     #expect(fresh.answer(for: notes)?.text == "Should I bump my carbs?" && m.pendingForCoach == nil)
-    #expect(m.question == first)   // back to the question that was being asked
+    // Back to the question that was being asked, plainly: the run's opener ("Now, your coach's
+    // questions.") is not said twice.
+    #expect(first.hasSuffix(m.question) && m.question.hasSuffix("?"))
     // "Say that again" repeats it; "skip" moves on.
+    let plain = m.question
     await m.apply(turn(.repeat_, "say that again"))
-    #expect(m.question == first)
+    #expect(m.question == plain)
     await m.apply(turn(.skip, "skip"))
     #expect(m.question != first)
 }
@@ -308,4 +311,56 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     #expect(r.intent == .change && r.changeFieldId == "energy_levels")
     let future = #"{"transcript":"x","intent":"somethingNew","answers":[],"reply":"","confidence":0.5}"#
     #expect(try JSONCoding.decoder.decode(TurnResponse.self, from: Data(future.utf8)).intent == .unclear)
+}
+
+/// The coach's questions follow each other the way a person asks them: the first opens the run,
+/// the ones between join on with "and", the last says so, and a question asked again is plain.
+@Test func theQuestionsFollowEachOtherLikeAConversation() {
+    #expect(CheckInMorningFlow.bridged("What was your biggest win this week?", index: 0, count: 4) == "Now, your coach's questions. What was your biggest win this week?")
+    #expect(CheckInMorningFlow.bridged("How's your recovery been this week?", index: 1, count: 4) == "And how's your recovery been this week?")
+    #expect(CheckInMorningFlow.bridged("For your last refeed or cheat meal, I've got 10/24/26. Sound right?", index: 2, count: 4)
+            == "And for your last refeed or cheat meal, I've got 10/24/26. Sound right?")
+    #expect(CheckInMorningFlow.bridged("Anything else you want your coach to know?", index: 3, count: 4) == "Last one. Anything else you want your coach to know?")
+    // A line that doesn't start like a question is left as it is, and a lone question has nothing to join.
+    #expect(CheckInMorningFlow.bridged("Anything else you want your coach to know?", index: 1, count: 3) == "Anything else you want your coach to know?")
+    #expect(CheckInMorningFlow.bridged("How's your sleep been this week?", index: 0, count: 1) == "How's your sleep been this week?")
+}
+
+/// Every line said and every answer stored lands in the conversation on screen, an acknowledgment
+/// goes out in the same breath as the next question, and "skip" on the photos moves on without them.
+@Test @MainActor func theConversationOnScreenKeepsEveryLineAndAnswer() async throws {
+    let store = makeStore()
+    store.saveTemplate(try template())
+    let flow = CheckInMorningFlow(template: try template())
+    let weight = try #require(flow.weightField)
+    let glucose = try #require(flow.glucoseField)
+    store.upsert(checkIn: currentDraft(answers: []))
+    let coordinator = CheckInCoordinator(store: store)
+    nonisolated(unsafe) var spoken: [String] = []
+    let m = CheckInMorningModel(coordinator: coordinator, store: store, speak: { spoken.append($0) })
+    await m.resume(opening: true)
+    #expect(m.transcript.last?.kind == .setecho && m.transcript.last?.text == CheckInMorningModel.scaleLine)
+    #expect(m.phase == .listening)
+    // One utterance, two answers: his words, then one card per answer, then the acknowledgment and
+    // the next line as two entries on screen but one utterance out loud.
+    await m.apply(turn(.answer, "180.8, and glucose was 91", answers: [answer(weight.id, "180.8"), answer(glucose.id, "91")], reply: "Weight 180.8 and glucose 91, got it."))
+    let kinds = m.transcript.suffix(5).map(\.kind)
+    #expect(kinds[0] == .athlete && m.transcript.suffix(5).first?.text == "180.8, and glucose was 91")
+    #expect(kinds[1] == .answer(label: "Current body weight", value: "180.8", source: "You said · 2026-10-29"))
+    #expect(kinds[2] == .answer(label: "Fasted blood glucose", value: "91", source: "You said · 2026-10-29"))
+    #expect(kinds[3] == .setecho && kinds[4] == .setecho)
+    #expect(m.transcript.last?.text == CheckInMorningModel.photosLine && m.question == CheckInMorningModel.photosLine)
+    #expect(spoken.last == "Got it, weight 180.8 and glucose 91. " + CheckInMorningModel.photosLine)
+    // "Skip" on the photos: left for later, and the coach's questions open.
+    await m.apply(turn(.skip, "skip"))
+    #expect(m.step == .questions && m.question.hasPrefix("Now, your coach's questions. "))
+    #expect(spoken.last?.hasPrefix("Okay, we'll leave the photos for later. Now, your coach's questions. ") == true)
+    #expect(coordinator.answer(for: try #require(flow.template.fields.first { $0.source.type == .photo })) == nil)
+    // The next question joins on; "say that again" asks it plainly.
+    let first = m.question
+    await m.apply(turn(.skip, "skip"))
+    #expect(m.question.hasPrefix("And ") || m.question.hasPrefix("Last one. "))
+    #expect(m.question != first)
+    await m.apply(turn(.repeat_, "say that again"))
+    #expect(!m.question.hasPrefix("And ") && !m.question.hasPrefix("Now, "))
 }

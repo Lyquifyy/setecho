@@ -133,6 +133,20 @@ struct CheckInMorningFlow: Equatable {
 
     static func isYes(_ transcript: String) -> Bool { SpokenReply.read(transcript, offered: true) == .keep }
     static func isNo(_ transcript: String) -> Bool { SpokenReply.read(transcript, offered: true) == .decline }
+
+    /// A coach's question the way it follows in a conversation: the first opens the questions
+    /// ("Now, your coach's questions. What was your biggest win this week?"), the last says so
+    /// ("Last one. Anything else you want your coach to know?"), and the ones between join on with
+    /// "and" ("And how's your recovery been this week?"). A question asked again is asked plainly.
+    static func bridged(_ prompt: String, index: Int, count: Int) -> String {
+        guard count > 1 else { return prompt }
+        if index == 0 { return "Now, your coach's questions. \(prompt)" }
+        if index == count - 1 { return "Last one. \(prompt)" }
+        guard let first = prompt.first, prompt.hasPrefix("How") || prompt.hasPrefix("What") || prompt.hasPrefix("When") || prompt.hasPrefix("For") else {
+            return prompt
+        }
+        return "And \(first.lowercased())\(prompt.dropFirst())"
+    }
 }
 
 extension String {
@@ -155,6 +169,12 @@ final class CheckInMorningModel {
     private(set) var isPaused = false
     private(set) var isDone = false
     private(set) var status: String?
+    /// A turn was heard and is being read: the voice bar shows the thinking beat.
+    private(set) var isThinking = false
+    /// The conversation so far, as the screen shows it: every line said, every answer stored.
+    private(set) var transcript: [ConversationEntry] = []
+    /// The step whose answer was just stored, so the next question can join on ("And your fasted glucose?").
+    private var lastAnsweredStep: CheckInMorningStep?
     /// The photo session runs full-screen, then the conversation carries on.
     var showPhotos = false
     /// Review and send, the one tap of the morning.
@@ -219,15 +239,45 @@ final class CheckInMorningModel {
         }
     }
 
+    /// Whose turn it is, for the voice bar.
+    var phase: VoicePhase {
+        if showPhotos || showReview { return .idle }
+        if audio.isSpeaking { return .speaking }
+        if isThinking { return .thinking }
+        if isPaused { return .paused }
+        if isListening { return .listening }
+        return .idle
+    }
+
+    /// "Thursday check-in", or "Practice run" on any other day.
+    var title: String {
+        let schedule = CheckInSchedule(plan: store.plan, lastSentAt: store.lastSentCheckIn?.sentAt)
+        let dueDay = schedule.nextDue(from: .now).formatted(.dateTime.weekday(.wide))
+        return schedule.isCheckInMorning(on: .now) ? "\(dueDay) check-in" : "Practice run"
+    }
+
+    static let scaleLine = "Hop on the scale, and tell me when you're off."
+    static let scaleReadingLine = "What did it say?"
+    static let glucoseLine = "What's your fasted glucose?"
+    static let glucoseAfterWeightLine = "And your fasted glucose?"
+    static let photosLine = "Time for photos. Set up the tripod, and tell me when you're ready."
+    static let photosDoneLine = "Photos are in."
+    static let doneLine = "That's everything. Want me to read it back, or are you ready to send?"
+
     /// The coach's questions and the fixed lines, rendered once and kept by a hash of the line and voice.
     private func prerender() {
-        var lines = ["Hop on the scale, and tell me when you're off.", "What does it say?", "What's your fasted glucose?",
-                     "Time for photos. Set up the tripod, and tell me when you're ready.", "Nice, the photos are done.",
-                     "That's everything. Want me to read it back, or are you ready to send?", "No rush. Tell me when you're ready.",
-                     "Okay.", "Nice.",
-                     "Welcome back. Let's pick up where we left off.", "Sorry, can you say that again?", "Okay, we'll skip that one.", "Got it.", "I'll add that to your notes.", "Okay, I'll leave that out.",
-                     "Take your time.", "What should it say?"]
-        lines += questionGroups.map { flow.prompt(for: $0, draft: draft) }
+        var lines = [Self.scaleLine, Self.scaleReadingLine, Self.glucoseLine, Self.glucoseAfterWeightLine, Self.photosLine, Self.photosDoneLine,
+                     Self.doneLine, "No rush. Tell me when you're ready.", "Okay.", "Nice.",
+                     "Welcome back. Let's pick up where we left off.", "Sorry, can you say that again?", "Okay, we'll skip that one.",
+                     "Okay, we'll leave the photos for later.", "Got it.", "I'll add that to your notes.", "Okay, I'll leave that out.",
+                     "Take your time.", "What should it say?", "Go ahead."]
+        let groups = questionGroups
+        lines += groups.map { flow.prompt(for: $0, draft: draft) }
+        // Each question as it follows in the conversation, so the first of a run plays at once.
+        lines += groups.enumerated().map { CheckInMorningFlow.bridged(flow.prompt(for: $1, draft: draft), index: $0, count: groups.count) }
+        // The same question, if it becomes the first or the last of a run that resumed part way.
+        lines += groups.map { CheckInMorningFlow.bridged(flow.prompt(for: $0, draft: draft), index: 0, count: 2) }
+        lines += groups.map { CheckInMorningFlow.bridged(flow.prompt(for: $0, draft: draft), index: 1, count: 2) }
         // The data read-back, each line as it will be said, so they play at once.
         lines += flow.readBackFields(draft: draft).enumerated().map { index, item in
             CheckInMorningFlow.readBackPrompt(item.field, item.answer, index: index, first: index == 0, fact: fact(for: item.field, now: item.answer.text))
@@ -237,7 +287,12 @@ final class CheckInMorningModel {
 
     var stepIndex: Int { step.rawValue }
     private var draft: CheckInDraft? { coordinator.draft }
+    /// "Skip" on the photos step: the morning moves on without them this time, and the photo
+    /// field stays open for later (Today's Photos tile).
+    private var photosSkipped = false
+
     private var photosTakenToday: Bool {
+        if photosSkipped { return true }
         guard !ignorePhotosToday, let set = store.lastPhotoSet else { return false }
         return Calendar.current.isDateInToday(set.takenAt)
     }
@@ -318,28 +373,32 @@ final class CheckInMorningModel {
         TurnTimings.shared.write(to: store.mediaDirectory, name: DayKey.string(.now))
     }
 
-    /// Pick up at the next pending step, on start and after the photos or a pause.
-    func resume(opening: Bool = false) async {
+    /// Pick up at the next pending step, on start and after the photos or a pause. With `after`, the
+    /// acknowledgment of what was just stored is said in the same breath as the next line
+    /// ("Okay. And your fasted glucose?"), the way a person moves on.
+    func resume(opening: Bool = false, after ack: String? = nil) async {
         isPaused = false
         Reminders.clearWaiting()
         await coordinator.refreshWeightToday()
+        let previous = step
         step = flow.nextStep(draft: draft, photosTakenToday: photosTakenToday)
         questionIndex = 0
         switch step {
         case .weight:
             if !coordinator.weightMissingToday, let known = coordinator.weightTodayText {
                 // Today's weigh-in is in Apple Health: offer it; he can say the number instead.
-                await offerWeight(known)
+                await offerWeight(known, after: ack)
                 return
             }
             awaitingWeightReading = false
-            await ask("Hop on the scale, and tell me when you're off.")
+            await ask(Self.scaleLine, after: ack)
         case .glucose:
-            await ask("What's your fasted glucose?")
+            // Straight after the weight, the question joins on; on its own, it stands alone.
+            await ask(ack != nil && previous == .weight ? Self.glucoseAfterWeightLine : Self.glucoseLine, after: ack)
         case .photos:
-            await ask("Time for photos. Set up the tripod, and tell me when you're ready.")
+            await ask(Self.photosLine, after: ack)
         case .questions:
-            await askCurrentQuestion()
+            await askCurrentQuestion(after: ack)
         case .review:
             if !dataQueueBuilt {
                 dataQueueBuilt = true
@@ -355,11 +414,11 @@ final class CheckInMorningModel {
                 // The same index as the pre-rendered line, so it plays from its file.
                 let index = flow.readBackFields(draft: draft).firstIndex { $0.field.id == id } ?? 0
                 await ask(CheckInMorningFlow.readBackPrompt(item.field, item.answer, index: index, first: first,
-                                                            fact: fact(for: item.field, now: item.answer.text)))
+                                                            fact: fact(for: item.field, now: item.answer.text)), after: ack)
                 return
             }
             isDone = true
-            await ask("That's everything. Want me to read it back, or are you ready to send?")
+            await ask(Self.doneLine, after: ack)
         }
     }
 
@@ -368,24 +427,59 @@ final class CheckInMorningModel {
         return groups.indices.contains(questionIndex) ? groups[questionIndex] : nil
     }
 
-    private func askCurrentQuestion() async {
+    /// How many of the coach's questions this run has asked: an answered group drops out of the
+    /// list, so the list's index can't say whether a question is the first or the last.
+    private var askedInRun = 0
+
+    /// The coach's question that is next, as it follows in the conversation; `bridge: false` asks it
+    /// plainly ("say that again", "go back").
+    private func askCurrentQuestion(after ack: String? = nil, bridge: Bool = true) async {
+        let groups = questionGroups
         guard let group = currentGroup else {
-            await resume()
+            await resume(after: ack)
             return
         }
-        await ask(flow.prompt(for: group, draft: draft))
+        let prompt = flow.prompt(for: group, draft: draft)
+        let remaining = groups.count - questionIndex
+        let line = bridge ? CheckInMorningFlow.bridged(prompt, index: askedInRun, count: askedInRun + remaining) : prompt
+        if bridge { askedInRun += 1 }
+        await ask(line, after: ack)
     }
 
-    private func ask(_ text: String) async {
+    /// Ask a line and open the mic. With `after`, the acknowledgment and the question go out as one
+    /// utterance, so the voice phrases them together, while the screen shows them as two lines.
+    private func ask(_ text: String, after ack: String? = nil) async {
         question = text
-        await say(text)
+        if let ack, !ack.isEmpty {
+            reply = text
+            append(.setecho(ack))
+            append(.setecho(text))
+            await speak(ack + " " + text)
+        } else {
+            await say(text)
+        }
         isListening = true
         armSilenceTimer()
     }
 
     private func say(_ text: String) async {
         reply = text
+        append(.setecho(text))
         await speak(text)
+    }
+
+    /// The conversation on screen, kept to what fits in memory.
+    private func append(_ entry: ConversationEntry) {
+        transcript.append(entry)
+        if transcript.count > 60 { transcript.removeFirst(transcript.count - 60) }
+    }
+
+    /// An answer stored: the echo line, and a card in the conversation with its check.
+    private func record(_ answers: [FieldAnswer], note: String? = nil) {
+        echo = note ?? answers.map { "\(label(for: $0.fieldId)) → \($0.text) · You said" }.joined(separator: "\n")
+        for answer in answers where !answer.text.isEmpty {
+            append(.answer(label: label(for: answer.fieldId), value: answer.text, source: answer.provenance.first?.source ?? "You said"))
+        }
     }
 
     // MARK: Turns
@@ -421,7 +515,8 @@ final class CheckInMorningModel {
         TurnTimings.shared.endOfSpeech()
         audio.playTurnEndSound() // a soft sound the moment a turn ends
         filming?.heard(pcm16: pcm, sampleRate: 16_000)
-        status = "Hearing that…"
+        isThinking = true
+        defer { isThinking = false }
         let wav = WAVFile.data(pcm16: pcm, sampleRate: 16_000)
         do {
             // The words from the realtime stream, if it delivered; else the WAV by file mode.
@@ -436,6 +531,7 @@ final class CheckInMorningModel {
             TurnTimings.shared.received(response)
             filming?.transcribed(response.transcript)
             status = nil
+            isThinking = false
             let hasWords = response.transcript.contains { $0.isLetter || $0.isNumber }
             if !hasWords {
                 TurnTimings.shared.heard(.noWords)
@@ -514,6 +610,7 @@ final class CheckInMorningModel {
     /// and the next question is the first pending one in the coach's order.
     func apply(_ response: TurnResponse) async {
         lastWords = response.transcript
+        if response.transcript.contains(where: { $0.isLetter || $0.isNumber }) { append(.athlete(response.transcript)) }
         armSilenceTimer()
         let offer = self.offer
         let said = SpokenReply.read(response.transcript, offered: offer != nil)
@@ -542,13 +639,12 @@ final class CheckInMorningModel {
                 let text = existing.isEmpty ? question : "\(existing) \(question)"
                 coordinator.set(notes.id, text: text, state: .filled, provenance: [Provenance(source: "You said · \(DayKey.string(.now))", detail: response.transcript)])
                 echo = "Notes → \(question)"
-                await say("I'll add that to your notes.")
-                await askCurrentQuestion()
+                append(.answer(label: "Notes for your coach", value: question, source: "You said"))
+                await askCurrentQuestion(after: "I'll add that to your notes.", bridge: false)
                 return
             }
             if declines {
-                await say("Okay, I'll leave that out.")
-                await askCurrentQuestion()
+                await askCurrentQuestion(after: "Okay, I'll leave that out.", bridge: false)
                 return
             }
         }
@@ -558,7 +654,10 @@ final class CheckInMorningModel {
                 dataQueue.removeFirst()
                 coordinator.confirm(id)
                 echo = "\(label(for: id)) → confirmed"
-                await resume()
+                if let answer = coordinator.draft?.answers.first(where: { $0.fieldId == id }) {
+                    append(.answer(label: label(for: id), value: answer.text, source: answer.provenance.first?.source ?? "Confirmed"))
+                }
+                await resume(after: acknowledgment(beforeAFact: false) + ".")
                 return
             }
             if declines {
@@ -569,15 +668,13 @@ final class CheckInMorningModel {
             if response.intent == .answer || response.intent == .correction, response.answers.contains(where: { $0.fieldId == id }) {
                 dataQueue.removeFirst()
                 coordinator.apply(response.answers)
-                echo = response.answers.map { "\(label(for: $0.fieldId)) → \($0.text) · You said" }.joined(separator: "\n")
-                await say(acknowledged(response))
-                await resume()
+                record(response.answers)
+                await resume(after: acknowledged(response))
                 return
             }
             if response.intent == .skip {
                 dataQueue.removeFirst()
-                await say("Okay, we'll skip that one.")
-                await resume()
+                await resume(after: "Okay, we'll skip that one.")
                 return
             }
         }
@@ -589,14 +686,15 @@ final class CheckInMorningModel {
                                     provenance: [Provenance(source: "Apple Health", detail: "This morning's weigh-in, \(known) lb")])
                 }
                 echo = "Weight → \(known) lb · Apple Health"
-                await say(acknowledgment(beforeAFact: false) + ".")
-                await resume()
+                append(.answer(label: "Weight", value: "\(known) lb", source: "Apple Health"))
+                lastAnsweredStep = .weight
+                await resume(after: acknowledgment(beforeAFact: false) + ".")
                 return
             }
             if declines {
                 offeredWeight = nil
                 awaitingWeightReading = true
-                await ask("What does it say?")
+                await ask(Self.scaleReadingLine)
                 return
             }
             if response.intent == .answer || response.intent == .correction, !response.answers.isEmpty { offeredWeight = nil }
@@ -605,9 +703,9 @@ final class CheckInMorningModel {
             if keeps {
                 coordinator.confirm(group[0].id)
                 echo = "\(WrapUpModel.shortLabel(group).capitalized) → \(drafted.text) · Confirmed"
+                append(.answer(label: label(for: group[0].id), value: drafted.text, source: drafted.provenance.first?.source ?? "Confirmed"))
                 questionIndex += 1
-                await say(acknowledgment(beforeAFact: false) + ".")
-                await askCurrentQuestion()
+                await askCurrentQuestion(after: acknowledgment(beforeAFact: false) + ".")
                 return
             }
             if declines {
@@ -625,35 +723,37 @@ final class CheckInMorningModel {
             // Nothing was on offer: there's nothing to keep, so ask the question again.
             await ask(question)
         case .resume:
-            await say(response.reply.isEmpty ? "Welcome back. Let's pick up where we left off." : response.reply)
-            await resume()
+            await resume(after: response.reply.isEmpty ? "Welcome back. Let's pick up where we left off." : response.reply)
         case .ready:
             await ready()
         case .repeat_:
-            await ask(question)
+            // The question again, plainly: no "and", no "last one".
+            if step == .questions { await askCurrentQuestion(bridge: false) } else { await ask(question) }
         case .skip:
             if step == .questions { questionIndex += 1 }
-            await say("Okay, we'll skip that one.")
-            await advance()
+            if step == .photos {
+                photosSkipped = true
+                await advance(after: "Okay, we'll leave the photos for later.")
+                return
+            }
+            await advance(after: "Okay, we'll skip that one.")
         case .goBack:
             if step == .questions, questionIndex > 0 { questionIndex -= 1 }
-            await askCurrentQuestion()
+            await askCurrentQuestion(bridge: false)
         case .forCoach:
             let asked = response.answers.first?.text ?? response.transcript
             pendingForCoach = asked
             await ask(response.reply.isEmpty ? "That's a good one for your coach. Want me to add it to your notes?" : response.reply)
         case .answer, .correction:
             coordinator.apply(response.answers)
-            let lines: [String] = response.answers.map { answer -> String in
-                "\(self.label(for: answer.fieldId)) → \(answer.text) · You said"
-            }
-            echo = lines.joined(separator: "\n")
-            await say(acknowledged(response))
+            record(response.answers)
+            lastAnsweredStep = step
             if response.intent == .correction {
+                await say(acknowledged(response))
                 isListening = true
                 armSilenceTimer()
             } else {
-                await advance()
+                await advance(after: acknowledged(response))
             }
         case .change:
             // The field to ask again, picked by code: it goes back to missing and its question comes next.
@@ -681,7 +781,7 @@ final class CheckInMorningModel {
                 await offerWeight(known)
             } else {
                 awaitingWeightReading = true
-                await ask("What does it say?")
+                await ask(Self.scaleReadingLine)
             }
         case .photos:
             showPhotos = true
@@ -701,6 +801,7 @@ final class CheckInMorningModel {
             step = .questions
             questionIndex = index
             echo = "\(label(for: id)) → asked again"
+            append(.note("\(label(for: id)) asked again"))
             await ask("\(label(for: id)). What should it say?")
         } else {
             await resume()
@@ -708,10 +809,10 @@ final class CheckInMorningModel {
     }
 
     /// "Apple Health has you at 180.8. Should I use that?" A number in reply replaces it (Oct 27 rehearsal: he wants to say it.)
-    private func offerWeight(_ known: String) async {
+    private func offerWeight(_ known: String, after ack: String? = nil) async {
         offeredWeight = known
         awaitingWeightReading = false
-        await ask(weightOfferLine(known))
+        await ask(weightOfferLine(known), after: ack)
     }
 
     /// "Apple Health has you at 180.8, down 0.4 from last week. Should I use that?"
@@ -766,31 +867,34 @@ final class CheckInMorningModel {
         return SpokenFacts.joined(line, fact: fact)
     }
 
-    /// After an answer: the next pending step or question, by the draft, never by the model.
-    private func advance() async {
+    /// After an answer: the next pending step or question, by the draft, never by the model. The
+    /// acknowledgment goes out with it, in one breath.
+    private func advance(after ack: String? = nil) async {
         if step == .questions {
             // The index moves past what is now answered; a confirmed or filled group drops out of the list.
             let groups = questionGroups
             if questionIndex >= groups.count || groups.isEmpty {
-                await resume()
+                await resume(after: ack)
                 return
             }
-            await askCurrentQuestion()
+            await askCurrentQuestion(after: ack)
             return
         }
-        await resume()
+        await resume(after: ack)
     }
 
     /// Back from the photo session: carry on with the questions.
     func photosFinished() async {
+        var ack: String?
         if let set = store.lastPhotoSet, Calendar.current.isDateInToday(set.takenAt), set.takenAt > openedAt || !ignorePhotosToday {
             ignorePhotosToday = false
             coordinator.attachPhotoSet(set.id)
-            await say("Nice, the photos are done.")
+            append(.note("Four photos taken"))
+            ack = Self.photosDoneLine
         }
         // Dismissed because the app left the front: the return to the front picks the step up.
         guard !isPaused else { return }
-        await resume()
+        await resume(after: ack)
     }
 
     /// "Read it back": the answers, in his order.
@@ -804,9 +908,10 @@ final class CheckInMorningModel {
         isListening = true
     }
 
+    /// The field's short label as a sentence reads it: "Current body weight", "Recovery".
     private func label(for fieldId: String) -> String {
         guard let field = flow.template.fields.first(where: { $0.id == fieldId }) else { return fieldId }
-        return WrapUpModel.shortLabel([field]).capitalized
+        return WrapUpModel.shortLabel([field]).capitalizedFirst
     }
 
     static func readBack(_ answers: [FieldAnswer], labels: (String) -> String) -> String {

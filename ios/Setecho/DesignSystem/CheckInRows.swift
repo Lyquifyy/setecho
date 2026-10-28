@@ -71,9 +71,12 @@ struct FieldRow: View {
         case .missing, nil:
             if asked {
                 Text("Ask in wrap-up").font(.caption.weight(.semibold)).secondaryText()
+            } else {
+                Circle().strokeBorder(Theme.border, lineWidth: 2).frame(width: 24, height: 24).accessibilityHidden(true)
             }
         case .filled, .confirmed:
-            EmptyView()
+            // Ready: the check draws itself, the same one an answer gets in the conversation.
+            AnimatedCheck(size: 24).accessibilityLabel("Ready")
         }
     }
 }

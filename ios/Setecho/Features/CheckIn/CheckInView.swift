@@ -129,14 +129,17 @@ struct CheckInView: View {
                     .buttonStyle(.setechoTonal)
             } else {
                 HStack(spacing: Theme.Space.xs) {
-                    Button("Start 2-minute wrap-up", systemImage: "mic.fill") { showWrapUp = true }
+                    // The whole check-in as one conversation: weight, glucose, photos, his questions.
+                    Button("Talk it through", systemImage: "waveform") { AppRouter.shared.showCheckInMorning = true }
                         .buttonStyle(.setechoTonalWide)
-                        .disabled(coordinator.questions.isEmpty)
                     if Settings.shared.developerTools {
                         IconButton(systemImage: "list.bullet.rectangle", accessibilityLabel: "Facts") { showFacts = true }
                     }
                     IconButton(systemImage: "arrow.clockwise", accessibilityLabel: "Refresh") { Task { await coordinator.buildDraft() } }
                 }
+                Button("Start 2-minute wrap-up", systemImage: "mic.fill") { showWrapUp = true }
+                    .buttonStyle(.setechoTonalWide)
+                    .disabled(coordinator.questions.isEmpty)
             }
         }
     }

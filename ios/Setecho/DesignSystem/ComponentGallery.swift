@@ -63,6 +63,15 @@ struct ComponentGallery: View {
             }
             .fixedSize(horizontal: false, vertical: true)
 
+            // The spoken check-in: the step track, a line each way, an answer with its check, whose turn it is.
+            StepTrack(steps: [.init(id: "w", title: "Weight"), .init(id: "g", title: "Glucose"), .init(id: "p", title: "Photos"),
+                              .init(id: "q", title: "Questions"), .init(id: "r", title: "Review")], current: 1)
+            SetechoLine(text: "Okay. And your fasted glucose?", current: true)
+            AthleteLine(text: "Ninety one.")
+            AnswerCard(label: "Fasted blood glucose", value: "91", source: "You said · Thu")
+            VoiceBar(phase: .listening, level: 0.4)
+            HoldButton(title: "Hold to stop") {}
+
             SectionCard("Colors") {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: Theme.Space.s)], spacing: Theme.Space.s) {
                     swatch("cobalt", Theme.cobalt)
