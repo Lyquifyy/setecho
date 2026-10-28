@@ -36,8 +36,8 @@ final class Settings {
     var nextSetSuggestions: Bool { didSet { defaults.set(nextSetSuggestions, forKey: "nextSetSuggestions") } }
     /// Settings → "Start holds automatically": a hold starts itself after "Three, two, one" (HANDOFF.md §7, Add-ons).
     var autoStartHolds: Bool { didSet { defaults.set(autoStartHolds, forKey: "autoStartHolds") } }
-    /// "How a session works" has been shown once, before the first session (`SessionIntroView`).
-    var hasSeenSessionIntro: Bool { didSet { defaults.set(hasSeenSessionIntro, forKey: "hasSeenSessionIntro") } }
+    /// Settings → "Machine-taken help": his options when a machine's taken. Off, his own swaps still work and are logged.
+    var machineTakenHelp: Bool { didSet { defaults.set(machineTakenHelp, forKey: "machineTakenHelp") } }
     /// What the athlete can load (§13): barbell 5 lb, dumbbells 5 lb, machines from here.
     var barbellStepLb: Double { didSet { defaults.set(barbellStepLb, forKey: "barbellStepLb") } }
     var dumbbellStepLb: Double { didSet { defaults.set(dumbbellStepLb, forKey: "dumbbellStepLb") } }
@@ -86,7 +86,7 @@ final class Settings {
         voiceTones = (defaults.data(forKey: "voiceTones")).flatMap { try? JSONDecoder().decode([String: VoiceTone].self, from: $0) } ?? [:]
         nextSetSuggestions = defaults.object(forKey: "nextSetSuggestions") as? Bool ?? true
         autoStartHolds = defaults.object(forKey: "autoStartHolds") as? Bool ?? true
-        hasSeenSessionIntro = defaults.bool(forKey: "hasSeenSessionIntro")
+        machineTakenHelp = defaults.object(forKey: "machineTakenHelp") as? Bool ?? true
         barbellStepLb = defaults.object(forKey: "barbellStepLb") as? Double ?? 5
         dumbbellStepLb = defaults.object(forKey: "dumbbellStepLb") as? Double ?? 5
         machineStepLb = defaults.object(forKey: "machineStepLb") as? Double ?? 10

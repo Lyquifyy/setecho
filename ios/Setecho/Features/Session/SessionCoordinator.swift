@@ -57,7 +57,8 @@ final class SessionCoordinator {
                                     loadSteps: settings.loadSteps, lastSets: store.lastSets, nextSessionLoads: store.nextSessionLoads,
                                     suggestionsEnabled: settings.nextSetSuggestions, calibration: store.calibration,
                                     athleteName: settings.athleteFirstName.isEmpty ? nil : settings.athleteFirstName,
-                                    autoHolds: settings.autoStartHolds)
+                                    autoHolds: settings.autoStartHolds, takenRule: plan?.takenRule, takenHelp: settings.machineTakenHelp,
+                                    variantLoads: store.variantLoads, recentVariants: store.recentVariants)
         self.store = store
         self.api = api
         self.rehearsal = rehearsal

@@ -208,29 +208,39 @@ def test_render_returns_the_plan_message_then_the_questionnaire():
     assert len(checkin.render_messages(bare, draft)) == 1
 
 
-def test_render_appends_the_adjustments_line_after_his_last_field():
+def test_render_puts_adjustments_and_gym_changes_in_his_notes_field():
     draft = checkin.build_draft(request(), agent=lambda req, fields: {})
     lines = [
         "Incline press set 3, 225 → 215 (RPE 9.5 vs 8)",
         "Bench set 1, 190 → 195 next session (rest-pause over goal)",
     ]
-    _, form = checkin.render_messages(
-        TEMPLATE,
-        draft,
-        adjustments=lines,
-        deviations=["Tue, incline barbell → incline dumbbell press (bench taken)"],
+    changes = ["Tue, Smith close-grip press → close-grip bench press (Smith taken)"]
+    _, plain = checkin.render_messages(TEMPLATE, draft)
+    _, form = checkin.render_messages(TEMPLATE, draft, adjustments=lines, deviations=changes)
+    notes = next(line for line in form.splitlines() if line.startswith("Additional notes or concerns"))
+    assert notes.endswith(
+        "Adjusted by your rule: Incline press set 3, 225 → 215 (RPE 9.5 vs 8); Bench set 1, 190 → 195 next session "
+        "(rest-pause over goal). Gym changes: Tue, Smith close-grip press → close-grip bench press (Smith taken)."
     )
-    assert form.endswith(
-        "Adjustments (your rule): Incline press set 3, 225 → 215 (RPE 9.5 vs 8); Bench set 1, 190 → 195 next session "
-        "(rest-pause over goal)\n\nGym changes: Tue, incline barbell → incline dumbbell press (bench taken)."
-    )
-    assert form.index("Additional notes or concerns") < form.index("Adjustments (your rule)")
-    assert "Adjustments" not in checkin.render_messages(TEMPLATE, draft)[1]
+    # His format keeps its shape: the same lines, no heading added after his last field.
+    assert len(form.splitlines()) == len(plain.splitlines())
+    assert "Adjustments (your rule)" not in form and "Adjustments" not in plain
     r = TestClient(app).post(
         "/checkin/render",
-        json={"template": TEMPLATE.model_dump(), "draft": draft.model_dump(), "adjustments": lines},
+        json={
+            "template": TEMPLATE.model_dump(),
+            "draft": draft.model_dump(),
+            "adjustments": lines,
+            "deviations": changes,
+        },
     )
-    assert r.status_code == 200 and "Adjustments (your rule)" in r.json()["messages"][1]
+    assert r.status_code == 200 and "Gym changes: Tue, Smith close-grip press" in r.json()["messages"][1]
+
+
+def test_notes_field_is_his_additional_notes_else_the_last_spoken_text_field():
+    assert checkin.notes_field_id(TEMPLATE) is not None and "additional_notes" in checkin.notes_field_id(
+        TEMPLATE
+    )
 
 
 def test_free_meal_is_drafted_from_a_note_then_the_untracked_meal_else_asked():

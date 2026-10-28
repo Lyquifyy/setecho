@@ -448,6 +448,7 @@ private struct RulesReviewView: View {
                         }
                     }
                 }
+                TakenRuleCard()
                 if !rules.flags.isEmpty {
                     SectionCard("Left out") {
                         ForEach(Array(rules.flags.enumerated()), id: \.offset) { index, flag in

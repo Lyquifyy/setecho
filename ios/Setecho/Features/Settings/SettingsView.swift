@@ -8,8 +8,6 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var settings = Settings.shared
     @State private var personalVoiceNote: String?
-    @State private var showGuide = false
-    @State private var showIntro = false
 
     /// The show date is stored as "yyyy-mm-dd", empty when not in prep.
     private var inPrep: Binding<Bool> {
@@ -101,12 +99,11 @@ struct SettingsView: View {
                 SettingToggle("Start holds automatically", isOn: $settings.autoStartHolds)
                 Note("Vacuums and planks start after \u{201C}three, two, one\u{201D}, and the next one after its rest. Say \u{201C}go\u{201D} to start early, \u{201C}hold on\u{201D} to wait.")
                 CardDivider()
+                SettingToggle("Machine-taken help", isOn: $settings.machineTakenHelp)
+                Note("When you say a machine's taken, his choices in the order you confirmed. Off: your own swaps (\u{201C}doing dumbbells instead\u{201D}) still work, and he still sees them.")
+                CardDivider()
                 SettingToggle("Use AirPods mic", isOn: $settings.useAirPodsMic)
                 Note(AirPodsMic.shared.notice ?? "On: AirPods listen as well as play, at full quality where iOS supports it, or Setecho switches back by itself. Off: the DJI receiver or the iPhone mic listens.")
-                CardDivider()
-                LinkButton(title: "How a session works") { showIntro = true }
-                LinkButton(title: "What you can say") { showGuide = true }
-                Note("Between sets, \u{201C}what can I say?\u{201D} tells you what works right then.")
             }
 
             SectionCard("Voice") {
@@ -165,8 +162,6 @@ struct SettingsView: View {
                 }
             }
         }
-        .sheet(isPresented: $showGuide) { VoiceGuideView() }
-        .sheet(isPresented: $showIntro) { SessionIntroView() }
     }
 
     /// One part of the current voice's tone, saved per voice as it moves.

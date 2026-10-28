@@ -194,6 +194,30 @@ final class Store {
         mutatePlan { $0.addOnDays = days }
     }
 
+    /// "When a machine's taken, what does your coach want?", answered and confirmed in the rules review.
+    func setTakenRule(_ rule: TakenRule?) {
+        mutatePlan { $0.takenRule = rule }
+    }
+
+    /// Each swapped variant's last working load ("exerciseId|doneAs", lowercased): a swap's load comes
+    /// from its own history, never converted from the planned lift's.
+    var variantLoads: [String: Double] {
+        var loads: [String: Double] = [:]
+        for session in sessions.sorted(by: { $0.startedAt < $1.startedAt }) {
+            for set in session.workingSets where set.loadLb > 0 {
+                if let doneAs = set.doneAs { loads["\(set.exerciseId)|\(doneAs.lowercased())"] = set.loadLb }
+            }
+        }
+        return loads
+    }
+
+    /// The variants he swapped to, most recent first: "prefer the variant done most recently".
+    var recentVariants: [String] {
+        var seen = Set<String>()
+        return sessions.sorted { $0.startedAt > $1.startedAt }.flatMap(\.deviations).compactMap(\.doneAs)
+            .filter { seen.insert($0.lowercased()).inserted }
+    }
+
     /// The cycle day Today shows, with its week. Nil without a program.
     var todayDay: (week: ProgramWeek, day: ProgramDay)? {
         guard let plan, let program = currentProgram else { return nil }

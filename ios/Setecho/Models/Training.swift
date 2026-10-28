@@ -56,8 +56,10 @@ struct PlanDeviation: Codable, Equatable, Identifiable {
     var kind: Kind
     var exerciseId: String
     var exerciseName: String
-    /// What he did instead, in his words.
+    /// What he did instead, in his words or the catalog's.
     var doneAs: String?
+    /// Why: "Smith taken", "machine taken"; nil when he just said what he was doing.
+    var reason: String? = nil
     var transcript: String
 }
 

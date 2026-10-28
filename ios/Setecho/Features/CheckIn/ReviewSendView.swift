@@ -17,6 +17,8 @@ struct ReviewSendView: View {
     @State private var error: String?
     @State private var showShare = false
     @State private var includeText = true
+    /// Adjustments and gym changes he unticked: left out of his notes field this time.
+    @State private var leftOut: Set<UUID> = []
     @State private var banner: String?
     /// Which of the steps goes out next: the plan message, the check-in with the collage, the videos.
     @State private var sendStep = 0
@@ -54,12 +56,31 @@ struct ReviewSendView: View {
     }
 
     /// "Incline press set 3, 225 → 215 (RPE 9.5 vs 8)": only accepted suggestions (HANDOFF.md §7).
-    private var adjustmentLines: [String] {
+    private var adjustments: [(id: UUID, line: String)] {
         periodSessions.flatMap(\.suggestions).filter { $0.decision == .accepted }.map { s in
             let set = periodSessions.flatMap(\.sets).first { $0.id == s.setId }
             let when = s.scope == .nextSession ? " next session" : ""
-            return "\(exerciseName(s.exerciseId)) set \((set?.setIndex ?? 0) + 1), \(Format.number(s.fromLb)) → \(Format.number(s.toLb))\(when) (\(s.reason))"
+            return (s.id, "\(exerciseName(s.exerciseId)) set \((set?.setIndex ?? 0) + 1), \(Format.number(s.fromLb)) → \(Format.number(s.toLb))\(when) (\(s.reason))")
         }
+    }
+
+    private var adjustmentLines: [String] { adjustments.filter { !leftOut.contains($0.id) }.map(\.line) }
+
+    /// "Tue, Smith close-grip press → close-grip bench press (Smith taken)": every gym change this
+    /// period, in by default (HANDOFF.md §7, Machine taken).
+    private var deviations: [PlanDeviation] { periodSessions.flatMap(\.deviations).sorted { $0.at < $1.at } }
+
+    private func deviationLine(_ d: PlanDeviation) -> String {
+        let day = d.at.formatted(.dateTime.weekday(.abbreviated))
+        let what = d.doneAs.map { "\(d.exerciseName) → \($0.prefix(1).lowercased() + $0.dropFirst())" } ?? "\(d.exerciseName) skipped"
+        return "\(day), \(what)" + (d.reason.map { " (\($0))" } ?? "")
+    }
+
+    private var deviationLines: [String] { deviations.filter { !leftOut.contains($0.id) }.map(deviationLine) }
+
+    private func toggle(_ id: UUID) {
+        if leftOut.contains(id) { leftOut.remove(id) } else { leftOut.insert(id) }
+        Task { await render() }
     }
 
     /// This week's photo set: the four files as taken, in his order.
@@ -149,12 +170,27 @@ struct ReviewSendView: View {
                     VideoPickRow(pick: pick) { showPicker = true }
                 }
             }
-            if !adjustmentLines.isEmpty {
-                SectionCard("Adjustments") {
-                    Text("The suggestions you accepted this period, his rule applied, as they'll appear in the message.").font(.footnote).secondaryText()
-                    ForEach(Array(adjustmentLines.enumerated()), id: \.offset) { index, line in
-                        if index > 0 { CardDivider() }
-                        Text(line).font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
+            if !adjustments.isEmpty || !deviations.isEmpty {
+                SectionCard("In his notes") {
+                    Text("Added to your notes field as plain sentences. Untick anything you'd rather leave out.").font(.footnote).secondaryText()
+                    ForEach(adjustments, id: \.id) { adjustment in
+                        CardDivider()
+                        HStack(alignment: .top, spacing: Theme.Space.s) {
+                            VStack(alignment: .leading, spacing: Theme.Space.xxs) {
+                                Text(adjustment.line).font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
+                                Text("His rule, accepted").font(.footnote).secondaryText()
+                            }
+                            Spacer(minLength: Theme.Space.xs)
+                            Checkbox(isOn: !leftOut.contains(adjustment.id)) { toggle(adjustment.id) }
+                                .accessibilityLabel("\(adjustment.line), \(leftOut.contains(adjustment.id) ? "left out" : "in the notes")")
+                        }
+                    }
+                    ForEach(deviations) { d in
+                        CardDivider()
+                        DeviationRow(planned: d.exerciseName, done: d.doneAs,
+                                     detail: [d.reason.map { $0.prefix(1).uppercased() + $0.dropFirst() }, d.at.formatted(.dateTime.weekday(.wide))]
+                                        .compactMap { $0 }.joined(separator: " · "),
+                                     included: !leftOut.contains(d.id)) { toggle(d.id) }
                     }
                 }
             }
@@ -280,9 +316,10 @@ struct ReviewSendView: View {
         guard let template = coordinator.template, let draft = coordinator.draft else { return }
         error = nil
         do {
-            let response = try await APIClient().checkInRenderMessages(template: template, draft: draft, adjustments: adjustmentLines)
+            let response = try await APIClient().checkInRenderMessages(template: template, draft: draft, adjustments: adjustmentLines,
+                                                                       deviations: deviationLines)
             messages = response.messages
-            coordinator.setAdjustments(periodSessions.flatMap(\.suggestions).filter { $0.decision == .accepted }.map(\.id))
+            coordinator.setAdjustments(adjustments.map(\.id).filter { !leftOut.contains($0) })
         } catch {
             self.error = error.userMessage
         }

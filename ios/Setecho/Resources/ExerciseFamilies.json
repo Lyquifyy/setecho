@@ -1,0 +1,505 @@
+[
+  {
+    "id": "fly",
+    "names": [
+      [
+        "fly"
+      ],
+      [
+        "flye"
+      ],
+      [
+        "flyes"
+      ],
+      [
+        "flies"
+      ],
+      [
+        "pec",
+        "deck"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "cable",
+        "name": "Cable fly"
+      },
+      {
+        "equipment": "dumbbell",
+        "name": "Dumbbell fly"
+      },
+      {
+        "equipment": "machine",
+        "name": "Pec deck"
+      }
+    ]
+  },
+  {
+    "id": "close-grip-press",
+    "names": [
+      [
+        "close",
+        "grip"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "barbell",
+        "name": "Close-grip bench press"
+      },
+      {
+        "equipment": "smith",
+        "name": "Smith close-grip press"
+      },
+      {
+        "equipment": "dumbbell",
+        "name": "Close-grip dumbbell press"
+      }
+    ]
+  },
+  {
+    "id": "incline-press",
+    "names": [
+      [
+        "incline",
+        "press"
+      ],
+      [
+        "incline",
+        "bench"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "barbell",
+        "name": "Incline barbell press"
+      },
+      {
+        "equipment": "dumbbell",
+        "name": "Incline dumbbell press"
+      },
+      {
+        "equipment": "smith",
+        "name": "Incline Smith press"
+      },
+      {
+        "equipment": "machine",
+        "name": "Incline machine press"
+      }
+    ]
+  },
+  {
+    "id": "flat-press",
+    "names": [
+      [
+        "bench",
+        "press"
+      ],
+      [
+        "chest",
+        "press"
+      ],
+      [
+        "flat",
+        "press"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "barbell",
+        "name": "Barbell bench press"
+      },
+      {
+        "equipment": "dumbbell",
+        "name": "Flat dumbbell press"
+      },
+      {
+        "equipment": "smith",
+        "name": "Smith bench press"
+      },
+      {
+        "equipment": "machine",
+        "name": "Machine chest press"
+      }
+    ]
+  },
+  {
+    "id": "shoulder-press",
+    "names": [
+      [
+        "shoulder",
+        "press"
+      ],
+      [
+        "overhead",
+        "press"
+      ],
+      [
+        "military"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "barbell",
+        "name": "Barbell overhead press"
+      },
+      {
+        "equipment": "dumbbell",
+        "name": "Seated dumbbell shoulder press"
+      },
+      {
+        "equipment": "smith",
+        "name": "Smith shoulder press"
+      },
+      {
+        "equipment": "machine",
+        "name": "Machine shoulder press"
+      }
+    ]
+  },
+  {
+    "id": "lateral-raise",
+    "names": [
+      [
+        "lateral",
+        "raise"
+      ],
+      [
+        "side",
+        "raise"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "dumbbell",
+        "name": "Dumbbell lateral raise"
+      },
+      {
+        "equipment": "cable",
+        "name": "Cable lateral raise"
+      },
+      {
+        "equipment": "machine",
+        "name": "Machine lateral raise"
+      }
+    ]
+  },
+  {
+    "id": "row",
+    "names": [
+      [
+        "row"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "barbell",
+        "name": "Barbell row"
+      },
+      {
+        "equipment": "dumbbell",
+        "name": "One-arm dumbbell row"
+      },
+      {
+        "equipment": "cable",
+        "name": "Seated cable row"
+      },
+      {
+        "equipment": "machine",
+        "name": "Chest-supported machine row"
+      },
+      {
+        "equipment": "smith",
+        "name": "Smith row"
+      }
+    ]
+  },
+  {
+    "id": "pulldown",
+    "names": [
+      [
+        "pulldown"
+      ],
+      [
+        "pull",
+        "down"
+      ],
+      [
+        "pull",
+        "up"
+      ],
+      [
+        "pullup"
+      ],
+      [
+        "chin"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "cable",
+        "name": "Lat pulldown"
+      },
+      {
+        "equipment": "machine",
+        "name": "Machine pulldown"
+      },
+      {
+        "equipment": "bodyweight",
+        "name": "Pull-up"
+      }
+    ]
+  },
+  {
+    "id": "squat",
+    "names": [
+      [
+        "squat"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "barbell",
+        "name": "Barbell back squat"
+      },
+      {
+        "equipment": "smith",
+        "name": "Smith squat"
+      },
+      {
+        "equipment": "machine",
+        "name": "Hack squat"
+      },
+      {
+        "equipment": "dumbbell",
+        "name": "Goblet squat"
+      }
+    ]
+  },
+  {
+    "id": "leg-press",
+    "names": [
+      [
+        "leg",
+        "press"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "machine",
+        "name": "Leg press"
+      },
+      {
+        "equipment": "smith",
+        "name": "Smith squat"
+      }
+    ]
+  },
+  {
+    "id": "romanian-deadlift",
+    "names": [
+      [
+        "romanian"
+      ],
+      [
+        "rdl"
+      ],
+      [
+        "stiff",
+        "leg"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "barbell",
+        "name": "Barbell Romanian deadlift"
+      },
+      {
+        "equipment": "dumbbell",
+        "name": "Dumbbell Romanian deadlift"
+      },
+      {
+        "equipment": "smith",
+        "name": "Smith Romanian deadlift"
+      }
+    ]
+  },
+  {
+    "id": "lunge",
+    "names": [
+      [
+        "lunge"
+      ],
+      [
+        "split",
+        "squat"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "dumbbell",
+        "name": "Dumbbell lunge"
+      },
+      {
+        "equipment": "barbell",
+        "name": "Barbell lunge"
+      },
+      {
+        "equipment": "smith",
+        "name": "Smith split squat"
+      }
+    ]
+  },
+  {
+    "id": "leg-curl",
+    "names": [
+      [
+        "leg",
+        "curl"
+      ],
+      [
+        "hamstring",
+        "curl"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "machine",
+        "name": "Seated leg curl"
+      },
+      {
+        "equipment": "cable",
+        "name": "Cable leg curl"
+      }
+    ]
+  },
+  {
+    "id": "leg-extension",
+    "names": [
+      [
+        "leg",
+        "extension"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "machine",
+        "name": "Leg extension"
+      }
+    ]
+  },
+  {
+    "id": "biceps-curl",
+    "names": [
+      [
+        "curl"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "barbell",
+        "name": "Barbell curl"
+      },
+      {
+        "equipment": "dumbbell",
+        "name": "Dumbbell curl"
+      },
+      {
+        "equipment": "cable",
+        "name": "Cable curl"
+      },
+      {
+        "equipment": "machine",
+        "name": "Machine curl"
+      }
+    ]
+  },
+  {
+    "id": "triceps",
+    "names": [
+      [
+        "pushdown"
+      ],
+      [
+        "push",
+        "down"
+      ],
+      [
+        "triceps"
+      ],
+      [
+        "tricep"
+      ],
+      [
+        "skull"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "cable",
+        "name": "Cable pushdown"
+      },
+      {
+        "equipment": "dumbbell",
+        "name": "Dumbbell overhead extension"
+      },
+      {
+        "equipment": "barbell",
+        "name": "EZ-bar skull crusher"
+      },
+      {
+        "equipment": "machine",
+        "name": "Machine triceps extension"
+      }
+    ]
+  },
+  {
+    "id": "calf-raise",
+    "names": [
+      [
+        "calf"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "machine",
+        "name": "Standing calf raise machine"
+      },
+      {
+        "equipment": "smith",
+        "name": "Smith calf raise"
+      },
+      {
+        "equipment": "dumbbell",
+        "name": "Dumbbell calf raise"
+      }
+    ]
+  },
+  {
+    "id": "hip-thrust",
+    "names": [
+      [
+        "hip",
+        "thrust"
+      ],
+      [
+        "glute",
+        "bridge"
+      ]
+    ],
+    "variants": [
+      {
+        "equipment": "barbell",
+        "name": "Barbell hip thrust"
+      },
+      {
+        "equipment": "smith",
+        "name": "Smith hip thrust"
+      },
+      {
+        "equipment": "machine",
+        "name": "Machine hip thrust"
+      }
+    ]
+  }
+]

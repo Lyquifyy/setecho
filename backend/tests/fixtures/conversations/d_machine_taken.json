@@ -1,6 +1,6 @@
 {
   "scenario": "d_machine_taken",
-  "title": "In rest: the bench is taken, he names a swap, then it's free again.",
+  "title": "In rest: the incline bench is taken, his options in his order, the other one, then it's free.",
   "utterances": [
     {
       "say": "the incline bench is taken",
@@ -12,12 +12,12 @@
       }
     },
     {
-      "say": "doing dumbbells instead",
+      "say": "the other one",
       "state": "rest",
       "via": "rules",
       "intent": {
-        "intent": "swapTo",
-        "text": "dumbbells"
+        "intent": "choose",
+        "number": 2
       }
     },
     {

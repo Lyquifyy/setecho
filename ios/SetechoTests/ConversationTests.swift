@@ -218,13 +218,20 @@ private let vacuums = AddOn(id: "addon_vac", name: "Stomach Vacuums", exercises:
     #expect(gym.unheardLines == 0)
 }
 
-@Test @MainActor func dATakenBenchIsWaitedOutOrSwappedAndTheCoachSeesIt() async throws {
-    let engine = SessionEngine(day: ProgramDay(id: "d", name: "Day 5", exercises: [incline]), weekNumber: 1)
+@Test @MainActor func dATakenBenchGetsHisOptionsAndTheCoachSeesTheSwap() async throws {
+    let flat = Alternate(name: "Flat dumbbell press", quote: "or flat DB", source: "Sheet")
+    var inclineWithAlt = incline
+    inclineWithAlt.alternates = [flat]
+    let engine = SessionEngine(day: ProgramDay(id: "d", name: "Day 5", exercises: [inclineWithAlt]), weekNumber: 1,
+                               takenRule: TakenRule(order: [.alternate, .sameLift], confirmed: true))
     let gym = try Gym("d_machine_taken", engine: engine, camera: true)
     gym.cameraSet(phone: 9)
-    await check(gym, "the incline bench is taken", ["Incline bench's taken. The rest keeps running. Say what you'll do instead, or wait."])
-    await check(gym, "doing dumbbells instead", ["Noted for Thursday. Weight for these?"])
-    #expect(engine.session.deviations.map(\.doneAs) == ["dumbbells"] && engine.targetLoadLb == nil)
+    await check(gym, "the incline bench is taken", [
+        "Incline bench's taken. His first choice is flat dumbbell press. Or incline barbell press. Say 'go with it', 'the other one', or 'I'll wait'.",
+    ])
+    await check(gym, "the other one", ["Incline barbell press. Noted for Thursday. Weight for these?"])
+    #expect(engine.session.deviations.map(\.doneAs) == ["Incline barbell press"] && engine.targetLoadLb == nil)
+    gym.wait(30) // the rest keeps running
     await check(gym, "it's free", ["Back to incline dumbbell press. 60 for 8–10."])
     #expect(engine.targetLoadLb == 60 && engine.session.deviations.count == 1)
     #expect(gym.unheardLines == 0)
@@ -344,20 +351,4 @@ private let vacuums = AddOn(id: "addon_vac", name: "Stomach Vacuums", exercises:
     #expect(abSets.map(\.reps) == [12, 12, 15, 15, 0] && abSets.allSatisfy { !$0.isWarmup })
     #expect(!engine.shouldUpload(setId: abSets[0].id))
     #expect(gym.unheardLines == 0)
-}
-
-@Test @MainActor func mWhatCanISayAnswersForTheMoment() async throws {
-    let engine = SessionEngine(day: shortDay, weekNumber: 1, lastSets: logbook)
-    let gym = try Gym("m_help", engine: engine, camera: false)
-    let tail = "Change the weight with add five, or say skip this set or next exercise. Start with note for the coach to leave him a message. Undo takes back anything."
-    await check(gym, "what can I say?", ["Just lift. When you finish, say done and the count, like done, eight. Ask what's next anytime. " + tail])
-    _ = await gym.say("done, 8")
-    await check(gym, "what can I say?", ["Fix a count with that was seven. Ask what's next, or how long left. " + tail])
-    #expect(engine.session.sets.count == 1)
-    #expect(gym.unheardLines == 0)
-}
-
-@Test func voiceGuideLoadsFromTheBundle() {
-    #expect(VoiceGuide.sections.count == 7)
-    #expect(VoiceGuide.sections.allSatisfy { !$0.phrases.isEmpty })
 }

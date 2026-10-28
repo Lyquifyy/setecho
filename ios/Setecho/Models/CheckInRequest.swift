@@ -31,6 +31,9 @@ struct RenderRequest: Codable {
     var draft: CheckInDraft
     /// The accepted suggestions as lines computed on the phone (HANDOFF.md §7, In the check-in).
     var adjustments: [String] = []
+    /// The gym changes kept in ("Tue, Smith close-grip press → close-grip bench press (Smith taken)").
+    /// Both go in his notes field as plain sentences.
+    var deviations: [String] = []
 }
 
 struct RenderResponse: Codable {

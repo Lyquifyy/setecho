@@ -81,6 +81,16 @@ final class SessionEngine {
         case noteOffer(String)
         /// "Next exercise" with sets left: "Log the other 2 sets of flyes from the plan?"
         case logPlanSets(count: Int)
+        /// "Smith's taken. His first choice is …": his options in his order, then Wait.
+        case takenOffer(TakenOffer)
+    }
+
+    /// What was offered when a machine was taken, for the HUD's TakenCard and the choices.
+    struct TakenOffer: Equatable {
+        var exerciseId: String
+        /// What he said was taken ("Smith"), or nil when he only asked for another machine.
+        var what: String?
+        var options: [TakenOption]
     }
 
     /// "Set 3, was that 7?" waiting for a yes, a no or a number.
@@ -143,6 +153,12 @@ final class SessionEngine {
     let athleteName: String?
     /// Settings → "Start holds automatically": a timed set starts itself after its lead-in.
     let autoHolds: Bool
+    /// When a machine's taken: his confirmed options (nil or unconfirmed: only Wait), Settings →
+    /// "Machine-taken help", each swapped variant's last load and the variants done most recently.
+    let takenRule: TakenRule?
+    let takenHelp: Bool
+    let variantLoads: [String: Double]
+    let recentVariants: [String]
     /// The camera sees him (SetDetector.isOnDuty), set by the coordinator. A voice-only set ignores it.
     var cameraOnDuty = false
     /// The app's last line, for the backend's context.
@@ -206,7 +222,8 @@ final class SessionEngine {
          warmups: WarmupRule? = nil, rules: [ProgressionRule] = [], roleTargets: [RoleTarget] = [], restRules: [RestRule] = [],
          loadSteps: RuleEngine.LoadSteps = RuleEngine.LoadSteps(), lastSets: [String: LastSet] = [:], nextSessionLoads: [String: Double] = [:],
          suggestionsEnabled: Bool = true, calibration: Effort.Calibration = Effort.Calibration(), athleteName: String? = nil,
-         autoHolds: Bool = true, now: Date = .now) {
+         autoHolds: Bool = true, takenRule: TakenRule? = nil, takenHelp: Bool = true, variantLoads: [String: Double] = [:],
+         recentVariants: [String] = [], now: Date = .now) {
         self.day = day
         self.weekNumber = weekNumber
         self.defaultRestSeconds = defaultRestSeconds
@@ -222,6 +239,10 @@ final class SessionEngine {
         self.calibration = calibration
         self.athleteName = athleteName
         self.autoHolds = autoHolds
+        self.takenRule = takenRule
+        self.takenHelp = takenHelp
+        self.variantLoads = variantLoads
+        self.recentVariants = recentVariants
         var entries = (day?.exercises ?? []).map { Entry(exercise: $0, addOnId: nil, section: nil) }
         for addOn in addOns { entries += addOn.exercises.map { Entry(exercise: $0, addOnId: addOn.id, section: addOn.name) } }
         self.exercises = entries
@@ -245,7 +266,7 @@ final class SessionEngine {
         guard let ex = currentExercise else { return nil }
         if let override = loadOverrides[ex.id] { return override }
         // Swapped for another variant: its load is his to say, never converted from the plan's.
-        if doneAs[ex.id] != nil { return nil }
+        if let variant = doneAs[ex.id] { return variantLoads["\(ex.id)|\(variant.lowercased())"] }
         if let planned = currentPlannedSet?.loadLb { return planned }
         let key = Self.loadKey(ex.id, currentPlannedSet?.role)
         return nextSessionLoads[key] ?? lastSets[key]?.loadLb
@@ -1083,7 +1104,7 @@ final class SessionEngine {
         case .logbook:
             return logbook(load: intent.number, reps: intent.reps, now: now)
         case .equipmentTaken:
-            return equipmentTaken(named: intent.text)
+            return equipmentTaken(named: intent.text, now: now)
         case .swapTo:
             return swap(to: intent.text ?? response.transcript, transcript: response.transcript, now: now)
         case .equipmentFree:
@@ -1155,6 +1176,19 @@ final class SessionEngine {
                 return echo("Logged \(logged) from the plan", speech: "Logged \(logged) from the plan.").merged(with: moveToNextExercise())
             }
             if no { clearAsk(); return moveToNextExercise(skipped: count) }
+        case .takenOffer(let offer):
+            let first = yes || kind == .choose && intent.number == 1
+            let other = kind == .choose && intent.number == 2
+            let wait = no || kind == .choose && intent.text == "wait"
+            let swaps = offer.options.filter { $0.kind != .wait }
+            if first || other {
+                clearAsk()
+                let index = other ? 1 : 0
+                guard swaps.indices.contains(index) else { return waitFor(offer.exerciseId) }
+                return swap(to: swaps[index].name, exerciseId: offer.exerciseId, reason: offer.what.map { "\($0) taken" } ?? "machine taken",
+                            transcript: response.transcript, now: now)
+            }
+            if wait { clearAsk(); return waitFor(offer.exerciseId) }
         }
         return nil
     }
@@ -1189,7 +1223,7 @@ final class SessionEngine {
     /// A yes long after these is not an answer to them.
     private static func expires(_ ask: Ask) -> Bool {
         switch ask {
-        case .endSession, .clarify, .countFor, .noteOffer: true
+        case .endSession, .clarify, .countFor, .noteOffer, .takenOffer: true
         default: false
         }
     }
@@ -1385,31 +1419,80 @@ final class SessionEngine {
 
     // MARK: Machine taken (HANDOFF.md §7; with no confirmed rule: wait, or what he names)
 
-    /// What he's doing instead of each exercise today, in his words. Its load is his to say: never converted.
+    /// What he's doing instead of each exercise today. Its load comes from that variant's own
+    /// history, or he says it: never converted from the planned lift's.
     private(set) var doneAs: [String: String] = [:]
     private var swapOldLoads: [String: Double?] = [:]
+    /// Equipment taken this session ("smith", "barbell"): never offered again today.
+    private(set) var takenEquipment: Set<String> = []
+    /// The exercise he's waiting on: "it's free" brings it back. The rest timer keeps running.
+    private(set) var waitingFor: String?
 
-    private func equipmentTaken(named name: String?) -> Outcome {
-        guard let ex = currentExercise else { return .none }
-        let what = name.map { $0.prefix(1).uppercased() + $0.dropFirst() } ?? "That"
-        return echo("\(ex.name): taken", speech: "\(what)'s taken. The rest keeps running. Say what you'll do instead, or wait.")
+    var takenOffer: TakenOffer? {
+        if case .takenOffer(let offer) = pendingAsk { return offer }
+        return nil
     }
 
-    /// "Doing dumbbells instead": logged as he said it, the plan untouched, the load his to give.
-    private func swap(to what: String, transcript: String, now: Date) -> Outcome {
-        guard let ex = currentExercise else { return .none }
+    /// "The bench is taken": the exercise he names if it's still to do today, else the one up now.
+    /// His options in his order, said at once as a template (he's standing there waiting).
+    private func equipmentTaken(named name: String?, now: Date) -> Outcome {
+        let generic: Set<String> = ["bench", "machine", "rack", "station", "one", "this", "it"]
+        let specific = name.map { $0.lowercased().split { !$0.isLetter }.map(String.init).filter { !generic.contains($0) }.joined(separator: " ") } ?? ""
+        let named = specific.isEmpty ? nil : exercises.indices.first { $0 >= exerciseIndex && Self.nameMatches(specific, exercises[$0].exercise.name) }
+        guard let ex = named.map({ exercises[$0].exercise }) ?? currentExercise else { return .none }
+        takenEquipment.insert(ExerciseFamily.equipment(of: doneAs[ex.id] ?? ex.name, fallback: ex.equipment))
+        let options = takenHelp ? TakenEngine.options(for: ex, rule: takenRule, takenEquipment: takenEquipment, recentVariants: recentVariants) : [.wait]
+        let what = name.map { $0.prefix(1).uppercased() + $0.dropFirst() }
+        let swaps = options.filter { $0.kind != .wait }
+        guard let first = swaps.first else {
+            return echo("\(ex.name): taken", speech: "\(what ?? "That")'s taken. The rest keeps running. Say what you'll do instead, or wait.")
+        }
+        var line = what.map { "\($0)'s taken. His first choice is \(Self.inSentence(first.name))." }
+            ?? "For \(ex.name.lowercased()), his first choice is \(Self.inSentence(first.name))."
+        if swaps.count > 1 {
+            line += " Or \(Self.inSentence(swaps[1].name)). Say 'go with it', 'the other one', or 'I'll wait'."
+        } else {
+            line += " Say 'go with it' or 'I'll wait'."
+        }
+        return ask(.takenOffer(TakenOffer(exerciseId: ex.id, what: what, options: options)), line, now: now)
+    }
+
+    /// "Incline dumbbell press" mid-sentence, but "Smith squat" keeps its capital.
+    private static func inSentence(_ name: String) -> String {
+        name.hasPrefix("Smith") ? name : name.prefix(1).lowercased() + name.dropFirst()
+    }
+
+    /// "Doing dumbbells instead", or the option he picked: logged as a gym change for the coach,
+    /// the plan untouched, the load from that variant's history or his to say.
+    private func swap(to what: String, exerciseId: String? = nil, reason: String? = nil, transcript: String, now: Date) -> Outcome {
+        guard let ex = exerciseId.flatMap({ id in exercises.first { $0.exercise.id == id }?.exercise }) ?? currentExercise else { return .none }
         doneAs[ex.id] = what
+        if waitingFor == ex.id { waitingFor = nil }
         swapOldLoads[ex.id] = loadOverrides[ex.id]
         loadOverrides[ex.id] = nil
         session.deviations.append(PlanDeviation(id: UUID(), at: now, kind: .swap, exerciseId: ex.id, exerciseName: ex.name,
-                                                doneAs: what, transcript: transcript))
-        var speech = "Noted for Thursday."
-        if needsLoad { speech += " \(loadAsk)" }
+                                                doneAs: what, reason: reason, transcript: transcript))
+        // An option he picked is named back; his own words need no echo.
+        var speech = reason == nil ? "Noted for Thursday." : "\(what). Noted for Thursday."
+        if ex.id == currentExercise?.id {
+            if let load = targetLoadLb { speech += " \(Callout.target(load: load, reps: targetRepsText))." } else if needsLoad { speech += " \(loadAsk)" }
+        }
         return echo("\(ex.name) → \(what)", speech: speech)
+    }
+
+    /// "I'll wait": the rest keeps running, and "it's free" brings the lift back.
+    private func waitFor(_ exerciseId: String) -> Outcome {
+        waitingFor = exerciseId
+        return echo("Waiting for \(exercises.first { $0.exercise.id == exerciseId }?.exercise.name ?? "it")", speech: "Waiting for it. Say 'it's free' when it is.")
     }
 
     /// "It's free": back to the planned lift.
     private func equipmentFree() -> Outcome {
+        if let id = waitingFor, doneAs[id] == nil {
+            waitingFor = nil
+            let name = exercises.first { $0.exercise.id == id }?.exercise.name ?? "it"
+            return echo("Back to \(name)", speech: "Back to \(name.lowercased()).")
+        }
         guard let ex = currentExercise, doneAs[ex.id] != nil else { return say("Okay.") }
         doneAs[ex.id] = nil
         loadOverrides[ex.id] = swapOldLoads.removeValue(forKey: ex.id) ?? nil
@@ -1484,9 +1567,6 @@ final class SessionEngine {
             return say("His note: \(notes)")
         case .outOfScope:
             return ask(.noteOffer(transcript), "That's one for your coach. Want me to note it for Thursday?", now: now)
-        case .help:
-            return say(VoiceGuide.spokenHelp(state: state, firstSet: session.sets.isEmpty, suggestion: pendingSuggestion != nil,
-                                             timed: currentSetIsTimed))
         case nil:
             return heard(transcript)
         }

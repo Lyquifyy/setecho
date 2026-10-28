@@ -598,6 +598,10 @@ def render_messages(
     the questionnaire, every field in his order as "Label (prompt): answer". Missing answers render
     as an empty value, never a guess. With no carried blocks there is only the questionnaire."""
     by_id = {a.fieldId: a for a in draft.answers}
+    # The week's accepted suggestions and gym changes go in his own notes field as plain sentences
+    # (HANDOFF.md §7, Measured effort; Machine taken): his format gains no line and no section.
+    extra = _notes_sentences(adjustments, deviations)
+    notes_id = notes_field_id(template) if extra else None
     plan: list[str] = []
     for block in template.carriedBlocks:
         title = block.title.strip()
@@ -618,18 +622,43 @@ def render_messages(
             label = f"{label} {field.prompt.strip()}"
         answer = by_id.get(field.id)
         value = answer.text.strip() if answer and answer.state != "missing" else ""
+        if field.id == notes_id:
+            value = " ".join(part for part in (_sentence(value), extra) if part)
         form.append(f"{label}: {value}".rstrip())
         form.append("")
-    # After his last field: the week's accepted suggestions, his rule applied, and any gym changes
-    # (HANDOFF.md §7, Measured effort; Machine taken). Only what the athlete accepted or kept in.
-    if adjustments:
-        form.append("Adjustments (your rule): " + "; ".join(a.strip() for a in adjustments if a.strip()))
-        form.append("")
-    if deviations:
-        form.append("Gym changes: " + " ".join(d.strip().rstrip(".") + "." for d in deviations if d.strip()))
+    if extra and notes_id is None:
+        # A form with no notes field: the sentences go after his last field, still without a heading.
+        form.append(extra)
         form.append("")
     messages = [_trim(plan), _trim(form)]
     return [m for m in messages if m]
+
+
+def notes_field_id(template: CheckInTemplate) -> str | None:
+    """His "Additional notes or concerns" field, else the last spoken text field (the phone's
+    `flow.notesField` picks the same one)."""
+    ordered = sorted(template.fields, key=lambda f: f.order)
+    for field in ordered:
+        if "additional_notes" in field.id:
+            return field.id
+    spoken = [f for f in ordered if f.source.type == "voice" and f.kind == "text"]
+    return spoken[-1].id if spoken else None
+
+
+def _sentence(text: str) -> str:
+    text = text.strip()
+    return text if not text or text[-1] in ".!?" else text + "."
+
+
+def _notes_sentences(adjustments: list[str], deviations: list[str]) -> str:
+    """ "Adjusted by your rule: Incline press set 3, 225 → 215 (RPE 9.5 vs 8)." and "Gym changes:
+    Tue, Smith close-grip press → close-grip bench press (Smith taken)." Only what the athlete kept in."""
+    parts = []
+    if adj := [a.strip().rstrip(".") for a in adjustments if a.strip()]:
+        parts.append("Adjusted by your rule: " + "; ".join(adj) + ".")
+    if dev := [d.strip().rstrip(".") for d in deviations if d.strip()]:
+        parts.append("Gym changes: " + "; ".join(dev) + ".")
+    return " ".join(parts)
 
 
 def render(template: CheckInTemplate, draft: CheckInDraft) -> str:

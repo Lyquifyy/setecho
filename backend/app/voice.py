@@ -61,7 +61,7 @@ Intent = Literal[
 INTENTS: tuple[str, ...] = Intent.__args__  # type: ignore[attr-defined]
 
 Topic = Literal[
-    "next", "restLeft", "lastSet", "lastTime", "load", "setsLeft", "effort", "coachNotes", "outOfScope", "help"
+    "next", "restLeft", "lastSet", "lastTime", "load", "setsLeft", "effort", "coachNotes", "outOfScope"
 ]  # fmt: skip
 TOPICS: tuple[str, ...] = Topic.__args__  # type: ignore[attr-defined]
 
@@ -141,7 +141,7 @@ SYSTEM_PROMPT = (
     "`topic`: next (what's next), restLeft (rest time left), lastSet (what the last set counted), "
     "lastTime (last time's numbers), load (what weight), setsLeft, effort (was that failure), "
     "coachNotes (what the coach wrote, the tempo), outOfScope (advice the app never gives: heavier or "
-    "lighter next week, form, food, pain), help (what he can say, how the app works). topSet: the next set is the top set, or the last one was. "
+    "lighter next week, form, food, pain). topSet: the next set is the top set, or the last one was. "
     "warmup: the last set was only a warm-up. addAddOn / skipAddOn: add or skip one of today's add-ons "
     "(names in the context), name in `text`. skipExercise: skip a named exercise still ahead today, "
     "name in `text`. changeDay: another cycle day today, day number in `number`. flagSet: send the last "
@@ -287,13 +287,6 @@ _CHOOSE_WAIT = re.compile(
 )
 
 _QUESTIONS: list[tuple[str, re.Pattern[str]]] = [
-    (
-        "help",
-        re.compile(
-            r"^help( me)?$|\bwhat (can|do|should) i say\b|\bwhat can you do\b|\bhow does (this|it) work\b"
-            r"|\b(voice )?commands\b"
-        ),
-    ),
     ("setsLeft", re.compile(r"\bhow many (more )?sets\b|\bsets (left|to go)\b")),
     (
         "restLeft",

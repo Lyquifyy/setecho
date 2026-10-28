@@ -142,16 +142,6 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 - **Voice commands:** "felt like a 9" · "that was 7 reps" · "drop to 215" / "add 5" · "skip this set" · "next exercise" · "note for check-in: …" · "undo" · "pause" · "end session" · a number, to answer "was that 7 or 8?" · "say that again" (replays the coach's cue) · "yes" / "no" · "go with it" / "keep it" (a suggestion) · "the bench is taken", then "go with it" / "the other one" / "I'll wait", and "it's free" · "doing dumbbells instead" · "add abs" / "skip abs" · "I'm doing Day 5 today" · "top set" / "that was a warm-up" · "flag that".
 - **Lock screen / Live Activity:** the rest countdown and the next set, for when the phone is pocketed between stations.
 - **The only tap target:** "End session", which needs a long press. Saying "end session" works too.
-- **What can I say?** Until the first set is logged, the echo line reads "Not sure what to say? Ask "what can I say?"". Asked between sets, the answer is spoken and echoed: the few lines that work right then (`VoiceGuide.spokenHelp`), never the whole list.
-
-### How a session works (before the first session, and Settings → Sessions)
-- **Shown once,** when Start session is tapped for the first time; its footer "Start session" opens the session. From Settings it's the same screen with "Done".
-- **Four cards:** Set the phone down (tripod 2–3 m away, or the pocket) · Lift (the camera starts, ends and counts sets; without it, "starting" and "done, 8") · Talk between sets (in your own words; every action said back; "undo") · Not sure? Ask ("what can I say?").
-- **Then one card:** "Everything you can say" (the guide below) and "Practice first" (today's session as a rehearsal: typed lines, the real backend, nothing logged).
-
-### What you can say (Today's session card, Settings → Sessions, the intro)
-- One `SectionCard` per moment: While you lift · Before a set · After a set · Ask · Change the plan · For your coach · Fix and control. Each line is the phrase in quotes, then what it does in `textSecondary`.
-- The lines live in `ios/Setecho/Resources/VoiceGuide.json`; `test_voice.py` reads each one through the real rules in its state, so the guide can't list a phrase that doesn't work.
 
 ### Photo session (full-screen, hands-free)
 - **Purpose:** the four check-in photos with no taps, framed like last week.

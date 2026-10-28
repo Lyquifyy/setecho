@@ -21,8 +21,6 @@ struct VoiceIntent: Codable, Equatable {
     /// What a `question` asks about; every answer is a template with numbers from the engine.
     enum Topic: String, Codable {
         case next, restLeft, lastSet, lastTime, load, setsLeft, effort, coachNotes, outOfScope
-        /// "What can I say?": the few lines that work right now (`VoiceGuide.spokenHelp`).
-        case help
     }
 
     var intent: Kind

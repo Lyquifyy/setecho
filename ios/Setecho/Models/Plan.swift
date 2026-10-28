@@ -26,13 +26,15 @@ struct PlanState: Codable, Equatable {
     var restRules: [RestRule]
     /// Warm-up sets he expects before each lift.
     var warmups: WarmupRule?
+    /// When a machine's taken: his options in his order, confirmed once (HANDOFF.md §7, Machine taken).
+    var takenRule: TakenRule?
     /// The reply that produced this version; nil for an import.
     var replyId: UUID?
 
     init(version: Int, program: Program, targets: MacroTargets, cardioProtocol: String, carriedBlocks: [CarriedBlock],
          rules: [ProgressionRule] = [], cycle: CycleCursor? = nil, addOnDays: [AddOnDays] = [], roleTargets: [RoleTarget] = [],
          checkInSchedule: CheckInCadence? = nil, quietDays: [Int] = [], restRules: [RestRule] = [], warmups: WarmupRule? = nil,
-         replyId: UUID?) {
+         takenRule: TakenRule? = nil, replyId: UUID?) {
         self.version = version
         self.program = program
         self.targets = targets
@@ -46,12 +48,13 @@ struct PlanState: Codable, Equatable {
         self.quietDays = quietDays
         self.restRules = restRules
         self.warmups = warmups
+        self.takenRule = takenRule
         self.replyId = replyId
     }
 
     private enum CodingKeys: String, CodingKey {
         case version, program, targets, cardioProtocol, carriedBlocks, rules, cycle, addOnDays, roleTargets
-        case checkInSchedule, quietDays, restRules, warmups, replyId
+        case checkInSchedule, quietDays, restRules, warmups, takenRule, replyId
     }
 
     /// Plans saved before the rules and the cycle existed decode with none (HANDOFF.md §4, Migrations).
@@ -70,6 +73,7 @@ struct PlanState: Codable, Equatable {
         quietDays = try c.decodeIfPresent([Int].self, forKey: .quietDays) ?? []
         restRules = try c.decodeIfPresent([RestRule].self, forKey: .restRules) ?? []
         warmups = try c.decodeIfPresent(WarmupRule.self, forKey: .warmups)
+        takenRule = try c.decodeIfPresent(TakenRule.self, forKey: .takenRule)
         replyId = try c.decodeIfPresent(UUID.self, forKey: .replyId)
     }
 }
