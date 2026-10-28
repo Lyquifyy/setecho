@@ -239,3 +239,73 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     #expect(CheckInSchedule(plan: plan).dueWeekday == 2 && CheckInSchedule(plan: plan).everyWeeks == 1 && CheckInSchedule(plan: plan).dueBy == "08:00")
     #expect(fortnight.reminderTime(before: date(29), calendar: cal) == cal.date(from: DateComponents(year: 2026, month: 10, day: 28, hour: 19)))
 }
+
+@Test func shortRepliesAreReadTheWayPeopleSayThem() {
+    for said in ["Let's keep that.", "Sounds good to me", "yeah that works for me", "go with it", "Yep, keep it.", "I think so, yeah", "perfect"] {
+        #expect(SpokenReply.read(said, offered: true) == .keep, "\(said)")
+    }
+    for said in ["Nah, that's off.", "that's not right", "nope", "change it", "not quite"] {
+        #expect(SpokenReply.read(said, offered: true) == .decline, "\(said)")
+    }
+    for said in ["Hang on, let me check.", "one sec", "give me two minutes", "okay, hold on", "not yet"] {
+        #expect(SpokenReply.read(said, offered: false) == .hold, "\(said)")
+    }
+    #expect(SpokenReply.read("Umm... hmm.", offered: false) == .thinking)
+    // A new value, a "but", a yes and a no together, or not knowing: Spark's to read, with the offer.
+    for said in ["no, it was 180.6", "sounds good but it's 181", "no, that's right", "keep it at one eighty one", "no idea", "wait, no", "hang on, it's 180"] {
+        #expect(SpokenReply.read(said, offered: true) == nil, "\(said)")
+    }
+    // With nothing offered, "sounds good" is not a yes to anything.
+    #expect(SpokenReply.read("sounds good", offered: false) == nil)
+}
+
+/// A morning where the only question left is a drafted answer: what's offered is that answer.
+@MainActor private func draftedMorning() throws -> (CheckInMorningModel, CheckInCoordinator, FieldSpec, () -> String?) {
+    let store = makeStore()
+    let template = try template()
+    store.saveTemplate(template)
+    let refeed = try #require(template.fields.first { $0.id.contains("refeed") })
+    let answers = template.fields.map { $0.id == refeed.id ? answer($0.id, "10/24/26", state: .drafted) : answer($0.id, "x") }
+    store.upsert(photoSet: PhotoSet(id: UUID(), takenAt: .now, poses: [], collageFile: "c.jpg"))
+    store.upsert(checkIn: currentDraft(answers: answers))
+    let coordinator = CheckInCoordinator(store: store)
+    nonisolated(unsafe) var spoken: [String] = []
+    let m = CheckInMorningModel(coordinator: coordinator, store: store, speak: { spoken.append($0) })
+    return (m, coordinator, refeed, { spoken.last })
+}
+
+@Test @MainActor func aDraftedAnswerIsKeptOnALetsKeepThatEvenAfterAWait() async throws {
+    let (m, coordinator, refeed, lastSpoken) = try draftedMorning()
+    await m.resume()
+    #expect(m.step == .questions && m.offer == .drafted(fieldId: refeed.id))
+    #expect(m.context().offered?.contains("10/24/26") == true)   // Spark sees what's on offer
+    // "Hang on, let me check": a wait, and the offer stays open.
+    await m.apply(turn(.pause, "Hang on, let me check.", reply: "Take your time."))
+    #expect(m.isPaused && lastSpoken() == "Take your time." && coordinator.answer(for: refeed)?.state == .drafted)
+    #expect(m.offer == .drafted(fieldId: refeed.id))
+    // "Um": thinking out loud, nothing said back.
+    await m.apply(turn(.chitchat, "um"))
+    #expect(lastSpoken() == "Take your time." && m.isListening)
+    // "Sounds good to me": kept, and the wait is over.
+    await m.apply(turn(.keep, "Sounds good to me"))
+    #expect(coordinator.answer(for: refeed)?.state == .confirmed && coordinator.answer(for: refeed)?.text == "10/24/26" && !m.isPaused)
+}
+
+@Test @MainActor func aDraftedAnswerIsChangedOnANoOrANewValue() async throws {
+    let (m, coordinator, refeed, lastSpoken) = try draftedMorning()
+    await m.resume()
+    // A no with no new value asks for one.
+    await m.apply(turn(.decline, "nah, that's off"))
+    #expect(lastSpoken() == "What should it say?" && coordinator.answer(for: refeed)?.state == .drafted)
+    // A new value replaces it.
+    await m.apply(turn(.answer, "it was the twenty sixth", answers: [answer(refeed.id, "10/26/26")], reply: "Okay, the 26th."))
+    #expect(coordinator.answer(for: refeed)?.text == "10/26/26" && coordinator.answer(for: refeed)?.state == .filled)
+}
+
+@Test func aTurnCarriesItsChangeFieldAndAnUnknownIntentIsUnclear() throws {
+    let json = #"{"transcript":"let me change energy","intent":"change","answers":[],"reply":"Sure.","confidence":0.9,"changeFieldId":"energy_levels","unclearReason":null}"#
+    let r = try JSONCoding.decoder.decode(TurnResponse.self, from: Data(json.utf8))
+    #expect(r.intent == .change && r.changeFieldId == "energy_levels")
+    let future = #"{"transcript":"x","intent":"somethingNew","answers":[],"reply":"","confidence":0.5}"#
+    #expect(try JSONCoding.decoder.decode(TurnResponse.self, from: Data(future.utf8)).intent == .unclear)
+}

@@ -312,7 +312,7 @@ Base URL comes from `SETECHO_API_BASE` (`ios/Config/Local.xcconfig`). All bodies
 | `POST /photos/segment` | multipart: `image` (JPEG) | `{width, height, box: [x,y,w,h], maskPng: base64}` | SAM 3.1 image |
 | `POST /checkin/draft` | `{template, facts: WeekFacts, notes: [VoiceNote], training: TrainingSummary, lastCheckIn?: CheckInDraft, styleExamples: [String]}` | `CheckInDraft` | Spark tool calling, then a validator |
 | `POST /checkin/answer` | multipart: `audio` + `{fieldId, field: FieldSpec, styleExamples}` | `{transcript, answer: FieldAnswer}` | Transcribe, then Spark structured output |
-| `POST /checkin/turn` | multipart: `audio` (WAV) + `context` JSON `{template, step, askedFieldId, pending: [fieldId], answered: [FieldAnswer], styleExamples}` | `{transcript, intent, answers: [FieldAnswer], reply, confidence}` | Transcribe, then Spark structured output, then a validator |
+| `POST /checkin/turn` | multipart: `audio` (WAV) + `context` JSON `{template, step, askedFieldId, pending: [fieldId], answered: [FieldAnswer], styleExamples, offered?}` | `{transcript, intent, answers: [FieldAnswer], reply, confidence}` | Transcribe, then Spark structured output, then a validator |
 | `POST /checkin/render` | `{template, draft}` | `{messages: [String]}`: the plan message (carried blocks), then the questionnaire | none (templating) |
 | `POST /coach/reply` | `{text, plan: PlanState}`, or multipart `audio` (a WhatsApp voice note: `.opus`/`.ogg`, `.m4a` or `.wav`) + `plan` JSON | `{transcript, changes: [PlanChange], unclear: [String], cues: [VoiceCue]}` | Transcribe (audio only, per segment), then Spark structured output, then a validator |
 | `POST /spotter/line` | `{moment, facts, recent: [String], styleHints}` | `{text}` | Spark structured output, then a validator |
@@ -378,15 +378,16 @@ If `confidence` is under 0.7, or the intent is `unknown`, the app asks back ("Di
 
 **`/checkin/turn`** lives in `backend/app/checkin_turn.py`. It handles one spoken turn of Check-in morning (§7).
 1. Transcribe the utterance (file mode).
-2. Spark structured output, with `fieldId` as a per-request enum of the template's fields, and `intent` one of `answer`, `correction`, `pause`, `resume`, `skip`, `goBack`, `repeat`, `forCoach`, `ready`, `chitchat`, `unclear`.
+2. Spark structured output, with `fieldId` as a per-request enum of the template's fields, and `intent` one of `answer`, `correction`, `change`, `keep`, `decline`, `pause`, `resume`, `skip`, `goBack`, `repeat`, `forCoach`, `ready`, `chitchat`, `unclear`.
 3. One utterance can answer several fields ("180.8, and glucose was 91"). A `correction` names a field that's already answered.
-4. `forCoach` is a question meant for the coach ("should I bump my carbs?"). Once the athlete says yes, it's appended to "Additional notes or concerns" in their words.
-5. **The validator:**
+4. **Offers and waits (Oct 28: "let's keep that" wasn't heard as a yes).** `offered` names what the phone just offered for a yes or a no: Apple Health's weigh-in, a data field read back, a drafted answer, or adding a question to the notes. `keep` is any agreement ("let's keep that", "sounds good to me"), `decline` a no with no new value, and a new value is an `answer` for that field. A short reply is read by code before Spark (`conversational`, mirrored on the phone by `SpokenReply`): keep, decline, a wait ("hang on, let me check", "give me two minutes" → `pause`, "Take your time.", the offer stays open), or thinking out loud ("um" → nothing said, still listening). Anything with a number, a "but", a yes and a no together, or more than eight words goes to Spark with the offer in its context.
+5. `forCoach` is a question meant for the coach ("should I bump my carbs?"). Once the athlete says yes, it's appended to "Additional notes or concerns" in their words.
+6. **The validator:**
    - Every number in `answers` and in `reply` appears in the transcript, as digits or number words.
    - Every `fieldId` exists.
    - `reply` is 20 words or fewer and gives no advice (the prompt, plus a short blocklist check).
    - A turn that fails any check becomes `unclear`, with the reply "Sorry, say that again?"
-6. The backend never chooses the next question; the phone does.
+7. The backend never chooses the next question; the phone does.
 
 **`/spotter/line`** lives in `backend/app/spotter.py`. It writes one spoken line for a moment when speed doesn't matter, mainly the rest after a set.
 1. **Input:**

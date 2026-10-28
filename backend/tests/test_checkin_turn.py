@@ -33,9 +33,10 @@ ENERGY = field("energy")
 NOTES_FIELD = field("additional_notes")
 
 
-def context(step="questions", asked=None, pending=None, answered=()):
+def context(step="questions", asked=None, pending=None, answered=(), offered=None):
     return checkin_turn.TurnContext(
         template=TEMPLATE, step=step, askedFieldId=asked, pending=pending or [], askedOn="2026-10-29",
+        offered=offered,
         answered=[checkin.FieldAnswer(fieldId=f, text=t, state="filled", provenance=[]) for f, t in answered],
     )  # fmt: skip
 
@@ -269,3 +270,56 @@ def test_turn_endpoint_takes_the_fast_path_and_reports_timings(monkeypatch):
     )
     assert r.status_code == 200 and r.json()["fastPath"] is True and r.json()["answers"][0]["text"] == "180.8"
     assert called == [] and set(r.json()["timings"]) == {"transcribe", "spark", "validate"}
+
+
+OFFER = "Weight: 180.8 (Apple Health)"
+
+
+def test_natural_agreement_keeps_the_offer_and_a_no_declines_it_without_spark():
+    ctx = context(step="weight", asked=WEIGHT, offered=OFFER)
+    for said in ("Let's keep that.", "Sounds good to me", "yeah that works for me", "go with it", "Yep, keep it.",
+                 "I think so, yeah", "perfect"):  # fmt: skip
+        r = checkin_turn.conversation_turn(said, ctx)
+        assert r is not None and r.intent == "keep" and r.answers == [] and r.fastPath, said
+    for said in ("Nah, that's off.", "that's not right", "nope", "change it", "not quite"):
+        r = checkin_turn.conversation_turn(said, ctx)
+        assert r is not None and r.intent == "decline" and r.answers == [], said
+    # A new value, a "but", or a yes and a no together go to Spark, with the offer in the context.
+    for said in ("no, it was 180.6", "sounds good but it's 181", "no, that's right", "keep it at one eighty one",
+                 "no idea"):  # fmt: skip
+        assert checkin_turn.conversation_turn(said, ctx) is None, said
+    # With nothing offered, a bare "sounds good" is not a yes to anything.
+    assert checkin_turn.conversation_turn("sounds good", context(asked=ENERGY)) is None
+
+
+def test_asking_for_time_waits_and_thinking_out_loud_gets_no_reply():
+    for said in ("Hang on, let me check.", "one sec", "give me two minutes", "okay, hold on", "not yet"):
+        r = checkin_turn.conversation_turn(said, context(asked=ENERGY))
+        assert r is not None and r.intent == "pause" and r.reply == checkin_turn.HOLD_REPLY, said
+    r = checkin_turn.conversation_turn("Umm... hmm.", context(asked=ENERGY))
+    assert r is not None and r.intent == "chitchat" and r.reply == ""
+    assert checkin_turn.conversation_turn("hang on, it's 180", context(asked=WEIGHT)) is None
+    assert checkin_turn.conversation_turn("wait, no", context(asked=WEIGHT, offered=OFFER)) is None
+
+
+def test_a_keep_or_decline_from_spark_needs_an_offer_and_carries_no_answer():
+    said = "yeah honestly whatever you've got there is fine by me"
+    keep = out("keep", answers=[{"fieldId": WEIGHT, "text": "180.8", "number": 180.8, "measurements": None}],
+               reply="Okay, keeping it.")  # fmt: skip
+    r = checkin_turn.validate_turn(keep, said, context(step="weight", asked=WEIGHT, offered=OFFER))
+    assert r.intent == "keep" and r.answers == [] and r.reply == "Okay, keeping it."
+    r = checkin_turn.validate_turn(out("keep"), said, context(step="weight", asked=WEIGHT))
+    assert r.intent == "unclear" and r.unclearReason == "empty"
+
+
+def test_spark_sees_the_offer(monkeypatch):
+    seen = {}
+
+    def fake(system, user, schema_name, schema, **kw):
+        seen["user"] = user
+        return {"intent": "keep", "answers": [], "reply": "Okay.", "confidence": 0.9}, None
+
+    monkeypatch.setattr(meta, "spark_json", fake)
+    r = checkin_turn.read_turn("yeah that number's what the scale said", context(step="weight", asked=WEIGHT,
+                                                                                  offered=OFFER))  # fmt: skip
+    assert r.intent == "keep" and f"Offered for a yes or a no: {OFFER}" in seen["user"]

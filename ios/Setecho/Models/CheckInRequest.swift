@@ -55,7 +55,12 @@ struct RenderResponse: Codable {
 // MARK: - /checkin/turn (HANDOFF.md §5): one spoken turn of Check-in morning
 
 enum TurnIntent: String, Codable {
-    case answer, correction, change, pause, resume, skip, goBack, repeat_ = "repeat", forCoach, ready, chitchat, unclear
+    case answer, correction, change, keep, decline, pause, resume, skip, goBack, repeat_ = "repeat", forCoach, ready, chitchat, unclear
+
+    /// An intent this build doesn't know (a newer backend) reads as unclear instead of failing the turn.
+    init(from decoder: Decoder) throws {
+        self = TurnIntent(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .unclear
+    }
 }
 
 struct TurnContext: Codable {
@@ -67,6 +72,8 @@ struct TurnContext: Codable {
     var answered: [FieldAnswer]
     var styleExamples: [String]
     var askedOn: String?
+    /// What was just offered for a yes or a no ("Weight: 180.8 (Apple Health)"); nil after an open question.
+    var offered: String?
 }
 
 struct TurnResponse: Codable, Equatable {
@@ -96,7 +103,7 @@ struct TurnResponse: Codable, Equatable {
         self.changeFieldId = changeFieldId
     }
 
-    private enum CodingKeys: String, CodingKey { case transcript, intent, answers, reply, confidence, timings, fastPath }
+    private enum CodingKeys: String, CodingKey { case transcript, intent, answers, reply, confidence, timings, fastPath, changeFieldId, unclearReason }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -107,6 +114,8 @@ struct TurnResponse: Codable, Equatable {
         confidence = try c.decode(Double.self, forKey: .confidence)
         timings = try c.decodeIfPresent([String: Double].self, forKey: .timings) ?? [:]
         fastPath = try c.decodeIfPresent(Bool.self, forKey: .fastPath) ?? false
+        changeFieldId = try c.decodeIfPresent(String.self, forKey: .changeFieldId)
+        unclearReason = try c.decodeIfPresent(String.self, forKey: .unclearReason)
     }
 }
 

@@ -121,10 +121,6 @@ struct CheckInMorningFlow: Equatable {
         template.orderedFields.first { $0.id.contains("additional_notes") } ?? template.orderedFields.last { $0.source.type == .voice && $0.kind == .text }
     }
 
-    static let yesWords: Set<String> = ["yes", "yeah", "yep", "yup", "correct", "right", "sure", "that's right", "thats right", "confirm", "confirmed",
-                                        "use that", "use it", "use that one", "that's it", "thats it", "that's fine", "sounds good", "looks good",
-                                        "ok", "okay", "good", "yes please", "yeah that's right", "all good", "yes use that", "yeah use that", "sure use that"]
-    static let noWords: Set<String> = ["no", "nope", "nah", "wrong", "not quite", "no that's wrong"]
 
     /// The opening line (Oct 27 rehearsal): who it is for, which check-in, and what is coming. Every
     /// word is fixed or computed here; the name is the athlete's own first name from Settings.
@@ -135,12 +131,8 @@ struct CheckInMorningFlow: Equatable {
         return "\(greeting) \(which) We'll do your weight, glucose and photos, then your coach's questions."
     }
 
-    static func isYes(_ transcript: String) -> Bool { yesWords.contains(normalize(transcript)) }
-    static func isNo(_ transcript: String) -> Bool { noWords.contains(normalize(transcript)) }
-
-    private static func normalize(_ text: String) -> String {
-        text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: ".,!?"))
-    }
+    static func isYes(_ transcript: String) -> Bool { SpokenReply.read(transcript, offered: true) == .keep }
+    static func isNo(_ transcript: String) -> Bool { SpokenReply.read(transcript, offered: true) == .decline }
 }
 
 extension String {
@@ -483,18 +475,69 @@ final class CheckInMorningModel {
         if let glucose = flow.glucoseField, !flow.isAnswered(glucose, draft: draft) { pending.append(glucose.id) }
         let answered = (draft?.answers ?? []).filter { $0.state == .filled || $0.state == .confirmed }
         return TurnContext(template: flow.template, step: step.wire, askedFieldId: asked?.id, pending: pending,
-                           answered: answered, styleExamples: StyleExamples.load(), askedOn: DayKey.string(.now))
+                           answered: answered, styleExamples: StyleExamples.load(), askedOn: DayKey.string(.now),
+                           offered: offer.map(describe))
     }
+
+    /// The offer as Spark reads it: "Weight: 180.8 (Apple Health)", "Date of last refeed: 10/24/26".
+    private func describe(_ offer: Offer) -> String {
+        switch offer {
+        case .weight(let known): "Weight: \(known) (Apple Health)"
+        case .readBack(let id), .drafted(let id): "\(label(for: id)): \(coordinator.draft?.answers.first { $0.fieldId == id }?.text ?? "")"
+        case .notes(let question): "Add to notes: \(question)"
+        }
+    }
+
+    /// What Setecho just offered for a yes or a no, if anything: the weigh-in from Apple Health, a data
+    /// field being read back, a drafted answer, or adding a question to the notes.
+    enum Offer: Equatable {
+        case weight(String)
+        case readBack(fieldId: String)
+        case drafted(fieldId: String)
+        case notes(String)
+    }
+
+    var offer: Offer? {
+        if let question = pendingForCoach { return .notes(question) }
+        switch step {
+        case .weight: return offeredWeight.map(Offer.weight)
+        case .review: return isDone ? nil : dataQueue.first.map { .readBack(fieldId: $0) }
+        case .questions:
+            guard let group = currentGroup, group.count == 1, coordinator.answer(for: group[0])?.state == .drafted else { return nil }
+            return .drafted(fieldId: group[0].id)
+        default: return nil
+        }
+    }
+
 
     /// Apply one turn: the answers go in the draft (saved after every one), the reply is spoken,
     /// and the next question is the first pending one in the coach's order.
     func apply(_ response: TurnResponse) async {
         lastWords = response.transcript
         armSilenceTimer()
+        let offer = self.offer
+        let said = SpokenReply.read(response.transcript, offered: offer != nil)
+        // Thinking out loud ("um", "hmm, let me see"): say nothing and keep listening.
+        if said == .thinking || (response.intent == .chitchat && response.reply.isEmpty) {
+            isListening = true
+            return
+        }
+        // A keep or a no to what was offered, read by code or by Spark. A wait ("hang on, let me check")
+        // is neither: the offer stays open while he takes his time.
+        let keeps = said == .keep || (said == nil && response.intent == .keep)
+        let declines = said == .decline || (said == nil && response.intent == .decline)
+        // Anything but another wait ends the wait.
+        let wasPaused = isPaused
+        if said != .hold, response.intent != .pause { isPaused = false }
+        // Back from a wait with nothing on offer: "okay", "alright" picks up the question again.
+        if wasPaused, offer == nil, response.answers.isEmpty, SpokenReply.read(response.transcript, offered: true) == .keep {
+            await resume()
+            return
+        }
         // A yes or a no to a drafted value, or to "add it to your notes?", is decided here, not by the model.
-        if let question = pendingForCoach {
+        if let question = pendingForCoach, said != .hold, response.intent != .pause {
             pendingForCoach = nil
-            if CheckInMorningFlow.isYes(response.transcript), let notes = flow.notesField {
+            if keeps, let notes = flow.notesField {
                 let existing = coordinator.answer(for: notes)?.text ?? ""
                 let text = existing.isEmpty ? question : "\(existing) \(question)"
                 coordinator.set(notes.id, text: text, state: .filled, provenance: [Provenance(source: "You said · \(DayKey.string(.now))", detail: response.transcript)])
@@ -503,7 +546,7 @@ final class CheckInMorningModel {
                 await askCurrentQuestion()
                 return
             }
-            if CheckInMorningFlow.isNo(response.transcript) {
+            if declines {
                 await say("Okay, I'll leave that out.")
                 await askCurrentQuestion()
                 return
@@ -511,14 +554,14 @@ final class CheckInMorningModel {
         }
         if step == .review, !isDone, let id = dataQueue.first {
             // One data field at a time: yes keeps it, no asks for his value, a value replaces it.
-            if CheckInMorningFlow.isYes(response.transcript) {
+            if keeps {
                 dataQueue.removeFirst()
                 coordinator.confirm(id)
                 echo = "\(label(for: id)) → confirmed"
                 await resume()
                 return
             }
-            if CheckInMorningFlow.isNo(response.transcript) {
+            if declines {
                 dataQueue.removeFirst()
                 await change(id)
                 return
@@ -539,7 +582,7 @@ final class CheckInMorningModel {
             }
         }
         if step == .weight, let known = offeredWeight {
-            if CheckInMorningFlow.isYes(response.transcript) {
+            if keeps {
                 offeredWeight = nil
                 if let field = flow.weightField {
                     coordinator.set(field.id, text: known, state: .confirmed,
@@ -550,7 +593,7 @@ final class CheckInMorningModel {
                 await resume()
                 return
             }
-            if CheckInMorningFlow.isNo(response.transcript) {
+            if declines {
                 offeredWeight = nil
                 awaitingWeightReading = true
                 await ask("What does it say?")
@@ -559,7 +602,7 @@ final class CheckInMorningModel {
             if response.intent == .answer || response.intent == .correction, !response.answers.isEmpty { offeredWeight = nil }
         }
         if step == .questions, let group = currentGroup, group.count == 1, let drafted = coordinator.answer(for: group[0]), drafted.state == .drafted {
-            if CheckInMorningFlow.isYes(response.transcript) {
+            if keeps {
                 coordinator.confirm(group[0].id)
                 echo = "\(WrapUpModel.shortLabel(group).capitalized) → \(drafted.text) · Confirmed"
                 questionIndex += 1
@@ -567,16 +610,20 @@ final class CheckInMorningModel {
                 await askCurrentQuestion()
                 return
             }
-            if CheckInMorningFlow.isNo(response.transcript) {
+            if declines {
                 await ask("What should it say?")
                 return
             }
         }
         switch response.intent {
         case .pause:
+            // Waiting on him: whatever was offered stays open, and the next thing he says picks it up.
             isPaused = true
             isListening = true
             await say(response.reply.isEmpty ? "No rush. Tell me when you're ready." : response.reply)
+        case .keep, .decline:
+            // Nothing was on offer: there's nothing to keep, so ask the question again.
+            await ask(question)
         case .resume:
             await say(response.reply.isEmpty ? "Welcome back. Let's pick up where we left off." : response.reply)
             await resume()

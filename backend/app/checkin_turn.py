@@ -23,8 +23,8 @@ from app.schemas import CheckInTemplate, FieldSpec, StrictModel, strict_schema
 router = APIRouter()
 
 TurnIntent = Literal[
-    "answer", "correction", "change", "pause", "resume", "skip", "goBack", "repeat", "forCoach", "ready", "chitchat",
-    "unclear",
+    "answer", "correction", "change", "keep", "decline", "pause", "resume", "skip", "goBack", "repeat", "forCoach",
+    "ready", "chitchat", "unclear",
 ]  # fmt: skip
 INTENTS: tuple[str, ...] = TurnIntent.__args__  # type: ignore[attr-defined]
 
@@ -48,6 +48,11 @@ class TurnContext(StrictModel):
     answered: list[checkin.FieldAnswer] = Field(default_factory=list)
     styleExamples: list[str] = Field(default_factory=list)
     askedOn: str | None = Field(default=None, description="yyyy-mm-dd, for the provenance")
+    offered: str | None = Field(
+        default=None,
+        description='What Setecho just offered for a yes or a no, e.g. "Weight: 180.8 (Apple Health)" or '
+        '"Add to notes: should I bump my carbs?"; null after an open question',
+    )
 
 
 class TurnAnswerOut(StrictModel):
@@ -77,7 +82,10 @@ class TurnResponse(StrictModel):
     timings: dict[str, float] = Field(
         default_factory=dict, description="Seconds per stage: transcribe, spark, validate"
     )
-    fastPath: bool = Field(default=False, description="Code answered a plain number; Spark was not called")
+    fastPath: bool = Field(
+        default=False,
+        description="Code read the turn (a plain number, yes, no or wait); Spark was not called",
+    )
     changeFieldId: str | None = Field(
         default=None, description="For `change`: the field the athlete wants to redo; the phone asks it again"
     )
@@ -96,10 +104,15 @@ SYSTEM = (
     "and a reply of one short, friendly, casual sentence, written to be spoken aloud: everyday words "
     "and contractions, under 12 words, no labels, colons, slashes or lists. Use only numbers the athlete said. One "
     'utterance can answer several fields ("180.8, and glucose was 91"). A correction names a field '
-    'already answered ("wait, it was 180.6"). change is asking to redo a field without giving its new value '
+    'already answered ("wait, it was 180.6"). When something is offered for a yes or a no, the athlete is '
+    'answering it: keep is any agreement ("let\'s keep that", "sounds good to me", "yeah that works", '
+    '"go with it"), decline is a no with no new value ("nah that\'s off", "that\'s not right"), and a new '
+    "value is an answer for the offered field. For keep and decline leave answers empty. "
+    "change is asking to redo a field without giving its new value "
     '("let me change my biggest win", "I want to redo energy"): put that field in answers with empty text '
-    'and no number, and say you will ask it again. pause is "give me a couple of minutes"; resume is "I\'m '
-    'back"; ready is "ready" or "I\'m off the scale"; repeat is "say that again"; forCoach is a question '
+    'and no number, and say you will ask it again. pause is waiting on the athlete: "give me a couple of '
+    'minutes", "hang on", "let me check", "not yet"; resume is "I\'m back" or "okay, go ahead"; '
+    'ready is "ready" or "I\'m off the scale"; repeat is "say that again"; forCoach is a question '
     'meant for the coach ("should I bump my carbs?"): say it\'s one for their coach and offer to add it '
     "to their notes, with their question in `text` for the notes field. If they need a minute, tell them "
     'to take their time. For a scale field write the text as "N/10" plus anything they added; for tape '
@@ -164,6 +177,14 @@ def validate_turn(out: TurnOut, transcript: str, context: TurnContext) -> TurnRe
         return unclear("reply")
     if any(not _number_is_spoken(n, said) for n in _text_numbers(out.reply)):
         return unclear("reply")
+
+    if out.intent in ("keep", "decline"):
+        # The phone holds the offered value: a keep or a decline carries no answer of its own.
+        if context.offered is None:
+            return unclear("empty")
+        return TurnResponse(
+            transcript=transcript, intent=out.intent, answers=[], reply=out.reply.strip(), confidence=out.confidence,
+        )  # fmt: skip
 
     if out.intent == "change":
         # The field to ask again, by code: an unknown field is unclear, no field means "which one?".
@@ -230,6 +251,75 @@ def _answer(spec: FieldSpec, a: TurnAnswerOut, transcript: str, when: str) -> ch
         text=text,
         state="filled",
         provenance=[checkin.Provenance(source=when, detail=transcript)],
+    )
+
+
+# ---------------------------------------------------------------------------
+# The conversation fast path: a plain yes, no, "hang on" or "um", read by code
+# ---------------------------------------------------------------------------
+
+# Matched on word boundaries in the lowercased transcript. Anything with a number, a "but", both a
+# yes and a no, or more than eight words goes to Spark, with the offer in its context.
+_KEEP = re.compile(
+    r"\b(yes|yeah|yea|yep|yup|ya|sure|ok|okay|alright|all right|correct|right|exactly|perfect|good|great|fine|"
+    r"keep|use (?:that|it|this)|go with|sounds? (?:good|right|fine|great)|looks? (?:good|right|fine)|that works|"
+    r"works for me|spot on|that'?s it|leave it|all good|agreed|for sure|definitely|absolutely|bang on)\b"
+)
+_DECLINE = re.compile(
+    r"\b(no|nope|nah|wrong|incorrect|not (?:right|quite|correct|it|that|good)|"
+    r"(?:that'?s|that is|it'?s|it is) (?:off|wrong|not(?: right| it| correct| quite)?)|change (?:it|that)|don'?t (?:use|keep))\b"
+)
+_HOLD = re.compile(
+    r"\b(hang on|hold on|one sec(?:ond)?|just a (?:sec(?:ond)?|minute|moment)|(?:a|one|two|a few|a couple of?) minutes?|"
+    r"give me (?:a|one|two|a few|a couple)|gimme|wait|a minute|let me (?:think|check|look|grab|find)|"
+    r"not yet|not ready|bear with me|in a (?:sec(?:ond)?|minute|bit))\b"
+)
+# Not knowing is not a no: "no idea" goes to Spark.
+_UNSURE = re.compile(r"\b(no idea|not sure|dunno|don'?t know|no clue)\b")
+_THINKING = {"um", "umm", "uh", "uhh", "hmm", "hm", "mm", "erm", "er", "so", "well", "let", "me", "see"}
+HOLD_REPLY = "Take your time."
+
+Conversational = Literal["keep", "decline", "hold", "thinking"]
+
+
+def conversational(transcript: str, offered: bool) -> Conversational | None:
+    """A short reply code can read on its own: agreeing or disagreeing with what was offered,
+    asking for time, or only thinking out loud. None sends the turn to Spark."""
+    text = re.sub(r"\s+", " ", re.sub(r"[^\w' ]", " ", transcript.lower().replace("’", "'"))).strip()
+    words = text.split()
+    if not words:
+        return None
+    if all(w in _THINKING for w in words):
+        return "thinking"
+    # The wait's own words ("one sec", "give me two minutes") are not a number he's answering with.
+    rest = _HOLD.sub(" ", text)
+    if (
+        re.search(r"\d", rest)
+        or voice.parse_number(rest) is not None
+        or len(words) > 8
+        or "but" in words
+        or _UNSURE.search(text)
+    ):
+        return None
+    # "not right" is a no, not a "right": the no's words are taken out before looking for a yes.
+    hold, decline = bool(_HOLD.search(text)), bool(_DECLINE.search(text))
+    keep = bool(_KEEP.search(_DECLINE.sub(" ", text)))
+    if hold:
+        return "hold" if not decline else None  # "okay, hang on" waits; "wait, no" is Spark's
+    if offered and keep != decline:
+        return "keep" if keep else "decline"
+    return None
+
+
+def conversation_turn(transcript: str, context: TurnContext) -> TurnResponse | None:
+    kind = conversational(transcript, offered=context.offered is not None)
+    if kind is None:
+        return None
+    intent: TurnIntent = {"hold": "pause", "thinking": "chitchat"}.get(kind, kind)  # type: ignore[assignment]
+    # Thinking out loud gets no reply: the phone just keeps listening.
+    reply = HOLD_REPLY if kind == "hold" else ""
+    return TurnResponse(
+        transcript=transcript, intent=intent, answers=[], reply=reply, confidence=0.95, fastPath=True
     )
 
 
@@ -342,6 +432,7 @@ def read_turn(transcript: str, context: TurnContext) -> TurnResponse:
     user = (
         f"Step: {context.step}\n"
         f"Question just asked: {line(asked) if asked else '(none)'}\n"
+        f"Offered for a yes or a no: {context.offered or '(nothing)'}\n"
         f"Fields still to answer:\n{chr(10).join(line(f) for f in pending) or '- (none)'}\n"
         f"Already answered:\n{chr(10).join(f'- {a.fieldId}: {a.text}' for a in answered) or '- (none)'}\n"
         f"Examples of how the athlete writes:\n{examples}\n"
@@ -376,7 +467,7 @@ async def checkin_turn_text(req: TextTurnRequest) -> TurnResponse:
             confidence=0.0,
             timings={"transcribe": 0.0},
         )
-    if (fast := fast_turn(transcript, req.context)) is not None:
+    if (fast := conversation_turn(transcript, req.context) or fast_turn(transcript, req.context)) is not None:
         fast.timings = {"transcribe": 0.0, "spark": 0.0, "validate": 0.0}
         return fast
     response = await run_in_threadpool(read_turn, transcript, req.context)
@@ -404,7 +495,7 @@ async def checkin_turn(
     if not transcript:
         return TurnResponse(transcript="", intent="unclear", answers=[], reply=UNCLEAR_REPLY, confidence=0.0,
                             timings={"transcribe": transcribe_s}, unclearReason="noWords")  # fmt: skip
-    if (fast := fast_turn(transcript, ctx)) is not None:
+    if (fast := conversation_turn(transcript, ctx) or fast_turn(transcript, ctx)) is not None:
         fast.timings = {"transcribe": transcribe_s, "spark": 0.0, "validate": 0.0}
         return fast
     response = await run_in_threadpool(read_turn, transcript, ctx)
