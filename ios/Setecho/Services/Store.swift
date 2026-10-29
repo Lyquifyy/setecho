@@ -102,7 +102,7 @@ final class Store {
             (SessionEngine.loadKey($0.exerciseId, $0.role), LastSet(loadLb: $0.loadLb, reps: $0.reps, source: "Logbook", date: $0.date))
         }
         let exercises = currentProgram.map { $0.cycleDays.flatMap(\.exercises) + $0.addOns.flatMap(\.exercises) } ?? []
-        earlier += history.lastSets(for: exercises, steps: Settings.shared.loadSteps).map { ($0.key, $0.value) }
+        earlier += history.lastSets(for: exercises).map { ($0.key, $0.value) }
         var sets: [String: LastSet] = [:]
         for entry in earlier.sorted(by: { ($0.set.date ?? .distantPast) < ($1.set.date ?? .distantPast) }) {
             sets[entry.key] = entry.set

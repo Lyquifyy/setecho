@@ -320,9 +320,8 @@ struct HistoryImportView: View {
     /// The set the rule picked: the heaviest of that session, shown beside the rest of them.
     @ViewBuilder private func lastTime(_ model: HistoryImportModel, _ exercise: PlannedExercise, names: Set<String>) -> some View {
         if let last = TrainingHistory.lastTop(names: names, in: model.kept), let reps = last.set.reps {
-            let step = Settings.shared.loadSteps.step(for: exercise.equipment)
             HStack(spacing: Theme.Space.s) {
-                Text("Last time \(Format.number(RuleEngine.round(last.set.loadLb, step: step))) × \(reps) · \(Format.shortDate(last.session.startedAt))")
+                Text("Last time \(Format.number(last.set.loadLb)) × \(reps) · \(Format.shortDate(last.session.startedAt))")
                     .font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
                 SourceChip(source: last.session.source.label)
             }

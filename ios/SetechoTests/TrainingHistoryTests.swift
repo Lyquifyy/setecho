@@ -80,22 +80,20 @@ private let liftoffSameDay = session("liftoff:2026-10-05 17:00:00", .liftoff, at
     let last = try #require(TrainingHistory.lastTop(names: history.names(for: smith.id), in: history.sessions))
     #expect(last.session.id == garminOct.id && last.set.loadLb == 225 && last.set.reps == 9)
 
-    let sets = history.lastSets(for: [smith, fly], steps: RuleEngine.LoadSteps(barbell: 5, dumbbell: 5, machine: 10, cable: 2.5))
+    let sets = history.lastSets(for: [smith, fly])
     #expect(sets["d1_smith_close_grip|top"] == LastSet(loadLb: 225, reps: 9, source: "Garmin", date: at(10, 5)))
     #expect(sets["d1_smith_close_grip|backOff"] == LastSet(loadLb: 185, reps: 6, source: "Garmin", date: at(10, 5)))
-    // Straight sets read the plain key; Liftoff's 32.5 stays 32.5 on 2.5 lb steps, the back-off isn't planned.
+    // Straight sets read the plain key, the back-off isn't planned, and Liftoff's 32.5 stays 32.5:
+    // Last time is what he lifted, never rounded to a load step (a 10 lb cable step would say 30).
     #expect(sets["d1_cable_fly|"] == LastSet(loadLb: 32.5, reps: 12, source: "Liftoff", date: at(9, 30)))
     #expect(sets["d1_cable_fly|backOff"] == nil)
-    // Shown rounded to his load steps: 10 lb cable steps make 32.5 read 30.
-    let coarse = history.lastSets(for: [fly], steps: RuleEngine.LoadSteps(barbell: 5, dumbbell: 5, machine: 10, cable: 10))
-    #expect(coarse["d1_cable_fly|"]?.loadLb == 30)
 }
 
 @Test func anUnmatchedNameIsHistoryOnly() {
     var history = TrainingHistory()
     history.sessions = [liftoffSep]
     history.ownNames = ["Close Grip Bench Press"]
-    #expect(history.lastSets(for: [smith], steps: .init()).isEmpty)
+    #expect(history.lastSets(for: [smith]).isEmpty)
     #expect(history.isConfirmed("Close Grip Bench Press") && !history.isConfirmed("Cable Fly"))
 }
 

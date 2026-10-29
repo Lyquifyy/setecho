@@ -68,8 +68,7 @@ struct ImportedExercise: Codable, Equatable {
 
 struct ImportedSet: Codable, Equatable {
     var order: Int
-    /// Liftoff keeps its decimals; Garmin's kg come back as the pounds he entered. Rounded for display
-    /// to his load steps.
+    /// Liftoff keeps its decimals; Garmin's kg come back as the pounds he entered. Shown as is.
     var loadLb: Double
     var reps: Int?
     /// A hold or cardio: how long, and Liftoff's distance as exported.
@@ -140,20 +139,19 @@ extension TrainingHistory {
 
     /// Last time per "exerciseId|role" from the imported sessions, for every plan exercise with a
     /// matched name: the latest top set under the key Today reads (the first planned set's role), and
-    /// its back-off set for a planned back-off. Loads are rounded to his load steps for the equipment.
-    func lastSets(for exercises: [PlannedExercise], steps: RuleEngine.LoadSteps) -> [String: LastSet] {
+    /// its back-off set for a planned back-off. Loads are exactly what he lifted, never rounded to his
+    /// load steps: on a 10 lb machine step, 225 would be said as 230 (Oct 29, his Smith close-grip).
+    func lastSets(for exercises: [PlannedExercise]) -> [String: LastSet] {
         var out: [String: LastSet] = [:]
         for exercise in exercises {
             let names = names(for: exercise.id)
             guard !names.isEmpty, let last = Self.lastTop(names: names, in: sessions), let reps = last.set.reps else { continue }
-            let step = steps.step(for: exercise.equipment)
             let source = last.session.source.label
             let firstRole = exercise.sets.first?.role
-            let top = LastSet(loadLb: RuleEngine.round(last.set.loadLb, step: step), reps: reps, source: source, date: last.session.startedAt)
+            let top = LastSet(loadLb: last.set.loadLb, reps: reps, source: source, date: last.session.startedAt)
             out["\(exercise.id)|\(firstRole?.rawValue ?? "")"] = top
             if exercise.sets.contains(where: { $0.role == .backOff }), let backOff = last.exercise.firstBackOff, let r = backOff.reps {
-                out["\(exercise.id)|\(SetRole.backOff.rawValue)"] = LastSet(loadLb: RuleEngine.round(backOff.loadLb, step: step), reps: r,
-                                                                            source: source, date: last.session.startedAt)
+                out["\(exercise.id)|\(SetRole.backOff.rawValue)"] = LastSet(loadLb: backOff.loadLb, reps: r, source: source, date: last.session.startedAt)
             }
         }
         return out

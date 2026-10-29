@@ -8,7 +8,7 @@ files, so Today's "Last time" line is his real last time from the first session.
   names and nothing else, and every match is the athlete's to confirm on the phone.
 
 Stateless: nothing is kept. Numbers come from the files, by code (rule 5).
-- Liftoff weights keep their decimals; the phone rounds them for display to his load steps.
+- Liftoff weights keep their decimals, and Last time says them as lifted (never rounded to load steps).
 - Garmin stores weight in kg at 1/16 kg. Converted to lb and rounded to 0.5 lb, which is the number he
   entered on the watch in pounds (the FIT grid is 0.14 lb), so "245" stays 245.
 - Neither source marks top sets: in each session the heaviest set of an exercise is its top set
