@@ -30,6 +30,9 @@ struct ReviewSendView: View {
     @State private var exportStatus: String?
     /// The current export's own progress, 0…1.
     @State private var exportProgress = 0.0
+    /// The share sheet closed without saying the share finished (WhatsApp sometimes doesn't): the
+    /// athlete says whether it went out, and the step moves on from his word.
+    @State private var unreported = false
     @State private var exportTask: Task<Void, Never>?
     @State private var photosFirst = false
     @State private var settings = Settings.shared
@@ -128,11 +131,19 @@ struct ReviewSendView: View {
                         .font(.footnote).secondaryText()
                 }
             }
-            if let banner {
+            if let bannerText = banner {
                 SectionCard {
                     HStack(spacing: Theme.Space.s) {
-                        TargetTag(text: "Next")
-                        Text(banner).font(.subheadline).foregroundStyle(Theme.navy)
+                        TargetTag(text: unreported ? "Did it go?" : "Next")
+                        Text(bannerText).font(.subheadline).foregroundStyle(Theme.navy)
+                    }
+                    if unreported {
+                        HStack(spacing: Theme.Space.xs) {
+                            Button("It went out", systemImage: "checkmark") { unreported = false; stepWentOut() }
+                                .buttonStyle(.setechoTonalWide)
+                            Button("Try again", systemImage: "arrow.counterclockwise") { unreported = false; banner = nil; showShare = true }
+                                .buttonStyle(.setechoTonal)
+                        }
                     }
                 }
             }
@@ -311,14 +322,11 @@ struct ReviewSendView: View {
         .sheet(isPresented: $showShare) {
             if isVideoStep {
                 ShareSheet(image: nil, text: nil, files: picks.compactMap { videoFiles[$0.setId].map { store.mediaDirectory.appendingPathComponent($0) } }) { completed in
-                    guard completed else { return }
-                    sendStep += 1
-                    coordinator.markSent()
-                    banner = "Handed to WhatsApp; it uploads the videos from there. The check-in is saved under History."
+                    if completed { stepWentOut() } else { shareNotReported() }
                 }
             } else if let body = isPlanStep ? planMessage : checkInMessage {
                 ShareSheet(image: nil, text: includeText ? body : nil, files: isPlanStep || photosFirst == false && !includeText ? [] : photoURLs) { completed in
-                    guard completed else { return }
+                    guard completed else { shareNotReported(); return }
                     if photosFirst {
                         // The photos went; now the text, as its own share.
                         photosFirst = false
@@ -330,13 +338,7 @@ struct ReviewSendView: View {
                         }
                         return
                     }
-                    sendStep += 1
-                    if sendStep >= stepCount {
-                        coordinator.markSent()
-                        banner = "Handed to WhatsApp. The check-in is saved under History."
-                    } else {
-                        banner = "Handed to WhatsApp. Next: \(stepName)."
-                    }
+                    stepWentOut()
                 }
             }
         }
@@ -350,6 +352,25 @@ struct ReviewSendView: View {
             coordinator.setVideoPicks(new)
             Task { await prepareVideos() }
         }
+    }
+
+    /// One step went out: the next step, or the whole check-in marked sent after the last.
+    private func stepWentOut() {
+        sendStep += 1
+        if sendStep >= stepCount {
+            coordinator.markSent()
+            banner = isVideoStep || picks.isEmpty == false && sendStep == stepCount
+                ? "Handed to WhatsApp; it uploads from there. The check-in is saved under History."
+                : "Handed to WhatsApp. The check-in is saved under History."
+        } else {
+            banner = "Handed to WhatsApp. Next: \(stepName)."
+        }
+    }
+
+    /// The share sheet closed without a result: cancelled, or WhatsApp just didn't say.
+    private func shareNotReported() {
+        unreported = true
+        banner = "WhatsApp didn't say whether \(stepName) went out. If you tapped Send there, it did."
     }
 
     private func render() async {

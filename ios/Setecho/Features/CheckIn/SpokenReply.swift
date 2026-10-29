@@ -31,7 +31,8 @@ enum SpokenReply: Equatable {
     }
 
     nonisolated(unsafe) private static let finishedPattern = pattern(
-        #"\b(i'?m done|that'?s (?:all|it|everything)|all done|done for now|we'?re done|close (?:it|this)|finish(?:ed)?|that'?ll do)\b"#)
+        #"\b(i'?m done|that'?s (?:all|it|everything)|all done|done for now|we'?re done|close(?: it| this)?|finish(?:ed)?|that'?ll do|"#
+        + #"(?:good)?bye|all set|see you|i'?m good|i'?m finished|exit|quit)\b"#)
 
     static func read(_ transcript: String, offered: Bool) -> SpokenReply? {
         let text = transcript.lowercased().replacingOccurrences(of: "’", with: "'")
