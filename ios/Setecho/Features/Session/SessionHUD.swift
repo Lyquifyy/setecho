@@ -5,7 +5,7 @@ import UIKit
 // the bench, built from the same grouped cards as the rest of Setecho rather than a fitness dashboard.
 // OWN-WORLD: The app's own: the cool page, white cards with a hairline and their title inside, navy
 // SF Pro bold with tabular numbers, the yellow tag for the one thing waiting on him, cobalt only for
-// the brand, data sources ("Measured", the mic in use) and the end button, the red dot only while
+// the brand, data sources ("Measured", the mic in use) and the tonal end button, the red dot only while
 // recording. No state colour fields.
 // STORY: From the bench he sees where he is (the lifts), what to do (one card), and that he was
 // heard (the voice card), without walking to the phone.
@@ -946,24 +946,14 @@ struct VoiceCard: View {
     }
 }
 
-/// The long press that ends the session, as the app's primary button (no tap ends anything), so a
-/// brush against the phone never ends it.
+/// The long press that ends the session: the hands-free `HoldButton` (tonal, filling as it's held),
+/// so a brush against the phone never ends it, and it never outshouts the set.
 private struct EndButton: View {
     var label: String
     var onEnd: (() -> Void)?
-    @State private var pressing = false
 
     var body: some View {
-        Text(label)
-            .font(.hudLabel.weight(.semibold))
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 56)
-            .background(pressing ? Theme.cobaltPressed : Theme.cobalt,
-                        in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-            .contentShape(Rectangle())
-            .onLongPressGesture(minimumDuration: 1.2, pressing: { pressing = $0 }) { onEnd?() }
-            .accessibilityLabel(label)
-            .accessibilityHint("Press and hold for one second, or say end session")
+        HoldButton(title: label, duration: 1.2, accessibilityHint: "Press and hold for one second, or say end session") { onEnd?() }
     }
 }
 

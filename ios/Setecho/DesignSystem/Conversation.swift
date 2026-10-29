@@ -440,8 +440,10 @@ struct ThinkingDots: View {
 
 // MARK: - Hold to stop
 
-/// The one tap target of a hands-free screen: it fills as it is held, so a brush against the phone
-/// never ends anything and a real press shows it is working.
+/// The one tap target of a hands-free screen, and the action he wants least, so it's tonal (cobalt
+/// on cobalt tint) and the target, the clock or the question owns the screen (DESIGN.md rule 9).
+/// It fills with solid cobalt as it is held, so a brush against the phone never ends anything and
+/// a real press shows it is working.
 struct HoldButton: View {
     let title: String
     var duration: Double = 1.0
@@ -450,18 +452,21 @@ struct HoldButton: View {
     @State private var pressing = false
 
     var body: some View {
+        let label = Text(title).font(.hudLabel.weight(.semibold)).frame(maxWidth: .infinity)
         ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).fill(Theme.cobalt)
+            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).fill(Theme.cobaltTint)
+            label.foregroundStyle(Theme.cobalt)
+            // The fill, and the label turning white wherever the fill has reached.
             GeometryReader { geometry in
-                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                    .fill(Theme.cobaltPressed)
+                let fill = RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .frame(width: pressing ? geometry.size.width : 0)
-                    .animation(pressing ? .linear(duration: duration) : .easeOut(duration: 0.2), value: pressing)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                ZStack {
+                    fill.foregroundStyle(Theme.cobalt)
+                    label.foregroundStyle(.white).frame(maxHeight: .infinity).mask(fill)
+                }
+                .animation(pressing ? .linear(duration: duration) : .easeOut(duration: 0.2), value: pressing)
             }
-            Text(title)
-                .font(.hudLabel.weight(.semibold))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 60)
