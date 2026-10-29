@@ -35,6 +35,10 @@ struct ReviewSendView: View {
     @State private var unreported = false
     @State private var exportTask: Task<Void, Never>?
     @State private var photosFirst = false
+    /// "Finish check-in" with steps still to go: asked once before it's marked sent.
+    @State private var confirmFinish = false
+    /// The videos went by WhatsApp's own picker: the banner asks whether they went.
+    @State private var attachingInWhatsApp = false
     @State private var settings = Settings.shared
 
     private var text: String? { messages.isEmpty ? nil : messages.joined(separator: "\n\n") }
@@ -51,6 +55,9 @@ struct ReviewSendView: View {
     private var stepName: String { steps.indices.contains(sendStep) ? steps[sendStep] : "" }
     private var isVideoStep: Bool { !picks.isEmpty && sendStep == stepCount - 1 }
     private var isPlanStep: Bool { sendStep == 0 && planMessage != nil }
+    private var isSent: Bool { coordinator.draft?.isSent == true }
+    /// What hasn't gone out yet, for the finish question: "the two videos".
+    private var stepsLeft: [String] { sendStep < stepCount ? Array(steps[sendStep...]) : [] }
 
     /// The period's sessions, for the videos and the adjustments line.
     private var periodSessions: [Session] {
@@ -139,10 +146,14 @@ struct ReviewSendView: View {
                     }
                     if unreported {
                         HStack(spacing: Theme.Space.xs) {
-                            Button("It went out", systemImage: "checkmark") { unreported = false; stepWentOut() }
+                            Button("It went out", systemImage: "checkmark") { unreported = false; attachingInWhatsApp = false; stepWentOut() }
                                 .buttonStyle(.setechoTonalWide)
-                            Button("Try again", systemImage: "arrow.counterclockwise") { unreported = false; banner = nil; showShare = true }
-                                .buttonStyle(.setechoTonal)
+                            Button("Try again", systemImage: "arrow.counterclockwise") {
+                                unreported = false
+                                banner = nil
+                                if attachingInWhatsApp { openWhatsApp() } else { showShare = true }
+                            }
+                            .buttonStyle(.setechoTonal)
                         }
                     }
                 }
@@ -201,7 +212,8 @@ struct ReviewSendView: View {
             SectionCard("Videos for your coach", accessory: {
                 if picks.count < 2 { LinkButton(title: picks.isEmpty ? "Pick two" : "Add one", chevron: .none) { showPicker = true } }
             }) {
-                Text("The sets you flagged, two at most from two different movements, each cropped to just the reps. No verdicts.")
+                Text("The sets you flagged, two at most from two different movements, each cropped to just the reps. No verdicts. "
+                     + "Or skip this and attach videos from your camera roll straight in WhatsApp at the last step: one upload, no wait here.")
                     .font(.footnote).secondaryText()
                 if picks.isEmpty {
                     Text("Nothing flagged this period. Say \"flag that\" after a set, or pick two.").font(.subheadline).secondaryText()
@@ -219,7 +231,7 @@ struct ReviewSendView: View {
                             Text("\(Int((exportProgress * 100).rounded()))%").font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(Theme.cobalt)
                         }
                         MeterBar(fraction: exportProgress)
-                        Text("On the phone, before it goes to WhatsApp. Sending waits for this.").font(.footnote).secondaryText()
+                        Text("On the phone, before it goes to WhatsApp. To skip the wait, attach them in WhatsApp yourself.").font(.footnote).secondaryText()
                     }
                     .accessibilityElement(children: .combine)
                 } else if !picks.isEmpty, picks.allSatisfy({ videoFiles[$0.setId] != nil }) {
@@ -270,28 +282,47 @@ struct ReviewSendView: View {
                     }
                 }
             }
-            let missing = coordinator.questions.count
-            if missing > 0 {
+            let open = coordinator.questions.flatMap { $0 }
+            if !open.isEmpty {
                 SectionCard("Still to answer") {
-                    Text("\(missing) question\(missing == 1 ? "" : "s") left. They go out blank if you send now; tap a field on the Check-in tab to type it.")
-                        .font(.subheadline).foregroundStyle(Theme.navy)
-                    LinkButton(title: "Type the rest") { dismiss(); AppRouter.shared.tab = .checkIn }
+                    Text("\(open.count) left. They go out blank if you send now; tap one to type it.")
+                        .font(.footnote).secondaryText()
+                    ForEach(Array(open.enumerated()), id: \.element.id) { index, field in
+                        if index > 0 { CardDivider() }
+                        FieldRow(field: field, answer: coordinator.answer(for: field))
+                            .contentShape(Rectangle())
+                            .onTapGesture { editing = field }
+                    }
                 }
             }
         } footer: {
             // Every step goes through the share sheet, the plan message too (Oct 28: whatsapp://send
             // with the text in the URL cut the supplements off; the share sheet carries the whole message).
-            Button(exporting && isVideoStep ? (exportStatus ?? "Preparing the videos…") : sendStep == 0 ? "Send to WhatsApp" : "Next: \(stepName)") {
-                includeText = true
-                banner = nil
-                if isVideoStep {
-                    Task { await prepareVideos(); showShare = true }
-                } else {
-                    showShare = true
+            if sendStep >= stepCount || isSent {
+                // Everything went out (Oct 29: the button sat disabled here, with no way to finish).
+                Button("Done") { dismiss() }.buttonStyle(.setechoPrimary)
+            } else {
+                Button(exporting && isVideoStep ? (exportStatus ?? "Preparing the videos…") : sendStep == 0 ? "Send to WhatsApp" : "Next: \(stepName)") {
+                    includeText = true
+                    banner = nil
+                    if isVideoStep {
+                        Task { await prepareVideos(); showShare = true }
+                    } else {
+                        showShare = true
+                    }
                 }
+                .buttonStyle(.setechoPrimary)
+                .disabled(text == nil || (exporting && isVideoStep))
             }
-            .buttonStyle(.setechoPrimary)
-            .disabled(text == nil || sendStep >= stepCount || (exporting && isVideoStep))
+            if isVideoStep, sendStep < stepCount {
+                // The alternative to waiting: WhatsApp's own picker reads the camera roll, and uploads once.
+                Button("Attach them in WhatsApp instead") {
+                    exportTask?.cancel()
+                    attachingInWhatsApp = true
+                    openWhatsApp()
+                }
+                .buttonStyle(.setechoOutline)
+            }
             if !isVideoStep, sendStep == (planMessage == nil ? 0 : 1) {
                 // If WhatsApp splits the text from the photos: the photos first, the text right after.
                 Button("Photos first, then the text") {
@@ -307,6 +338,18 @@ struct ReviewSendView: View {
                 Text("Step \(sendStep + 1) of \(stepCount): \(stepName). The share sheet opens; pick WhatsApp and the chat, then Send. One message each, in his order.")
                     .font(.footnote).secondaryText()
             }
+            if !isSent, text != nil, sendStep < stepCount {
+                // The way to end it: already sent some other way, or the rest isn't going.
+                LinkButton(title: "Finish check-in", chevron: .none) {
+                    if stepsLeft.isEmpty { finish() } else { confirmFinish = true }
+                }
+            }
+        }
+        .confirmationDialog("Finish without \(stepsLeft.joined(separator: " and "))?", isPresented: $confirmFinish, titleVisibility: .visible) {
+            Button("Finish, it's all sent") { finish() }
+            Button("Keep going", role: .cancel) {}
+        } message: {
+            Text("The check-in is marked sent and saved under History. Anything not sent from here, send in WhatsApp yourself.")
         }
         .keepsScreenAwake()
         .sheet(item: $editing, onDismiss: { Task { await render() } }) { field in
@@ -364,6 +407,23 @@ struct ReviewSendView: View {
                 : "Handed to WhatsApp. The check-in is saved under History."
         } else {
             banner = "Handed to WhatsApp. Next: \(stepName)."
+        }
+    }
+
+    /// Marked sent as it stands, and closed. Check-in morning hears it and says it's sent.
+    private func finish() {
+        coordinator.markSent()
+        dismiss()
+    }
+
+    /// WhatsApp, to attach the videos from its own camera-roll picker. Coming back asks whether they went.
+    private func openWhatsApp() {
+        guard let url = URL(string: "whatsapp://") else { return }
+        UIApplication.shared.open(url) { opened in
+            unreported = true
+            banner = opened
+                ? "In WhatsApp, open his chat, tap +, pick the videos from your camera roll and send. Then tap It went out."
+                : "WhatsApp didn't open. Attach the videos there yourself, then tap It went out."
         }
     }
 
@@ -453,7 +513,8 @@ private struct VideoPickerSheet: View {
             TitleBlock(title: "Pick two", subtitle: "Two movements you'd like his eyes on. Each is cropped to the reps. Your picks are kept as you tap.")
             SectionCard("From your camera roll") {
                 Text("Goes out exactly as you trimmed it. It counts as one of the two.").font(.footnote).secondaryText()
-                PhotosPicker(selection: $rollItem, matching: .videos) {
+                // As stored, no re-encode: a compatible copy can take minutes for a long video.
+                PhotosPicker(selection: $rollItem, matching: .videos, preferredItemEncoding: .current) {
                     Text(importing ? "Copying from your camera roll…" : "Choose a video").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.cobalt)
                         .frame(minHeight: 44)
                 }
