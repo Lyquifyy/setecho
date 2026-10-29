@@ -8,8 +8,9 @@ struct PhotoSessionView: View {
     @Environment(Store.self) private var store
     @State private var coordinator: PhotoSessionCoordinator
 
-    init(store: Store) {
-        _coordinator = State(initialValue: PhotoSessionCoordinator(store: store))
+    /// With `existing`, it opens on that set's review: retake a pose by tap or by voice.
+    init(store: Store, existing: PhotoSet? = nil) {
+        _coordinator = State(initialValue: PhotoSessionCoordinator(store: store, existing: existing))
     }
 
     var body: some View {
@@ -30,6 +31,9 @@ struct PhotoSessionView: View {
             }
         }
         .task { await coordinator.start() }
+        // "We're done": the session closes itself. Leaving any way stops the camera and the mic.
+        .onChange(of: coordinator.finished) { _, finished in if finished { dismiss() } }
+        .onDisappear { coordinator.cancel() }
         .keepsScreenAwake()
         // The screen locked or the app left the front: stop, rather than cue an empty frame on repeat.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
@@ -52,6 +56,9 @@ struct PhotoSessionView: View {
                     Text("Lining up with last week…").font(.hudState).foregroundStyle(Theme.surface)
                 } else {
                     Text("Starting the camera…").font(.hudState).foregroundStyle(Theme.surface)
+                }
+                if let heard = coordinator.heard {
+                    Text("“\(heard)”").font(.hudLabel).foregroundStyle(Theme.surface.opacity(0.8)).lineLimit(1)
                 }
                 if let cue = coordinator.cue {
                     Text(cue)
@@ -144,7 +151,8 @@ struct PhotoReviewView: View {
             TitleBlock(eyebrow: Format.shortDate(photoSet.takenAt), title: "Check-in photos",
                        subtitle: "Exactly as taken, full resolution, in your coach's order. Nothing is cropped or changed.")
             SectionCard("This week") {
-                Text("Tap a photo to see it full screen, or beside last week's.").font(.footnote).secondaryText()
+                Text("Tap a photo to see it full screen. Tap Retake, or say \"retake the front\", to redo one; only that photo changes.")
+                    .font(.footnote).secondaryText()
                 ForEach(Pose.allCases, id: \.self) { pose in
                     CardDivider()
                     HStack(spacing: Theme.Space.s) {

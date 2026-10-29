@@ -403,9 +403,13 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     #expect(summary.contains(" from Apple Health and your log, and your 4 photos."))
     let sections = m.summarySections()
     #expect(sections.map(\.title) == ["From you this morning", "From Apple Health and your log", "Photos"])
-    #expect(sections[0].rows.contains(SummaryRow(label: "Current body weight", value: "180.8")))
-    #expect(sections[0].rows.contains(SummaryRow(label: "Energy levels", value: "7/10")))
-    #expect(sections[1].rows.contains(SummaryRow(label: "Current cardio protocol", value: "25 minutes fasted LISS")))
+    func has(_ section: Int, _ label: String, _ value: String) -> Bool { sections[section].rows.contains { $0.label == label && $0.value == value } }
+    #expect(has(0, "Current body weight", "180.8"))
+    #expect(has(0, "Energy levels", "7/10"))
+    #expect(has(1, "Current cardio protocol", "25 minutes fasted LISS"))
+    // Every line can be opened to change it: each carries its field, the photos theirs.
+    #expect(sections[0].rows.first { $0.label == "Current body weight" }?.fieldId == (try f(.currentWeight).id))
+    #expect(sections[2].rows.first?.fieldId == SummaryRow.photosId)
     #expect(!summary.contains("cardio") && !summary.contains("weeks"))   // the counts, not the values: the card has those
 }
 
@@ -424,4 +428,53 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     for said in ["it was 91", "hang on", "yeah"] {
         #expect(!SpokenReply.isBack(said), Comment(rawValue: said))
     }
+}
+
+/// "Start over" by voice (Oct 29: only the button did it): part way through he's asked first, a no
+/// carries on with nothing lost, a yes runs the morning again from the top.
+@Test @MainActor func startOverByVoiceAsksFirstPartWayThrough() async throws {
+    let store = makeStore()
+    let template = try template()
+    store.saveTemplate(template)
+    let energy = try #require(template.fields.first { $0.id.contains("energy") })
+    store.upsert(checkIn: currentDraft(answers: [answer(energy.id, "7/10")]))
+    let coordinator = CheckInCoordinator(store: store)
+    var said: [String] = []
+    let m = CheckInMorningModel(coordinator: coordinator, store: store, speak: { said.append($0) })
+    await m.apply(turn(.unclear, "Let's start over."))
+    #expect(said.last == CheckInMorningModel.startOverLine)
+    #expect(m.offer == .startOver)
+    await m.apply(turn(.decline, "No."))
+    #expect(m.offer == nil)
+    #expect(said.last?.hasPrefix("Okay, we'll carry on.") == true)
+    #expect(coordinator.answer(for: energy)?.text == "7/10")   // nothing lost
+    await m.apply(turn(.unclear, "Can we start the whole thing over?"))
+    await m.apply(turn(.keep, "Yeah."))
+    #expect(said.contains { $0.hasPrefix("Okay, from the top.") })
+    #expect(coordinator.answer(for: energy)?.state == .missing)
+}
+
+@Test func startOverIsHeardTheWayPeopleSayIt() {
+    for yes in ["Start over.", "Let's start again", "Can we start from the top?", "restart", "Start the whole check-in over.", "begin again"] {
+        #expect(SpokenReply.isStartOver(yes), "\(yes)")
+    }
+    for no in ["I started over at 180 this week", "Over the weekend I slipped", "Go back", "Say that again", "That's all"] {
+        #expect(!SpokenReply.isStartOver(no), "\(no)")
+    }
+}
+
+/// The photo session's own words (Oct 29: "say retake and a pose" was said, and nothing listened).
+@Test func photoCommandsAreReadByCode() {
+    #expect(PhotoCommand.read("Retake the front.") == .retake(.front))
+    #expect(PhotoCommand.read("Can you redo the right side?") == .retake(.rightArmsUp))
+    #expect(PhotoCommand.read("Do the back again") == .retake(.back))
+    #expect(PhotoCommand.read("left one again") == .retake(.leftArmsUp))
+    #expect(PhotoCommand.read("Retake that") == .retakeWhich)
+    #expect(PhotoCommand.read("Redo them all") == .retakeAll)
+    #expect(PhotoCommand.read("Start over") == .retakeAll)
+    #expect(PhotoCommand.read("Hang on, wait") == .wait)
+    #expect(PhotoCommand.read("We're done") == .done)
+    #expect(PhotoCommand.read("Those look good") == .done)
+    #expect(PhotoCommand.read("I'm back") == nil)
+    #expect(PhotoCommand.pose(in: "retake left and right") == nil)   // two named: ask which
 }

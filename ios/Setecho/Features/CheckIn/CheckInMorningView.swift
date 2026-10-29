@@ -24,7 +24,9 @@ struct CheckInMorningView: View {
             phase: model.phase,
             level: model.audio.inputLevel,
             notice: model.status ?? AirPodsMic.shared.notice,
-            voiceName: AudioService.voiceDescription
+            voiceName: AudioService.voiceDescription,
+            // Once it's done, every line of the summary opens to change it.
+            onSummaryTap: model.isDone ? { model.edit($0) } : nil
         ) {
             if model.isDone {
                 Button("Open to send") { model.showReview = true }.buttonStyle(.setechoPrimary)
@@ -53,7 +55,10 @@ struct CheckInMorningView: View {
         .fullScreenCover(isPresented: $model.showPhotos, onDismiss: {
             Task { await model.photosFinished() }
         }) {
-            PhotoSessionView(store: store).environment(store)
+            PhotoSessionView(store: store, existing: model.photosToReview).environment(store)
+        }
+        .sheet(item: $model.editingField, onDismiss: { model.editFinished() }) { field in
+            FieldEditSheet(field: field, coordinator: coordinator)
         }
         .fullScreenCover(isPresented: $model.showReview, onDismiss: { Task { await model.reviewClosed() } }) {
             NavigationStack { ReviewSendView(coordinator: coordinator) }.environment(store)

@@ -805,9 +805,10 @@ His instructions about a specific exercise, played in his own voice before that 
 - **Live checks run on the device**, with no network: `VNGeneratePersonSegmentationRequest` (`.balanced`) at about 10 fps.
   - **Framing:** the mask's bounding box sits inside the frame with at least 4% margin on every side. Otherwise speak "step back a little", "move left" or "move right", at most once every 3 s.
   - **Stillness:** the mask IoU between consecutive checks stays above 0.97 for 1.2 s.
-- **Flow:** speak the pose (Front → "Turn right, arms up" → "Turn around" → "Turn left, arms up"), wait for stillness, capture, say "Got it".
+- **Flow:** speak the pose (Front → "Turn right, arms up" → "Turn around" → "Turn left, arms up"), then 5 s to turn and settle (8 s for the first pose and a retake, he's walking back from the phone) with no photo and no corrections; once framed, "Perfect, hold it right there", then 1.5 s still after the line; capture, say "Got it", a beat, next pose (Oct 29: with no gap, a still athlete was shot the moment the cue ended, still in the old pose). "Wait" adds time.
+- **Each photo is written the moment it's taken under a name of its own** (`pose-<set>-<pose>-<take>.jpg`); a retake deletes only that pose's old file (Oct 29: reused names showed the old photo from the image cache). The camera session is configured once and only started and stopped after that.
 - **Framing check, on the device:** head to toe in frame with margin on every side, from the person mask; otherwise "step back a little", "move left" or "move right".
-- **Retakes by voice:** "retake front" (or any pose) redoes that one.
+- **Retakes by voice:** the photo session has the mic while it's up (Check-in morning hands it over and takes it back). `PhotoCommand` reads "retake the front" (or any pose; during the run, a pose already taken is redone after the four), "redo them all", "wait", "done". Tapping Photos on the morning's summary opens today's set on its review.
 - **The photos are sent exactly as taken,** at full resolution, in his order: front, right side arms up, back, left side arms up. No collage, no cropping, no alignment, no last-week outline, no comparison screen (decided Oct 27 evening). `/photos/segment` is no longer called; SAM does not touch photos. The old collage, alignment and review code can stay in the tree for now.
 
 ### Check-in

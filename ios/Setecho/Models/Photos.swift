@@ -48,6 +48,16 @@ enum Pose: String, Codable, CaseIterable {
         }
     }
 
+    /// The pose as a sentence says it: "I'll redo the front after this one."
+    var spokenName: String {
+        switch self {
+        case .front: "front"
+        case .rightArmsUp: "right side"
+        case .back: "back"
+        case .leftArmsUp: "left side"
+        }
+    }
+
     /// What the app says before the pose.
     var spokenCue: String {
         switch self {

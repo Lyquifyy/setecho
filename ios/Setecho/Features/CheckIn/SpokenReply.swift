@@ -34,6 +34,21 @@ enum SpokenReply: Equatable {
         #"\b(i'?m done|that'?s (?:all|it|everything)|all done|done for now|we'?re done|close(?: it| this)?|finish(?:ed)?|that'?ll do|"#
         + #"(?:good)?bye|all set|see you|i'?m good|i'?m finished|exit|quit)\b"#)
 
+    /// The whole check-in again: "start over", "let's start again", "from the top", "restart". Short
+    /// and with no number in it, so an answer that mentions starting is still an answer.
+    static func isStartOver(_ transcript: String) -> Bool {
+        let text = transcript.lowercased().replacingOccurrences(of: "’", with: "'")
+            .replacing(/[^\w' ]/, with: " ")
+            .split(separator: " ").joined(separator: " ")
+        guard !text.contains(where: { $0.isNumber }), text.split(separator: " ").count <= 9 else { return false }
+        return matches(startOverPattern, text)
+    }
+
+    nonisolated(unsafe) private static let startOverPattern = pattern(
+        #"\b(start (?:it |this |that |the (?:whole )?(?:thing|check ?in) |everything )?(?:all )?(?:over|again|from (?:the )?(?:top|beginning|scratch))|"#
+        + #"restart|re start|from the (?:top|beginning)|begin again|start from scratch|"#
+        + #"redo (?:it all|everything|the whole (?:thing|check ?in))|do (?:the whole thing|everything|it all) (?:over|again))\b"#)
+
     static func read(_ transcript: String, offered: Bool) -> SpokenReply? {
         let text = transcript.lowercased().replacingOccurrences(of: "’", with: "'")
             .replacing(/[^\w' ]/, with: " ")

@@ -182,8 +182,16 @@ final class CheckInMorningModel {
     private(set) var transcript: [ConversationEntry] = []
     /// The step whose answer was just stored, so the next question can join on ("And your fasted glucose?").
     private var lastAnsweredStep: CheckInMorningStep?
-    /// The photo session runs full-screen, then the conversation carries on.
+    /// The photo session runs full-screen, then the conversation carries on. It has the mic while it's up.
     var showPhotos = false
+    /// Today's set, when the photo session opens on its review (a tap on Photos in the summary).
+    private(set) var photosToReview: PhotoSet?
+    /// A field open to type over, from the summary at the end. The mic is closed while it's open.
+    var editingField: FieldSpec?
+    /// "Start over" heard part way through: asked first, so a stray phrase never wipes his answers.
+    private var confirmingStartOver = false
+    /// The question that was open when "start over" was asked, to go back to on a no.
+    private var questionBeforeStartOver = ""
     /// Review and send, the one tap of the morning.
     var showReview = false
     /// The morning is over and the screen should close: everything was sent, or he said he's done.
@@ -274,6 +282,7 @@ final class CheckInMorningModel {
     static let doneLine = "Want me to read it all back, or are you ready to send?"
     static let sentLine = "That's sent. Nice work this morning."
     static let leaveLine = "Okay. Everything's saved; the Check-in tab sends it whenever you're ready."
+    static let startOverLine = "Start the whole check-in over, from the scale?"
 
     /// The coach's questions and the fixed lines, rendered once and kept by a hash of the line and voice.
     private func prerender() {
@@ -281,7 +290,7 @@ final class CheckInMorningModel {
                      Self.doneLine, "No rush. Tell me when you're ready.", "Okay.", "Nice.",
                      "Welcome back. Let's pick up where we left off.", "Sorry, can you say that again?", "Okay, we'll skip that one.",
                      "Okay, we'll leave the photos for later.", "Okay, from the top.", Self.sentLine, Self.leaveLine, "Got it.", "I'll add that to your notes.", "Okay, I'll leave that out.",
-                     "Take your time.", "What should it say?", "Go ahead."]
+                     "Take your time.", "What should it say?", "Go ahead.", Self.startOverLine, "Okay, we'll carry on."]
         let groups = questionGroups
         lines += groups.map { flow.prompt(for: $0, draft: draft) }
         // Each question as it follows in the conversation, so the first of a run plays at once.
@@ -452,19 +461,23 @@ final class CheckInMorningModel {
                 continue
             }
             guard let a, a.state != .missing, !a.text.isEmpty else {
-                open.append(SummaryRow(label: label, value: "Not yet"))
+                open.append(SummaryRow(label: label, value: "Not yet", fieldId: field.id))
                 continue
             }
-            if a.state == .confirmed || a.provenance.contains(where: { $0.source.hasPrefix("You said") }) {
-                mine.append(SummaryRow(label: label, value: a.text))
+            if a.state == .confirmed || a.provenance.contains(where: { $0.source.hasPrefix("You said") || $0.source.hasPrefix("You typed") }) {
+                mine.append(SummaryRow(label: label, value: a.text, fieldId: field.id))
             } else {
-                data.append(SummaryRow(label: label, value: a.text))
+                data.append(SummaryRow(label: label, value: a.text, fieldId: field.id))
             }
         }
         var sections: [SummarySection] = []
         if !mine.isEmpty { sections.append(SummarySection(title: "From you this morning", rows: mine)) }
         if !data.isEmpty { sections.append(SummarySection(title: "From Apple Health and your log", rows: data)) }
-        if let photos { sections.append(SummarySection(title: "Photos", rows: [SummaryRow(label: "Check-in photos", value: photos)])) }
+        if let photos {
+            // Taken: tap to look or retake. Left for later: there's no set to open here.
+            let id = draft.photoSetId != nil ? SummaryRow.photosId : nil
+            sections.append(SummarySection(title: "Photos", rows: [SummaryRow(label: "Check-in photos", value: photos, fieldId: id)]))
+        }
         if !open.isEmpty { sections.append(SummarySection(title: "Still open", rows: open)) }
         return sections
     }
@@ -564,6 +577,11 @@ final class CheckInMorningModel {
     // MARK: Turns
 
     private func handle(_ utterance: VoiceDetector.Utterance) async {
+        // The photo session listens for itself, and a field being typed needs no voice.
+        guard !showPhotos, editingField == nil else {
+            realtime.cancel()
+            return
+        }
         // A turn is in flight (often a bump or the dog): keep what he says now and read it next,
         // instead of dropping it (Oct 28: "it didn't hear me the first time").
         guard !busy else {
@@ -660,6 +678,7 @@ final class CheckInMorningModel {
         case .weight(let known): "Weight: \(known) (Apple Health)"
         case .readBack(let id), .drafted(let id): "\(label(for: id)): \(coordinator.draft?.answers.first { $0.fieldId == id }?.text ?? "")"
         case .notes(let question): "Add to notes: \(question)"
+        case .startOver: "Start the whole check-in over from the beginning"
         }
     }
 
@@ -670,9 +689,11 @@ final class CheckInMorningModel {
         case readBack(fieldId: String)
         case drafted(fieldId: String)
         case notes(String)
+        case startOver
     }
 
     var offer: Offer? {
+        if confirmingStartOver { return .startOver }
         if let question = pendingForCoach { return .notes(question) }
         switch step {
         case .weight: return offeredWeight.map(Offer.weight)
@@ -705,6 +726,31 @@ final class CheckInMorningModel {
         // Anything but another wait ends the wait.
         let wasPaused = isPaused
         if said != .hold, response.intent != .pause { isPaused = false }
+        // "Start over", by voice (Oct 29: only the button did it). On the finished screen it runs at
+        // once; part way through, he's asked first.
+        if confirmingStartOver, said != .hold {
+            confirmingStartOver = false
+            question = questionBeforeStartOver
+            if keeps {
+                await startOver()
+                return
+            }
+            if declines {
+                await ask(question, after: "Okay, we'll carry on.")
+                return
+            }
+            // Anything else: the question lapses and the turn is read as usual.
+        }
+        if SpokenReply.isStartOver(response.transcript) {
+            if isDone {
+                await startOver()
+            } else {
+                confirmingStartOver = true
+                questionBeforeStartOver = question
+                await ask(Self.startOverLine)
+            }
+            return
+        }
         // On the finished screen, "I'm done" or "that's all" leaves; "send" or "ready" opens the review.
         if isDone, response.answers.isEmpty {
             if SpokenReply.isFinished(response.transcript) {
@@ -881,8 +927,7 @@ final class CheckInMorningModel {
                 await ask(Self.scaleReadingLine)
             }
         case .photos:
-            showPhotos = true
-            isListening = false
+            openPhotos()
         case .review:
             showReview = true
         case .questions:
@@ -985,16 +1030,70 @@ final class CheckInMorningModel {
 
     /// Back from the photo session: carry on with the questions.
     func photosFinished() async {
+        let reviewing = photosToReview != nil
+        photosToReview = nil
         var ack: String?
         if let set = store.lastPhotoSet, Calendar.current.isDateInToday(set.takenAt), set.takenAt > openedAt || !ignorePhotosToday {
             ignorePhotosToday = false
             coordinator.attachPhotoSet(set.id)
-            append(.note("Four photos taken"))
+            if !reviewing { append(.note("Four photos taken")) }
             ack = Self.photosDoneLine
         }
         // Dismissed because the app left the front: the return to the front picks the step up.
         guard !isPaused else { return }
+        audio.startListening()
+        if isDone {
+            // Back from a look or a retake on the finished screen: the summary as it stands now.
+            refreshSummary()
+            isListening = true
+            armSilenceTimer()
+            return
+        }
         await resume(after: ack)
+    }
+
+    /// The photo session takes the screen and the mic; the conversation waits.
+    private func openPhotos(reviewing set: PhotoSet? = nil) {
+        photosToReview = set
+        showPhotos = true
+        isListening = false
+        silenceTask?.cancel()
+        realtime.cancel()
+        audio.stopListening()
+    }
+
+    // MARK: Editing the summary
+
+    /// A line of the summary tapped: its field opens to type over, or the photos open on their review.
+    func edit(_ row: SummaryRow) {
+        guard let id = row.fieldId else { return }
+        if id == SummaryRow.photosId {
+            let today = coordinator.draft?.photoSetId.flatMap { id in store.photoSets.first { $0.id == id } }
+            openPhotos(reviewing: today)
+            return
+        }
+        guard let field = flow.template.fields.first(where: { $0.id == id }) else { return }
+        audio.stopSpeaking()
+        silenceTask?.cancel()
+        realtime.cancel()
+        isListening = false
+        editingField = field
+        audio.stopListening()
+    }
+
+    /// The edit sheet closed: the summary shows the new value and the mic opens again.
+    func editFinished() {
+        refreshSummary()
+        guard !isPaused else { return }
+        audio.startListening()
+        isListening = true
+        armSilenceTimer()
+    }
+
+    /// The summary card, rebuilt from the draft in place.
+    private func refreshSummary() {
+        guard let index = transcript.lastIndex(where: { if case .summary = $0.kind { true } else { false } }) else { return }
+        transcript[index] = ConversationEntry(id: transcript[index].id, kind: .summary(summarySections()), text: "Summary")
     }
 
     /// Review and send closed: sent means the morning is over and says so; otherwise the mic opens
@@ -1032,6 +1131,8 @@ final class CheckInMorningModel {
         questionIndex = 0
         offeredWeight = nil
         pendingForCoach = nil
+        confirmingStartOver = false
+        pendingUtterance = nil
         lastAnsweredStep = nil
         transcript = []
         echo = nil

@@ -45,6 +45,8 @@ struct ConversationEntry: Identifiable, Equatable {
 /// line being asked now is the big one; everything before it has settled into the record.
 struct ConversationTranscript: View {
     let entries: [ConversationEntry]
+    /// A summary line tapped, to change it. Nil leaves the summary read-only.
+    var onSummaryTap: ((SummaryRow) -> Void)?
     /// How many lines back to keep on screen: older ones scroll away.
     var visible = 24
 
@@ -90,7 +92,7 @@ struct ConversationTranscript: View {
         case .note:
             Text(entry.text).font(.hudLabel).secondaryText().frame(maxWidth: .infinity, alignment: .center)
         case .summary(let sections):
-            SummaryCard(sections: sections)
+            SummaryCard(sections: sections, onTap: onSummaryTap)
         }
     }
 }
@@ -106,29 +108,38 @@ struct SummarySection: Equatable, Identifiable {
 struct SummaryRow: Equatable, Identifiable {
     let label: String
     let value: String
+    /// The field this line shows, so a tap can open it; `photosId` for the photos.
+    var fieldId: String?
     var id: String { label }
+
+    static let photosId = "photos"
 }
 
 /// The summary before the send, as one card: each group under its own title, one line per field,
-/// the value as the coach will read it. Simple and in his order.
+/// the value as the coach will read it. Simple and in his order. With `onTap`, every line with a
+/// field opens it to change (Oct 29: the end showed everything and none of it could be fixed).
 struct SummaryCard: View {
     let sections: [SummarySection]
+    var onTap: ((SummaryRow) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
+            if onTap != nil {
+                Text("Tap any line to change it.").font(.subheadline).secondaryText()
+            }
             ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
                 if index > 0 { Spacer().frame(height: Theme.Space.xxs) }
                 Text(section.title).font(.hudLabel.weight(.semibold)).foregroundStyle(Theme.navy)
                 CardDivider()
                 ForEach(Array(section.rows.enumerated()), id: \.element.id) { rowIndex, row in
                     if rowIndex > 0 { CardDivider() }
-                    HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
-                        Text(row.label).font(.hudLabel).secondaryText().lineLimit(2)
-                        Spacer(minLength: Theme.Space.xs)
-                        Text(row.value).font(.hudLabel).monospacedDigit().foregroundStyle(Theme.navy)
-                            .multilineTextAlignment(.trailing).lineLimit(3)
+                    if let onTap, row.fieldId != nil {
+                        Button { onTap(row) } label: { line(row, editable: true) }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Opens it to change")
+                    } else {
+                        line(row, editable: false)
                     }
-                    .accessibilityElement(children: .combine)
                 }
             }
         }
@@ -136,6 +147,21 @@ struct SummaryCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+    }
+
+    private func line(_ row: SummaryRow, editable: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
+            Text(row.label).font(.hudLabel).secondaryText().lineLimit(2)
+            Spacer(minLength: Theme.Space.xs)
+            Text(row.value).font(.hudLabel).monospacedDigit().foregroundStyle(Theme.navy)
+                .multilineTextAlignment(.trailing).lineLimit(3)
+            if editable {
+                Image(systemName: "chevron.right").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.cobalt)
+            }
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 }
 

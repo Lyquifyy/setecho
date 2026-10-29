@@ -16,6 +16,8 @@ struct ConversationScreen<Footer: View>: View {
     var notice: String?
     /// Which voice is speaking, so a fallback to a lesser voice is never a mystery.
     var voiceName: String?
+    /// A summary line tapped, to change it.
+    var onSummaryTap: ((SummaryRow) -> Void)?
     @ViewBuilder let footer: Footer
 
     var body: some View {
@@ -34,7 +36,7 @@ struct ConversationScreen<Footer: View>: View {
             if !steps.isEmpty {
                 StepTrack(steps: steps, current: currentStep)
             }
-            ConversationTranscript(entries: entries)
+            ConversationTranscript(entries: entries, onSummaryTap: onSummaryTap)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             if phase != .idle {
                 VoiceBar(phase: phase, level: level)

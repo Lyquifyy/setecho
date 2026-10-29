@@ -192,7 +192,12 @@ struct FieldEditSheet: View {
             }
         } footer: {
             Button("Confirm") {
-                coordinator.set(field.id, text: text, state: .confirmed)
+                let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                // A value he typed over is his: it says so, with what it replaced.
+                let before = coordinator.answer(for: field)?.text ?? ""
+                let provenance = typed == before ? nil
+                    : [Provenance(source: "You typed · \(DayKey.string(.now))", detail: before.isEmpty ? typed : "\(typed) (was \(before))")]
+                coordinator.set(field.id, text: typed, state: .confirmed, provenance: provenance)
                 dismiss()
             }
             .buttonStyle(.setechoPrimary)
