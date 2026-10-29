@@ -264,6 +264,14 @@ final class CheckInCoordinator {
     }
 
     static func lastWeight(in store: Store) -> Double? {
+        // A check-in from the WhatsApp import that's newer than any sent from Setecho: his first
+        // Setecho check-in still has last week's weight.
+        if let past = store.chatHistory.checkIns.max(by: { $0.sentAt < $1.sentAt }),
+           past.sentAt > (store.lastSentCheckIn?.sentAt ?? .distantPast) {
+            let id = store.currentTemplate?.fields.first { $0.source.key == .currentWeight }?.id
+            let answer = past.answers.first { $0.key == id || $0.key.contains("current_body_weight") }?.value
+            return answer.flatMap(CheckInText.number)
+        }
         guard let last = store.lastSentCheckIn,
               let answer = last.answers.first(where: { $0.fieldId.contains("current_body_weight") })
         else { return nil }
@@ -277,9 +285,14 @@ extension Program {
     }
 }
 
-/// Bundled examples of how the athlete writes (numbers blanked), sent as styleExamples.
+/// How the athlete writes (numbers blanked), sent as styleExamples: his last few check-ins from the
+/// WhatsApp import when there is one, else the bundled examples.
 enum StyleExamples {
-    static func load() -> [String] {
+    static func load(root: URL = Store.defaultRoot()) -> [String] {
+        if let data = try? Data(contentsOf: root.appendingPathComponent("whatsapp.json")),
+           let history = try? JSONCoding.decoder.decode(ChatHistory.self, from: data), !history.styleExamples.isEmpty {
+            return history.styleExamples
+        }
         guard let url = Bundle.main.url(forResource: "StyleExamples", withExtension: "txt"),
               let text = try? String(contentsOf: url, encoding: .utf8)
         else { return [] }
