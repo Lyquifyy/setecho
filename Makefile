@@ -28,13 +28,15 @@ SHOTS_SIM ?= Setecho Shots
 SCREENS := $(CURDIR)/design/screens
 # A sample frame for the session's camera card (design/, gitignored); the placeholder without one.
 HUD_CAMERA ?= $(wildcard $(CURDIR)/design/hud-camera.jpg)
+# An earlier run to compare against (copy design/screens aside first): writes compare-<group>.png.
+BEFORE ?=
 
 screens:    ## render every screen to design/screens (gitignored) and build the contact sheets
 	rm -rf $(SCREENS) && mkdir -p $(SCREENS)
 	cd ios && xcodegen generate && TEST_RUNNER_SCREEN_SHOTS=$(SCREENS) TEST_RUNNER_HUD_CAMERA=$(HUD_CAMERA) \
 		xcodebuild -project Setecho.xcodeproj -scheme Setecho -destination 'platform=iOS Simulator,name=$(SHOTS_SIM)' \
 		-derivedDataPath /tmp/setecho-shots-dd -quiet test -only-testing:SetechoTests/ScreenRenderTests
-	uv run --no-project --with pillow python ios/scripts/contact_sheet.py $(SCREENS)
+	uv run --no-project --with pillow python ios/scripts/contact_sheet.py $(SCREENS) $(BEFORE)
 
 testflight: ## archive a Release build and upload it to TestFlight (Xcode signed in; app record in App Store Connect)
 	cd ios && xcodegen generate

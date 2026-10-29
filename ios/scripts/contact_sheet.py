@@ -5,7 +5,10 @@ Reads <folder>/manifest.json (written by ScreenRenderTests) and writes, into the
   contact-<group>.png     one group's first-screen renders, larger
   contact-sheet-full.png  the full-scroll renders side by side
 
-Usage: uv run --no-project --with pillow python ios/scripts/contact_sheet.py design/screens
+With a second folder of earlier renders (`make screens BEFORE=design/screens-before`), it also
+writes compare-<group>.png into the first: each group's changed screens, before above after.
+
+Usage: uv run --no-project --with pillow python ios/scripts/contact_sheet.py design/screens [design/screens-before]
 """
 
 import json
@@ -73,7 +76,7 @@ def sheet(
     caption_h = 40
     blocks: list[tuple[str, list[list[tuple[Image.Image, str]]]]] = []
     for group, entries in rows:
-        frames = [(thumb(folder / e["file"], width, max_height), e["title"]) for e in entries]
+        frames = [(thumb(e.get("dir", folder) / e["file"], width, max_height), e["title"]) for e in entries]
         blocks.append((group, [frames[i : i + per_row] for i in range(0, len(frames), per_row)]))
 
     total_w = MARGIN * 2 + per_row * width + (per_row - 1) * GAP
@@ -129,5 +132,32 @@ def main(folder: Path) -> None:
     print(f"{len(first)} screens in {len(groups)} groups, {len(tall)} full-scroll → {folder}")
 
 
+def changed(a: Path, b: Path) -> bool:
+    first, second = Image.open(a).convert("RGB"), Image.open(b).convert("RGB")
+    return first.size != second.size or first.tobytes() != second.tobytes()
+
+
+def compare(folder: Path, before: Path) -> None:
+    """Each group's screens that changed since `before`: the earlier render above the new one."""
+    old = {e["file"]: e for e in json.loads((before / "manifest.json").read_text())}
+    groups: dict[str, list[tuple[dict, dict]]] = {}
+    for entry in json.loads((folder / "manifest.json").read_text()):
+        if entry.get("tall") == "1" or entry["file"] not in old:
+            continue
+        if changed(before / entry["file"], folder / entry["file"]):
+            groups.setdefault(entry["group"], []).append((old[entry["file"]], entry))
+    for group, pairs in groups.items():
+        rows = [
+            (f"{group} · before", [{**b, "dir": before} for b, _ in pairs]),
+            (f"{group} · after", [a for _, a in pairs]),
+        ]
+        sheet(rows, folder, width=420, per_row=min(6, len(pairs))).save(
+            folder / f"compare-{slug(group)}.png", optimize=True
+        )
+    print(f"{sum(len(p) for p in groups.values())} screens changed since {before}")
+
+
 if __name__ == "__main__":
     main(Path(sys.argv[1] if len(sys.argv) > 1 else "design/screens"))
+    if len(sys.argv) > 2:
+        compare(Path(sys.argv[1]), Path(sys.argv[2]))
