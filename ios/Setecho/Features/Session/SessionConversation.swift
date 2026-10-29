@@ -46,6 +46,8 @@ final class SessionConversation {
     @ObservationIgnored var speak: @MainActor (String) async -> Void = { _ in }
     /// The soft chime the moment a command is heard.
     @ObservationIgnored var chime: () -> Void = {}
+    /// The moment's own tone and haptic: armed, set started, set ended, rest's up.
+    @ObservationIgnored var sound: (SessionEngine.Sound) -> Void = { _ in }
     /// The camera is filming the set now under way: its count, and that a clip goes to SAM.
     @ObservationIgnored var cameraSet: () -> (phone: RepCounter.Result?, willMeasure: Bool)? = { nil }
     /// After a command is applied: the coordinator's side of it (close a clip, replay a cue, save the logbook).
@@ -183,6 +185,7 @@ final class SessionConversation {
     // MARK: Output
 
     func show(_ outcome: SessionEngine.Outcome) {
+        if let tone = outcome.sound { sound(tone) }
         if let text = outcome.echo {
             echo = text
             echoTask?.cancel()

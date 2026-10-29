@@ -86,6 +86,8 @@ final class AudioService {
             if let usb = session.availableInputs?.first(where: { $0.portType == .usbAudio }) {
                 try session.setPreferredInput(usb)
             }
+            // The session's haptics (armed, set ended, rest's up) are muted by iOS while recording unless allowed.
+            try? session.setAllowHapticsAndSystemSoundsDuringRecording(true)
             try session.setActive(true)
             if AirPodsMic.shared.check(session) {
                 // Back to A2DP output and the DJI or iPhone mic, then on with the run.

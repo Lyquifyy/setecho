@@ -11,6 +11,8 @@ struct VoiceIntent: Codable, Equatable {
         case acceptSuggestion, keepLoad
         // Between sets (HANDOFF.md §7, The between-set conversation).
         case chatter, question, choose, skipExercise, logbook, equipmentTaken, equipmentFree, swapTo
+        // He drives (HANDOFF.md §7): "go back", "I'm on flyes now", "one more set", "that's it for incline".
+        case goTo, addSet, endExercise
 
         /// A kind this build doesn't know yet is `unknown`: never acted on, never a crash.
         init(from decoder: Decoder) throws {
@@ -23,6 +25,8 @@ struct VoiceIntent: Codable, Equatable {
         case next, restLeft, lastSet, lastTime, load, setsLeft, effort, coachNotes, outOfScope
         /// "What can I say?": the few lines that work right now (`VoiceGuide.spokenHelp`).
         case help
+        /// "Where am I?": "Incline press, set 2 of 3, back-off."
+        case whereAmI
     }
 
     var intent: Kind

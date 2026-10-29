@@ -64,7 +64,7 @@ final class SessionCoordinator {
         self.rehearsal = rehearsal
         self.conversation = SessionConversation(engine: engine)
         self.voice = SystemSpeaker(audio: audio, cacheDirectory: store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
-        self.detector = SetDetector(mediaDirectory: store.mediaDirectory, sessionId: engine.session.id)
+        self.detector = SetDetector(mediaDirectory: store.mediaDirectory, sessionId: engine.session.id, front: settings.frontCameraInSessions)
         if settings.coachVoiceInSessions {
             engine.cues = Dictionary(store.cues.filter(\.approved).map { ($0.exerciseId, $0) }, uniquingKeysWith: { a, _ in a })
         }
@@ -90,6 +90,10 @@ final class SessionCoordinator {
         conversation.inputState = { [audio] in (audio.inputLabel, audio.voiceProcessingOn) }
         conversation.speak = { [weak self] line in await self?.speak(line) }
         conversation.chime = { [weak self] in self?.audio.playTurnEndSound() }
+        conversation.sound = { [weak self] tone in
+            self?.audio.output.cue(tone)
+            SessionHaptics.play(tone)
+        }
         conversation.cameraSet = { [weak self] in
             // "Done" on a set the camera is filming keeps its count and its clip for SAM.
             guard let self, self.cameraOn, let start = self.currentSetStart, let t = self.detector.lastFrameTime else { return nil }
@@ -334,7 +338,7 @@ final class SessionCoordinator {
         let crop = cropBoxes[setId].map { [Double($0.minX), Double($0.minY), Double($0.width), Double($0.height)] }
         let context = CountContext(exerciseId: set.exerciseId, equipment: exercise.equipment,
                                    plannedReps: planned?.reps ?? planned?.repsMin, phoneReps: set.repCount.phone,
-                                   setRole: set.role?.rawValue, cropBox: crop)
+                                   setRole: set.role?.rawValue, cropBox: crop, camera: detector.front ? "front" : "back")
         countsInFlight += 1
         defer { countsInFlight -= 1 }
         for (attempt, delay) in ([0.0] + Self.uploadRetryDelays).enumerated() {
@@ -373,7 +377,7 @@ final class SessionCoordinator {
 
     private func afterStateChange() {
         if engine.state == .ended { finish() }
-        if engine.state == .ready { Task { await playCueIfDue() } }
+        if engine.state == .ready || engine.restIsUp { Task { await playCueIfDue() } }
     }
 
     /// The session clock: every second, the rest countdown, a lead-in's count, a hold's countdown

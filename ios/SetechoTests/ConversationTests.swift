@@ -85,7 +85,8 @@ private final class Gym {
     func restOut() -> [String] {
         let before = talk.said.count
         var guardTicks = 0
-        while case .rest = engine.state, guardTicks < 600 { wait(1); guardTicks += 1 }
+        // The rest runs into overtime and nothing moves: "out" is when the bell goes.
+        while case .rest(let left) = engine.state, left > 0, guardTicks < 600 { wait(1); guardTicks += 1 }
         return Array(talk.said[before...])
     }
 
@@ -173,9 +174,9 @@ private let vacuums = AddOn(id: "addon_vac", name: "Stomach Vacuums", exercises:
                                lastSets: logbook)
     let gym = try Gym("a_top_set_and_back_off", engine: engine, camera: true)
     #expect(gym.intro() == ["Day 5. Smith close-grip press, 145 for 6–9. Last time 145 for 9. Beat the logbook. Warm-ups first."])
-    #expect(gym.cameraSet(phone: 6, slowdown: 5) == ["Warm-up 1. Rest three minutes."])
+    #expect(gym.cameraSet(phone: 6, slowdown: 5) == ["Logged as warm-up one. Rest three minutes."])
     gym.wait(60)
-    #expect(gym.cameraSet(phone: 5, slowdown: 5) == ["Warm-up 2. Rest three minutes."])
+    #expect(gym.cameraSet(phone: 5, slowdown: 5) == ["Logged as warm-up two. Rest three minutes."])
     await check(gym, "top set", ["Top set. Last time 145 for 9. Beat the logbook."])
     #expect(gym.cameraSet(phone: 9, slowdown: 46) == ["Set 1 done. Rest four minutes."])
     let top = try #require(engine.session.sets.last)
@@ -186,7 +187,7 @@ private let vacuums = AddOn(id: "addon_vac", name: "Stomach Vacuums", exercises:
     await check(gym, "what's the back-off?", ["Back-off at 110, his rule."])
     await check(gym, "go with it", ["110 it is."])
     #expect(engine.targetLoadLb == 110 && engine.session.suggestions.first?.decision == .accepted)
-    #expect(gym.restOut().last == "Go.")
+    #expect(gym.restOut().last == "Rest's up.")
     // A filmed set's end line carries no number and no next target: both come when SAM answers.
     #expect(gym.cameraSet(phone: 10, slowdown: 40) == ["Set 2 done. Rest three minutes."])
     #expect(engine.session.sets.last?.loadLb == 110 && engine.session.sets.last?.role == .backOff)
@@ -196,8 +197,8 @@ private let vacuums = AddOn(id: "addon_vac", name: "Stomach Vacuums", exercises:
 @Test @MainActor func bAPocketSetLogsANewSetAndACorrectionEditsOnlyIt() async throws {
     let engine = SessionEngine(day: shortDay, weekNumber: 1, lastSets: logbook)
     let gym = try Gym("b_pocket_set", engine: engine, camera: false)
-    await check(gym, "done, 8", ["8 reps. Next exercise, Cable incline flyes, 30 for 12. Rest three minutes."])
-    #expect(gym.restOut() == ["Go."])
+    await check(gym, "done, 8", ["8 reps. Smith close-grip press done. Cable incline flyes next. Rest three minutes."])
+    #expect(gym.restOut() == ["Rest's up."])
     await check(gym, "done, 12", ["12 reps. Next, 30 for 12. Rest one thirty."])
     let flyesSet = try #require(engine.session.sets.last)
     #expect(flyesSet.exerciseId == "flyes" && flyesSet.setIndex == 0 && flyesSet.reps == 12 && flyesSet.repCount.source == .spoken)
@@ -214,7 +215,7 @@ private let vacuums = AddOn(id: "addon_vac", name: "Stomach Vacuums", exercises:
     gym.clock = gym.clock.addingTimeInterval(30)
     await check(gym, "done", ["Set 1 done. Rest three minutes. How many?"])
     #expect(engine.session.sets[0].repCount.source == .plan)
-    await check(gym, "ten", ["Set 1, 10 reps. Next exercise, Cable incline flyes, 30 for 12."])
+    await check(gym, "ten", ["Set 1, 10 reps. Smith close-grip press done. Cable incline flyes next."])
     #expect(engine.session.sets[0].reps == 10 && engine.session.sets[0].repCount.source == .spoken && engine.pendingAsk == nil)
     #expect(gym.unheardLines == 0)
 }
@@ -333,17 +334,17 @@ private let vacuums = AddOn(id: "addon_vac", name: "Stomach Vacuums", exercises:
     let bench = PlannedExercise(id: "bench", name: "Bench press", sets: [p(10, load: 100)], restSeconds: 120, notes: nil)
     let engine = SessionEngine(day: ProgramDay(id: "d", name: "Day 5", exercises: [bench]), addOns: [abs], weekNumber: 1, warmups: warmups)
     let gym = try Gym("l_abs", engine: engine, camera: true)
-    await check(gym, "done, 10", ["10 reps. Next, Abs. Hanging/Lying Leg Raises, 12 reps. Rest two minutes."])
+    await check(gym, "done, 10", ["10 reps. Bench press done. Abs: Hanging/Lying Leg Raises next. Rest two minutes."])
     #expect(!engine.warmupMode)
     gym.restOut()
     await check(gym, "done, 12", ["12 reps. Next, 12 reps. Rest one minute."])
     gym.restOut()
-    await check(gym, "done, 12", ["12 reps. Next, Abs. Cable crunch, 15 reps. Weight for these? Rest one minute."])
+    await check(gym, "done, 12", ["12 reps. Hanging/Lying Leg Raises done. Cable crunch next. Rest one minute."])
     gym.restOut()
     await check(gym, "done", ["Set 1 done. Rest one minute. How many?"])
     await check(gym, "fifteen", ["Set 1, 15 reps. Next, 15 reps."])
     gym.restOut()
-    await check(gym, "done, 15", ["15 reps. Next, Abs. Plank, 1 min. Rest one minute."])
+    await check(gym, "done, 15", ["15 reps. Cable crunch done. Plank next. Rest one minute."])
     var said = gym.restOut()
     while engine.state != .ended, said.count < 40 { said += gym.wait(1) }
     #expect(said == ["Plank, sixty seconds. Starting in five.", "Three.", "Two.", "One.", "Hold.", "10 seconds.", "Three.", "Two.", "One.",

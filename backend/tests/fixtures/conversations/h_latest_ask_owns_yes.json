@@ -4,7 +4,7 @@
   "utterances": [
     {
       "say": "done, 9",
-      "state": "ready",
+      "state": "rest",
       "via": "rules",
       "intent": {
         "intent": "endSet",

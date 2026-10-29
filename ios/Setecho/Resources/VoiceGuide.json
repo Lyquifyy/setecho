@@ -60,7 +60,12 @@
             { "say": "keep it", "does": "Keeps the weight you're on.", "state": "rest", "intent": "keepLoad" },
             { "say": "skip this set", "does": "Skips the next set.", "state": "rest", "intent": "skipSet" },
             { "say": "next exercise", "does": "Moves on, and asks about any sets left.", "state": "rest", "intent": "nextExercise" },
-            { "say": "skip the flyes", "does": "Skips an exercise still ahead today.", "state": "rest", "intent": "skipExercise", "exercisesAhead": ["Cable incline flyes"] }
+            { "say": "skip the flyes", "does": "Skips an exercise still ahead today.", "state": "rest", "intent": "skipExercise", "exercisesAhead": ["Cable incline flyes"] },
+            { "say": "I'm on flyes now", "does": "Moves flyes up to now; the rest keep their order.", "state": "rest", "intent": "goTo", "exercisesAhead": ["Cable incline flyes"] },
+            { "say": "go back", "does": "Back to the last set's slot, to redo it.", "state": "rest", "intent": "goTo" },
+            { "say": "one more set", "does": "Adds a set to what you just did.", "state": "rest", "intent": "addSet" },
+            { "say": "that's it for incline", "does": "Ends that exercise; sets you didn't do stay undone.", "state": "rest", "intent": "endExercise", "exercisesAhead": ["Incline dumbbell press"] },
+            { "say": "where am I?", "does": "Tells you the exercise, the set and its role.", "state": "rest", "intent": "question", "topic": "whereAmI" }
           ]
         },
         {

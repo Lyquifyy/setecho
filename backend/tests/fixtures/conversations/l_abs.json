@@ -13,7 +13,7 @@
     },
     {
       "say": "done, 12",
-      "state": "ready",
+      "state": "rest",
       "via": "rules",
       "intent": {
         "intent": "endSet",
@@ -22,7 +22,7 @@
     },
     {
       "say": "done, 12",
-      "state": "ready",
+      "state": "rest",
       "via": "rules",
       "intent": {
         "intent": "endSet",
@@ -31,7 +31,7 @@
     },
     {
       "say": "done",
-      "state": "ready",
+      "state": "rest",
       "via": "rules",
       "intent": {
         "intent": "endSet"
@@ -48,7 +48,7 @@
     },
     {
       "say": "done, 15",
-      "state": "ready",
+      "state": "rest",
       "via": "rules",
       "intent": {
         "intent": "endSet",

@@ -98,7 +98,10 @@ private func intent(_ kind: VoiceIntent.Kind, _ number: Double? = nil, text: Str
     e2.tickRest(); e2.tickRest()
     #expect(e2.state == .rest(remaining: 1))
     let out = e2.tickRest()
-    #expect(e2.state == .ready && out.speech == "Go.")
+    // Nothing moves at zero: the bell, "Rest's up." once, and the rest runs on into overtime.
+    #expect(e2.state == .rest(remaining: 0) && out.speech == "Rest's up." && out.sound == .restUp)
+    e2.tickRest()
+    #expect(e2.state == .rest(remaining: -1) && e2.setNumber == 2)
     _ = engine
 }
 
@@ -108,7 +111,7 @@ private func intent(_ kind: VoiceIntent.Kind, _ number: Double? = nil, text: Str
     #expect(engine.setNumber == 2 && engine.currentExercise?.id == "bench")
     let out = engine.apply(intent(.nextExercise))
     #expect(engine.currentExercise?.id == "row" && engine.setNumber == 1)
-    #expect(out.speech == "Next exercise, Barbell row, 165 for 8–10.")
+    #expect(out.speech == "Barbell row next, 165 for 8–10.")
     engine.undo()
     #expect(engine.currentExercise?.id == "bench" && engine.setNumber == 2)
 }
@@ -116,7 +119,7 @@ private func intent(_ kind: VoiceIntent.Kind, _ number: Double? = nil, text: Str
 @Test @MainActor func lastSetOfExerciseAnnouncesTheNextOneAndTheSessionEnds() {
     let engine = SessionEngine(day: upperA, weekNumber: 1)
     for _ in 0..<3 { engine.setStarted(); engine.setEnded(); engine.skipRest() }
-    #expect(engine.lastCallout == "Set 3 done. Next exercise, Barbell row, 165 for 8–10. Rest two thirty.")
+    #expect(engine.lastCallout == "Bench press done. Barbell row next. Rest two thirty.")
     #expect(engine.restSeconds == 120)
     engine.setStarted(); engine.setEnded(); engine.skipRest()
     engine.setStarted()
@@ -365,7 +368,8 @@ private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(held == .none && engine.session.sets[0].reps == 8 && engine.heldMeasurements.count == 1)
     let out = engine.setEnded(at: t0.addingTimeInterval(70), phone: phone(8), willMeasure: true)
     #expect(engine.session.sets[0].reps == 7 && engine.session.sets[0].repCount.source == .measured && engine.heldMeasurements.isEmpty)
-    #expect(out.speech == "Set 2 done. Rest two thirty. Set 1: 7, measured.")   // nothing had been said about set 1
+    // He never heard a number for set 1, so nothing he knows changed: the screen updates, nothing is said.
+    #expect(out.speech == "Set 2 done. Rest two thirty.")
     #expect(engine.pendingCounts.map(\.setId) == [engine.session.sets[1].id])
 
     // Set 2's SAM count arrives during set 3 with the same number: the chip changes, nothing is said.
@@ -373,11 +377,11 @@ private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     engine.skipRest(); engine.setStarted(at: t0.addingTimeInterval(100))
     engine.measured(setId: second, measured(8, confidence: 0.9), now: t0.addingTimeInterval(105))
     let third = engine.setEnded(at: t0.addingTimeInterval(120), phone: phone(8), willMeasure: true)
-    #expect(third.speech == "Set 3 done. Rest two thirty. Set 2: 8, measured.")   // never said before, so said once
+    #expect(third.speech == "Set 3 done. Rest two thirty.")   // never said before, and he heard no number: the screen updates
     #expect(engine.session.sets[1].repCount.source == .measured)
     // Set 3's count comes with the next exercise's target.
     let sam3 = engine.measured(setId: engine.session.sets[2].id, measured(8, confidence: 0.9), now: t0.addingTimeInterval(140))
-    #expect(sam3.speech == "8 reps, measured. Slowed 38 percent, about 1 left by the measure. Next exercise, Barbell row, 165 for 8–10.")
+    #expect(sam3.speech == "8 reps, measured. Slowed 38 percent, about 1 left by the measure. Bench press done. Barbell row next.")
 }
 
 @Test @MainActor func fallbackSpokenCountThenSamDuringTheNextSetIsMentionedOnlyIfChanged() {
@@ -509,16 +513,20 @@ private func easy(_ reps: Int, slowdown: Double = 5) -> RepCounter.Result {
     #expect(engine.tickHold(at: t0.addingTimeInterval(298)).speech == "Two.")
     #expect(engine.tickHold(at: t0.addingTimeInterval(299)).speech == "One.")
     let time = engine.tickHold(at: t0.addingTimeInterval(300))
-    #expect(time.speech == "Time. Next exercise, Incline DB Press, 6–8 reps. Warm-ups first. Weight for the top set? Rest thirty seconds.")
+    #expect(time.speech == "Time. Stationary Bike done. Incline DB Press next. Rest thirty seconds.")
     let set = engine.session.sets[0]
     #expect(set.seconds == 300 && set.reps == 0 && set.exerciseId == "bike" && set.repCount.status == .done)
-    #expect(engine.state == .rest(remaining: 30) && engine.currentExercise?.id == "incline" && engine.warmupMode)
+    // Nothing about incline starts until he moves: no warm-up mode, no load question yet.
+    #expect(engine.state == .rest(remaining: 30) && engine.currentExercise?.id == "incline" && !engine.warmupMode && !engine.exerciseEntered)
 }
 
 @Test @MainActor func doneEndsAHoldEarlyAndLogsHowLongItRan() {
     let engine = SessionEngine(day: nil, addOns: [vacuums], weekNumber: 1, autoHolds: false)
     #expect(engine.title == "Stomach Vacuums" && engine.session.programDayId == nil && engine.session.addOnIds == ["addon_vac"])
+    // "Go": "Three, two, one. Hold."
     engine.apply(intent(.starting), now: t0)
+    #expect(engine.state == .leadIn(remaining: 3))
+    for _ in 0..<3 { engine.tickLeadIn(at: t0) }
     #expect(engine.state == .hold(remaining: 20))
     engine.tickHold(at: t0.addingTimeInterval(8))
     let out = engine.apply(intent(.endSet, transcript: "done"), now: t0.addingTimeInterval(8))
@@ -565,10 +573,11 @@ private func easy(_ reps: Int, slowdown: Double = 5) -> RepCounter.Result {
 @Test @MainActor func warmupModeLogsEasyShortSetsAsWarmupsThatNeverCount() {
     let engine = SessionEngine(day: day1, weekNumber: 1, warmups: hisWarmups)
     engine.apply(intent(.skipSet)) // past the bike
-    #expect(engine.currentExercise?.id == "incline" && engine.warmupMode && engine.setNumber == 1)
-    engine.setStarted(at: t0)
+    #expect(engine.currentExercise?.id == "incline" && !engine.exerciseEntered && engine.setNumber == 1)
+    engine.setStarted(at: t0) // his set starts it: warm-up mode
+    #expect(engine.warmupMode)
     let w1 = engine.setEnded(at: t0.addingTimeInterval(15), phone: easy(6), willMeasure: true)
-    #expect(w1.speech == "Warm-up 1. Rest three minutes.")
+    #expect(w1.speech == "Logged as warm-up one. Rest three minutes.")
     #expect(engine.session.sets[0].role == .warmup && engine.session.sets[0].repCount.status == .done && engine.pendingCounts.isEmpty)
     #expect(engine.setNumber == 1 && engine.warmupCount == 1 && engine.session.workingSets.isEmpty)
     #expect(!engine.shouldUpload(setId: engine.session.sets[0].id))
@@ -641,7 +650,7 @@ private func easy(_ reps: Int, slowdown: Double = 5) -> RepCounter.Result {
     engine.apply(intent(.nextExercise)); engine.apply(intent(.nextExercise))
     engine.setStarted(at: t0)
     let out = engine.setEnded(at: t0.addingTimeInterval(60), phone: phone(20))
-    #expect(out.speech == "20 total. Next, Abs. Hanging Leg Raises, 12 reps. Rest three minutes.")
+    #expect(out.speech == "20 total. Pec Deck done. Abs: Hanging Leg Raises next. Rest three minutes.")
     #expect(engine.currentEntry?.section == "Abs" && engine.currentExercise?.id == "raises")
 }
 

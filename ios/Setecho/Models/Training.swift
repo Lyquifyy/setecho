@@ -50,7 +50,8 @@ struct Session: Codable, Equatable, Identifiable {
 /// One change from the plan made in the gym (HANDOFF.md §7, Machine taken): "doing dumbbells
 /// instead" on incline press, or flyes skipped today. Confirmed aloud with "Noted for Thursday."
 struct PlanDeviation: Codable, Equatable, Identifiable {
-    enum Kind: String, Codable { case swap, skip }
+    /// A swap (a machine taken), a skip, or a lift moved ahead of the plan's order ("I'm on flyes now").
+    enum Kind: String, Codable { case swap, skip, reorder }
     var id: UUID
     var at: Date
     var kind: Kind

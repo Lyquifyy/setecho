@@ -13,7 +13,7 @@
     },
     {
       "say": "done, 12",
-      "state": "ready",
+      "state": "rest",
       "via": "rules",
       "intent": {
         "intent": "endSet",

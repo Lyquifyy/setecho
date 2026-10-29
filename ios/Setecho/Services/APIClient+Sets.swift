@@ -11,6 +11,8 @@ struct CountContext: Codable, Equatable {
     /// [x, y, w, h], normalized, top-left origin, in the upright (portrait) frame: his station.
     /// The backend crops the clip to it before SAM, so other people's bars and plates aren't tracked.
     var cropBox: [Double]?
+    /// "front" or "back": which way the sensor's frames turn to stand upright.
+    var camera: String?
 }
 
 /// /sets/count response (HANDOFF.md §5).

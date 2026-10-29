@@ -58,24 +58,27 @@ def display_size(path: Path) -> tuple[int, int]:
     return (height, width) if abs(rotation) % 180 == 90 else (width, height)
 
 
-def crop_box_pixels(box: list[float], size: tuple[int, int]) -> tuple[int, int, int, int]:
+def crop_box_pixels(
+    box: list[float], size: tuple[int, int], *, front: bool = False
+) -> tuple[int, int, int, int]:
     """The phone's box (x, y, w, h, normalized, top-left origin, in the upright portrait frame Vision
     saw with orientation .right) as an even-sized pixel crop (w, h, x, y) of the decoded frame. A
     landscape frame is the sensor's own orientation: the upright frame turned 90° clockwise from it,
-    so its x is the upright y and its y runs from the upright right edge."""
+    so its x is the upright y and its y runs from the upright right edge. The front camera (unmirrored,
+    orientation .left) turns the other way: its y is the upright x and its x runs from the upright bottom."""
     x, y, w, h = (min(1.0, max(0.0, v)) for v in box)
     width, height = size
     if width > height:
-        x, y, w, h = y, 1 - x - w, h, w
+        x, y, w, h = (1 - y - h, x, h, w) if front else (y, 1 - x - w, h, w)
     px, py = round(x * width), round(y * height)
     pw = min(width - px, round(w * width)) // 2 * 2
     ph = min(height - py, round(h * height)) // 2 * 2
     return pw, ph, px, py
 
 
-def crop(src: Path, dst: Path, box: list[float]) -> Path:
+def crop(src: Path, dst: Path, box: list[float], *, front: bool = False) -> Path:
     """The count clip cut to his station before SAM sees it: same frames, same timestamps (rule 7)."""
-    pw, ph, px, py = crop_box_pixels(box, display_size(src))
+    pw, ph, px, py = crop_box_pixels(box, display_size(src), front=front)
     if pw < 16 or ph < 16:
         raise ValueError(f"crop box too small: {box}")
     cmd = [

@@ -129,6 +129,47 @@ final class VoiceOutput {
         chimeNode.play()
     }
 
+    /// The session's moments (HANDOFF.md §7, Built for not looking): short, soft, distinct, never
+    /// louder than the voice. Generated here, like the chime: no files, no models.
+    func cue(_ sound: SessionEngine.Sound) {
+        do {
+            if !engine.isRunning { try engine.start() }
+        } catch {
+            return
+        }
+        chimeNode.scheduleBuffer(cueBuffers[sound] ?? chimeBuffer, at: nil, options: .interrupts)
+        chimeNode.play()
+    }
+
+    private let cueBuffers: [SessionEngine.Sound: AVAudioPCMBuffer] = [
+        .armed: VoiceOutput.makeTones([(660, 0, 0.06), (990, 0.07, 0.07)], decay: 0.05),        // a rising tick
+        .setStarted: VoiceOutput.makeTones([(1500, 0, 0.025)], decay: 0.012, level: 0.07),     // a soft click
+        .setEnded: VoiceOutput.makeTones([(784, 0, 0.12), (523, 0.15, 0.16)], decay: 0.08),    // two tones, down
+        .restUp: VoiceOutput.makeTones([(1046, 0, 0.9), (2093, 0, 0.9)], decay: 0.35, level: 0.07), // a bell
+    ]
+
+    /// Sine tones as (frequency, start, length) in seconds, each with a fast attack and an
+    /// exponential decay, mixed at the chime's quiet level.
+    nonisolated static func makeTones(_ tones: [(Double, Double, Double)], decay: Double, level: Double = 0.09,
+                                      sampleRate: Double = 44_100) -> AVAudioPCMBuffer {
+        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
+        let length = tones.map { $0.1 + $0.2 }.max() ?? 0.1
+        let frames = AVAudioFrameCount(sampleRate * (length + 0.02))
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames)!
+        buffer.frameLength = frames
+        let samples = buffer.floatChannelData![0]
+        for i in 0..<Int(frames) {
+            let t = Double(i) / sampleRate
+            var v = 0.0
+            for (frequency, start, duration) in tones where t >= start && t < start + duration {
+                let local = t - start
+                v += min(1, local / 0.005) * exp(-local / decay) * sin(2 * .pi * frequency * local)
+            }
+            samples[i] = Float(level * v)
+        }
+        return buffer
+    }
+
     nonisolated static func makeChime(sampleRate: Double = 44_100) -> AVAudioPCMBuffer {
         let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
         let frames = AVAudioFrameCount(sampleRate * 0.32)

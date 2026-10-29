@@ -70,6 +70,9 @@ final class Settings {
     /// home gym. Off, a set starts only after he arms it by voice ("go"), and the camera follows only
     /// him (HANDOFF.md §7, Sets start on his word).
     var cameraStartsSets: Bool { didSet { defaults.set(cameraStartsSets, forKey: "cameraStartsSets") } }
+    /// Settings → "Camera faces you" (off until SAM's count is measured front against back): the
+    /// front camera, so the screen faces him from the bench (HANDOFF.md §7, Built for not looking).
+    var frontCameraInSessions: Bool { didSet { defaults.set(frontCameraInSessions, forKey: "frontCameraInSessions") } }
     /// Developer → "Apple voice processing" (off until the gym data says it hears more): noise
     /// suppression and gain control on the session mic, recorded with every utterance.
     var voiceProcessing: Bool { didSet { defaults.set(voiceProcessing, forKey: "voiceProcessing") } }
@@ -99,7 +102,7 @@ final class Settings {
         legacyRate = defaults.object(forKey: "voiceRate") as? Double
         voiceTones = (defaults.data(forKey: "voiceTones")).flatMap { try? JSONDecoder().decode([String: VoiceTone].self, from: $0) } ?? [:]
         nextSetSuggestions = defaults.object(forKey: "nextSetSuggestions") as? Bool ?? true
-        autoStartHolds = defaults.object(forKey: "autoStartHolds") as? Bool ?? true
+        autoStartHolds = defaults.object(forKey: "autoStartHolds") as? Bool ?? false
         machineTakenHelp = defaults.object(forKey: "machineTakenHelp") as? Bool ?? true
         hasSeenSessionIntro = defaults.bool(forKey: "hasSeenSessionIntro")
         barbellStepLb = defaults.object(forKey: "barbellStepLb") as? Double ?? 5
@@ -114,6 +117,7 @@ final class Settings {
         useAirPodsMic = defaults.object(forKey: "useAirPodsMic") as? Bool ?? true
         cameraStartsSets = defaults.bool(forKey: "cameraStartsSets")
         voiceProcessing = defaults.bool(forKey: "voiceProcessing")
+        frontCameraInSessions = defaults.bool(forKey: "frontCameraInSessions")
         sessionsStarted = defaults.integer(forKey: "sessionsStarted")
         checkInWakeTime = defaults.string(forKey: "checkInWakeTime") ?? "06:30"
         lastMorningAutoStart = defaults.string(forKey: "lastMorningAutoStart") ?? ""

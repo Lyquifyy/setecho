@@ -87,9 +87,14 @@ final class SetDetector: NSObject {
     private var restPauseRound = 0
     private var restPausePausedAt: Double?
 
-    init(mediaDirectory: URL, sessionId: UUID) {
+    /// The front camera faces him from the bench; the back camera faces away (the default until
+    /// SAM's count is measured front against back).
+    let front: Bool
+
+    init(mediaDirectory: URL, sessionId: UUID, front: Bool = false) {
         self.mediaDirectory = mediaDirectory
         self.sessionId = sessionId
+        self.front = front
         super.init()
     }
 
@@ -100,8 +105,7 @@ final class SetDetector: NSObject {
     func start() {
         guard !isRunning else { return }
         captureSession.beginConfiguration()
-        captureSession.sessionPreset = .hd1920x1080
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: front ? .front : .back),
               let input = try? AVCaptureDeviceInput(device: device), captureSession.canAddInput(input)
         else {
             lastError = "No back camera"
@@ -109,11 +113,19 @@ final class SetDetector: NSObject {
             return
         }
         captureSession.addInput(input)
+        // 1080p for the coach's clip; a front camera that can't gets its best (720p is still plenty for pose and SAM).
+        captureSession.sessionPreset = captureSession.canSetSessionPreset(.hd1920x1080) ? .hd1920x1080 : .high
         let output = AVCaptureVideoDataOutput()
         output.alwaysDiscardsLateVideoFrames = true
         output.setSampleBufferDelegate(processor, queue: queue)
         if captureSession.canAddOutput(output) { captureSession.addOutput(output) }
         if captureSession.canAddOutput(movieOutput) { captureSession.addOutput(movieOutput) }
+        // Never mirrored: the pose boxes, the clip and the backend's crop all see the same frame.
+        for connection in output.connections + movieOutput.connections where connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = false
+        }
+        processor.orientation = front ? .left : .right
         captureSession.commitConfiguration()
 
         processor.onPose = { [weak self] frame in
@@ -412,6 +424,9 @@ final class FrameProcessor: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     }
 
     var onPose: (@Sendable (PoseFrame) -> Void)?
+    /// How the sensor's frames turn upright with the phone standing on the tripod: the back
+    /// camera's turn right, the front camera's (unmirrored) turn left.
+    var orientation: CGImagePropertyOrientation = .right
     private var frameCount = 0
     private let request = VNDetectHumanBodyPoseRequest()
 
@@ -429,7 +444,7 @@ final class FrameProcessor: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         frameCount += 1
         guard frameCount % 4 == 0, let onPose, let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let t = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right)
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation)
         var bodies: [BodyTracker.Body] = []
         if (try? handler.perform([request])) != nil {
             for observation in request.results ?? [] {

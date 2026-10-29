@@ -56,12 +56,17 @@ Intent = Literal[
     "equipmentTaken",
     "equipmentFree",
     "swapTo",
+    # He drives (HANDOFF.md §7): moving around today's plan by voice
+    "goTo",
+    "addSet",
+    "endExercise",
     "unknown",
 ]
 INTENTS: tuple[str, ...] = Intent.__args__  # type: ignore[attr-defined]
 
 Topic = Literal[
-    "next", "restLeft", "lastSet", "lastTime", "load", "setsLeft", "effort", "coachNotes", "outOfScope", "help"
+    "next", "restLeft", "lastSet", "lastTime", "load", "setsLeft", "effort", "coachNotes", "outOfScope", "help",
+    "whereAmI",
 ]  # fmt: skip
 TOPICS: tuple[str, ...] = Topic.__args__  # type: ignore[attr-defined]
 
@@ -149,8 +154,11 @@ SYSTEM_PROMPT = (
     'keepLoad: keep the current load ("keep it"). logbook: last time\'s top set from his paper logbook '
     '("last time I did 145 for 9": number 145, reps 9). equipmentTaken: a machine or bench is taken or '
     "he wants another one (exercise in `text` when named). equipmentFree: it's free again. swapTo: he "
-    'is doing something else instead ("doing dumbbells instead", what he said in `text`). unknown when '
-    "unsure.\n"
+    'is doing something else instead ("doing dumbbells instead", what he said in `text`). goTo: he moves '
+    "within today's plan ('go back' or 'redo that set' is text 'back'; 'I'm on flyes now', 'let's do incline "
+    "next' is the exercise in `text`). addSet: one more set of what he just did. endExercise: 'that's it for "
+    "incline' (the exercise in `text`, or null for the one up now). Question topic whereAmI: 'where am I?'. "
+    "unknown when unsure.\n"
     "Numbers are pounds for loads and counts for reps. Never invent a number: `number` and `reps` hold "
     "only values the athlete said; `setNumber` only a set he named. Keep `text` in the athlete's own "
     "words. Set confidence honestly; under 0.7 the app asks before acting."
@@ -294,6 +302,7 @@ _QUESTIONS: list[tuple[str, re.Pattern[str]]] = [
             r"|\b(voice )?commands\b"
         ),
     ),
+    ("whereAmI", re.compile(r"\bwhere am i\b|\bwhat set am i on\b|\bwhich set (is this|am i on)\b")),
     ("setsLeft", re.compile(r"\bhow many (more )?sets\b|\bsets (left|to go)\b")),
     (
         "restLeft",
@@ -360,6 +369,20 @@ _SWAP = re.compile(
     r"^(?:i'?m |i am |i'?ll |i will |let'?s )?(?:doing|do|use|using|go with|going with|switch(?:ing)? to) (?P<what>.+?) instead$"
     r"|^(?P<what2>[a-z][a-z ]{1,30}?) instead$"
 )
+# He drives (HANDOFF.md §7): "go back", "I'm on flyes now", "one more set", "that's it for incline".
+_GO_BACK = re.compile(
+    r"^(?:let'?s |can we )?(?:go back|redo (?:that|the last|this) set|back to (?:that|the last) set)$"
+)
+_GO_TO = re.compile(
+    r"^(?:i'?m|i am) (?:on|doing) (?:the )?(?P<name>[a-z][a-z' -]{1,40}?)(?: now)?$"
+    r"|^let'?s (?:do|go to|move to) (?:the )?(?P<name2>[a-z][a-z' -]{1,40}?) (?:next|now)$"
+)
+_ADD_SET = re.compile(r"\b(one more set|another set|add (?:a|one|another) set|an extra set|extra set)\b")
+_END_EXERCISE = re.compile(
+    r"^that'?s (?:it|all|enough) (?:for|on) (?:the )?(?P<name>[a-z][a-z' -]{1,40}?)$"
+    r"|^(?:i'?m )?(?:done|finished) with (?:the )?(?P<name2>[a-z][a-z' -]{1,40}?)$"
+)
+_THIS_ONE = {"this", "these", "this one", "this exercise", "this lift", "it", "these ones"}
 _END_SESSION = re.compile(
     r"\b(end|finish|stop|done with)( the| this| my| today'?s)? (session|workout)\b|\bthat'?s it for (today|the day)\b"
     r"|\bdone for (the day|today)\b|\bcall it a day\b"
@@ -536,6 +559,18 @@ def classify_by_rules(transcript: str, context: SessionContext | None = None) ->
         return intent("swapTo", text=(m.group("what") or m.group("what2")).strip(), confidence=0.9)
     if _END_SESSION.search(t):
         return intent("endSession")
+    if _GO_BACK.match(t):
+        return intent("goTo", text="back", confidence=0.9)
+    if _ADD_SET.search(t):
+        return intent("addSet", confidence=0.9)
+    if m := _END_EXERCISE.match(t):
+        said = (m.group("name") or m.group("name2")).strip()
+        if said in _THIS_ONE:
+            return intent("endExercise", confidence=0.9)
+        if named := _named(said, ahead):
+            return intent("endExercise", text=named, confidence=0.9)
+    if (m := _GO_TO.match(t)) and (named := _named((m.group("name") or m.group("name2")).strip(), ahead)):
+        return intent("goTo", text=named, confidence=0.9)
     if _IM_DONE.match(t):
         return intent("endSet" if recording else "endSession")
     if (

@@ -43,7 +43,12 @@ enum Callout {
         switch next {
         case .sameExercise(let load, let reps):
             return "Next, \(target(load: load, reps: reps))."
-        case .nextExercise(let name, let load, let reps, let section, let warmups, let timed, let logbook, let askLoad):
+        case .nextExercise(let name, let load, let reps, let section, let warmups, let timed, let logbook, let askLoad, let finished):
+            // "Incline press done. Cable flyes next." Nothing about flyes starts until he moves.
+            if let finished {
+                let next = section.map { $0.lowercased() == name.lowercased() || $0.lowercased() == finished.lowercased() ? name : "\($0): \(name)" } ?? name
+                return "\(finished) done. \(next) next." + (timed ? " Say go." : "")
+            }
             // An add-on of one exercise with its own name says it once.
             var line = section.map { $0.lowercased() == name.lowercased() ? "Next, \(name): " : "Next, \($0). \(name), " } ?? "Next exercise, \(name), "
             line += timed ? "\(reps). Say go." : "\(target(load: load, reps: reps))."
@@ -96,6 +101,9 @@ enum Callout {
             // A count is stated as a fact, and so is falling short of the plan. Never a judgement.
             let unit = total ? "total" : "reps"
             parts = [shortBy > 0 ? "\(reps) \(unit), \(shortBy) short of plan." : "\(reps) \(unit)."]
+        } else if case .nextExercise(_, _, _, _, _, _, _, _, let finished?) = next {
+            parts = [] // "Incline press done. Cable flyes next." says it
+            _ = finished
         } else {
             parts = ["Set \(setNumber) done."]
         }
@@ -110,7 +118,7 @@ enum Callout {
 
     /// A warm-up never gets a count spoken as a result: "Warm-up 2. Rest one thirty."
     static func warmupDone(number: Int, restSeconds: Int) -> String {
-        "Warm-up \(number). Rest \(spoken(seconds: restSeconds))."
+        "Logged as warm-up \(word(number)). Rest \(spoken(seconds: restSeconds))."
     }
 
     /// A hold ended: "Time. Next, 60 s. Rest thirty seconds." or, cut short, "Forty seconds logged."
@@ -130,7 +138,7 @@ enum Callout {
         case sameExercise(loadLb: Double?, reps: String)
         /// `timed` adds "Say go." (holds that wait for him); `askLoad` is the weight question, if any.
         case nextExercise(name: String, loadLb: Double?, reps: String, section: String? = nil, warmups: Bool = false, timed: Bool = false,
-                          logbook: String? = nil, askLoad: String? = nil)
+                          logbook: String? = nil, askLoad: String? = nil, finished: String? = nil)
     }
 
     static func target(load: Double?, reps: String) -> String {

@@ -72,6 +72,7 @@ struct ReviewSendView: View {
 
     private func deviationLine(_ d: PlanDeviation) -> String {
         let day = d.at.formatted(.dateTime.weekday(.abbreviated))
+        if d.kind == .reorder { return "\(day), \(d.exerciseName) \(d.reason ?? "moved ahead")" }
         let what = d.doneAs.map { "\(d.exerciseName) → \($0.prefix(1).lowercased() + $0.dropFirst())" } ?? "\(d.exerciseName) skipped"
         return "\(day), \(what)" + (d.reason.map { " (\($0))" } ?? "")
     }

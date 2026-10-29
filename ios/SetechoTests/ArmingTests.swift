@@ -88,7 +88,7 @@ private func tripodEngine() -> SessionEngine {
     engine.setEnded()
     var said: [String] = []
     for _ in 0..<150 { if let s = engine.tickRest().speech { said.append(s) } }
-    #expect(said.last == "Say go when you lift.")
+    #expect(said.last == "Rest's up. Say go when you lift.")
     #expect(engine.intro.hasSuffix("Say go when you lift."))
 }
 

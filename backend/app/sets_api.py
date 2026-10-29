@@ -12,7 +12,7 @@ import logging
 import tempfile
 import time
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -34,6 +34,9 @@ class CountContext(StrictModel):
     plannedReps: int | None = None
     phoneReps: int | None = None
     setRole: reps.SetRole | None = Field(default=None, description="A rest-pause set gets no velocity loss")
+    camera: Literal["front", "back"] | None = Field(
+        default=None, description="Which camera filmed it: the front camera's frames turn the other way"
+    )
     cropBox: list[float] | None = Field(
         default=None,
         description="[x, y, w, h], normalized, top-left, upright portrait: his station. The clip is cut to "
@@ -82,7 +85,13 @@ async def count_clip(data: bytes, context: CountContext) -> CountResponse:
         t0 = time.monotonic()
         if context.cropBox is not None and len(context.cropBox) == 4:
             try:
-                path = await run_in_threadpool(video.crop, path, Path(tmp) / "station.mp4", context.cropBox)
+                path = await run_in_threadpool(
+                    video.crop,
+                    path,
+                    Path(tmp) / "station.mp4",
+                    context.cropBox,
+                    front=context.camera == "front",
+                )
             except Exception as e:  # noqa: BLE001 - an odd box or clip: count the whole frame instead
                 log.info("crop failed, counting the whole frame: %s", e)
             timings["crop"] = round(time.monotonic() - t0, 2)

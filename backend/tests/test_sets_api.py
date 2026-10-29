@@ -158,7 +158,7 @@ def test_clips_are_720p_at_15_fps():
 def test_a_crop_box_cuts_the_clip_before_sam(client, fake_sam, monkeypatch):
     cropped = []
 
-    def fake_crop(src, dst, box):
+    def fake_crop(src, dst, box, front=False):
         cropped.append(box)
         dst.write_bytes(src.read_bytes())
         return dst
@@ -173,7 +173,7 @@ def test_a_crop_box_cuts_the_clip_before_sam(client, fake_sam, monkeypatch):
 
 
 def test_a_crop_that_fails_counts_the_whole_frame(client, fake_sam, monkeypatch):
-    def broken(src, dst, box):
+    def broken(src, dst, box, front=False):
         raise ValueError("crop box too small")
 
     monkeypatch.setattr(video, "crop", broken)
@@ -191,6 +191,9 @@ def test_crop_box_in_the_upright_frame_and_the_sensors():
     # so the upright top-left quarter is the sensor frame's bottom-left quarter.
     assert video.crop_box_pixels([0.0, 0.0, 0.5, 0.5], (1280, 720)) == (640, 360, 0, 360)
     assert video.crop_box_pixels([0.5, 0.0, 0.5, 0.5], (1280, 720)) == (640, 360, 0, 0)
+    # The front camera turns the other way: the upright top-left quarter is its top-right quarter.
+    assert video.crop_box_pixels([0.0, 0.0, 0.5, 0.5], (1280, 720), front=True) == (640, 360, 640, 0)
+    assert video.crop_box_pixels([0.0, 0.0, 0.5, 0.5], (720, 1280), front=True) == (360, 640, 0, 0)
 
 
 @pytest.mark.skipif(not video.has_ffmpeg(), reason="ffmpeg not installed")

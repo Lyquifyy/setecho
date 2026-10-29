@@ -384,3 +384,37 @@ def test_voice_guide_lines_do_what_the_guide_says(line):
     assert result.intent == line["intent"], line["say"]
     assert result.topic == line.get("topic"), line["say"]
     assert result.confidence >= 0.7, line["say"]
+
+
+# He drives (HANDOFF.md §7): moving around today's plan by voice.
+DRIVE_CONTEXT = voice.SessionContext(
+    state="rest", exercisesAhead=["Incline dumbbell press", "Cable incline flyes"]
+)
+
+
+@pytest.mark.parametrize(
+    ("transcript", "intent", "text", "topic"),
+    [
+        ("go back", "goTo", "back", None),
+        ("redo that set", "goTo", "back", None),
+        ("I'm on flyes now", "goTo", "Cable incline flyes", None),
+        ("let's do incline next", "goTo", "Incline dumbbell press", None),
+        ("one more set", "addSet", None, None),
+        ("let's do another set", "addSet", None, None),
+        ("that's it for incline", "endExercise", "Incline dumbbell press", None),
+        ("done with the flyes", "endExercise", "Cable incline flyes", None),
+        ("that's it for this one", "endExercise", None, None),
+        ("where am I?", "question", None, "whereAmI"),
+        ("that's it for today", "endSession", None, None),
+        ("done with this set", "endSet", None, None),
+        ("I'm doing Day 5 today", "changeDay", None, None),
+    ],
+)
+def test_moving_around_todays_plan(transcript, intent, text, topic):
+    got = voice.classify_by_rules(transcript, DRIVE_CONTEXT)
+    assert got is not None and got.intent == intent, transcript
+    assert got.text == text and got.topic == topic
+
+
+def test_a_move_to_something_not_in_todays_plan_goes_to_spark():
+    assert voice.classify_by_rules("I'm on squats now", DRIVE_CONTEXT) is None
