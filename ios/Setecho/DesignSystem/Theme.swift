@@ -27,31 +27,6 @@ enum Theme {
     static let recording = Color(hex: 0xE5484D)
     static let cameraFill = Color(hex: 0x10142A)
 
-    /// The session screen's cue-card world (DESIGN.md Session, Oct 28 redesign). Light only. The
-    /// top band is a field of the state's colour, read from the bench in peripheral vision, with
-    /// white type on it (each at 4.5:1 or better); the card below is white stock with navy type.
-    /// Cobalt stays for data sources (measured, the mic in use), yellow for the one thing waiting on him.
-    enum Session {
-        /// The state fields, in the band.
-        static let ready = Color(hex: 0x171D36)
-        static let armed = Color(hex: 0xA4520A)
-        static let recording = Color(hex: 0xC42B33)
-        static let rest = Color(hex: 0x0D5FA8)
-        static let overtime = Color(hex: 0x4F5B78)
-        static let done = Color(hex: 0x1C7A48)
-        /// Type and marks on a state field.
-        static let onField = Color.white
-        static let onFieldSecondary = Color.white.opacity(0.78)
-        static let onFieldTrack = Color.white.opacity(0.32)
-        /// The card's ground, and the words still to be spoken in a line being read aloud.
-        static let card = Color.white
-        static let unspoken = Color(hex: 0xB9C1D6)
-        /// The highlighter stroke under the one thing waiting on him (the brand yellow, as ink).
-        static let highlighter = Color(hex: 0xF0CD50)
-        /// The card's lift off the band.
-        static let cardShadow = Color(hex: 0x171D36).opacity(0.18)
-    }
-
     // MARK: Spacing (pt)
     enum Space {
         static let xxs: CGFloat = 4
