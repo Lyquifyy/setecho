@@ -54,10 +54,10 @@ targets:
         # The probes screen shows app-only cards (turn timings, the back link) behind this flag; the standalone Probes app lacks them.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SETECHO_APP"
     dependencies:
-      # The share extension needs the App Group registered on the team's App IDs, which only Xcode's
-      # Signing & Capabilities pane does. Until then it is built but not embedded (SetechoShare/README.md).
-      # - target: SetechoShare
-      #   embed: true
+      # WhatsApp → Share → Setecho. The App Group is registered on the team's App IDs (Oct 29), so both
+      # targets sign with group.com.getsetecho.app (SetechoShare/README.md).
+      - target: SetechoShare
+        embed: true
       - package: ConnectIQ
   # WhatsApp → Share → Setecho: hands the coach's text or voice note to the app through the app group.
   SetechoShare:

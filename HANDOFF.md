@@ -972,7 +972,7 @@ Three problems from the busy gym block Friday's Day 5 test and the demo, so they
 
 ### What's left (Oct 28)
 Everything ticked below is built; "untested" still applies to every phone flow until it has run in the gym or at home.
-- **Waiting on the human:** Thursday's first real check-in (P3); his real coach reply as the loop's first test; a real session's debug JSON (Settings → Developer → Session data → Share, saved to `backend/private/sessions/`) for the P1b median and P5 tuning; the gates G1, G2/G3/G6, G5 and G7 below; the App Group in Xcode so the share extension can be embedded.
+- **Waiting on the human:** Thursday's first real check-in (P3); his real coach reply as the loop's first test; a real session's debug JSON (Settings → Developer → Session data → Share, saved to `backend/private/sessions/`) for the P1b median and P5 tuning; the gates G1, G2/G3/G6, G5 and G7 below.
 - **Block 2 (Thursday):** camera speed (the second writer during recording, the tighter clip window, stage timings, 30 s to the measured line); `PlanItem` replacing add-ons; default filming (the tripod only for the top sets of the 1–2 main lifts, named on Today).
 - **Block 3 (Friday):** P4 in a real session: warm-ups, the measured line on every top set, the back-off load from his rule, nothing suggested without a confirmed rule; the two flagged videos in the check-in.
 - **Block 4 (Saturday):** P5 tuning from the sessions' debug JSON; the day's plan in time order on Today; cardio and steps checked against Apple Health; the PlanItem notifications.
@@ -1057,7 +1057,7 @@ Order matters. **Check-in morning ships to TestFlight by Wednesday evening,** be
 - [x] `PlanState` and its migration (§4). Every plan reader goes through `store.plan`.
 - [x] `/coach/reply` with changes, unclear items and cues; the validator; prompts; tests on synthetic replies.
 - [x] The Coach reply screen, the Today card, the MacroFactor reminder, and revert under History → Plan changes.
-- [ ] Getting replies in: paste and audio file import first, then the `SetechoShare` share extension. *Paste and audio import are built; the share extension is built but not embedded until the App Group is registered in Xcode (`ios/SetechoShare/README.md`).*
+- [x] Getting replies in: paste and audio file import first, then the `SetechoShare` share extension. *The App Group was registered in Xcode on Oct 29 and the extension is embedded; text is read before files (plain text also conforms to public.data). Untested on a device: share a WhatsApp text and a voice note into Setecho.*
 - [x] Voice cues: cutting, review, playback rules, `replayCue`, and the Settings switch.
 - [x] **First:** Check-in morning (§7) with `/checkin/turn`, the App Shortcut, pause and resume, and the voice picker.
 - [x] **Also before Thursday:** the send in his order (the plan message, then the questionnaire with the four photos, then the videos), the check-in period since the last check-in, the free-meal draft, and "Current Goal(s)" drafted from the last check-in if his form has it (§7, Check-in).

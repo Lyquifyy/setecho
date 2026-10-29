@@ -32,6 +32,16 @@ final class ShareViewController: UIViewController {
         let attachments = (extensionContext?.inputItems as? [NSExtensionItem])?.flatMap { $0.attachments ?? [] } ?? []
         var saved = false
         for provider in attachments {
+            // Text first: plain text also conforms to public.data, so the file branch would save his
+            // message as a voice note.
+            if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                if let text = try? await provider.loadText(), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    try? Data(text.utf8).write(to: inbox.appendingPathComponent("reply-\(stamp).txt"))
+                    saved = true
+                    break
+                }
+                continue
+            }
             if provider.hasItemConformingToTypeIdentifier(UTType.audio.identifier) || provider.hasItemConformingToTypeIdentifier("org.xiph.opus")
                 || provider.hasItemConformingToTypeIdentifier("org.xiph.ogg-audio") || provider.hasItemConformingToTypeIdentifier(UTType.data.identifier) {
                 let type = [UTType.audio.identifier, "org.xiph.opus", "org.xiph.ogg-audio", UTType.data.identifier].first { provider.hasItemConformingToTypeIdentifier($0) }!
@@ -42,13 +52,6 @@ final class ShareViewController: UIViewController {
                         saved = true
                         break
                     }
-                }
-            }
-            if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
-                if let text = try? await provider.loadText(), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    try? Data(text.utf8).write(to: inbox.appendingPathComponent("reply-\(stamp).txt"))
-                    saved = true
-                    break
                 }
             }
         }
