@@ -123,6 +123,9 @@ extension SessionHUDModel.Phase {
 
 struct SessionHUD: View {
     var model: SessionHUDModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The yellow tag travels: the set's tag above the camera becomes the next set's tag in rest.
+    @Namespace private var tagSpace
     /// The long press that ends the session (no tap ends anything); nil in previews.
     var onEnd: (() -> Void)?
     /// Developer → Rehearse a session: the typed line field, above the end button.
@@ -156,7 +159,7 @@ struct SessionHUD: View {
                 main
                     .frame(maxHeight: .infinity, alignment: .top)
                     .id(model.phase.name + (model.pocket ? "-pocket" : ""))
-                    .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+                    .transition(arrival)
             }
             // A question waiting on him (outside rest, where the next-set card carries it) stays on screen
             // until it's answered or lapses: "End the session? Six sets logged.", a machine-taken offer.
@@ -173,8 +176,15 @@ struct SessionHUD: View {
         .padding(.top, Theme.Space.xs)
         .padding(.bottom, Theme.Space.xs)
         .background(Theme.page.ignoresSafeArea())
-        .animation(.smooth(duration: 0.45), value: model.phase)
+        .animation(reduceMotion ? .easeInOut(duration: 0.25) : .spring(duration: 0.5, bounce: 0.18), value: model.phase)
     }
+
+    /// A card arriving: it rises into place, or only fades in under Reduce Motion (PRODUCT.md).
+    private var arrival: AnyTransition {
+        reduceMotion ? .opacity : .asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity)
+    }
+
+    private var tag: Namespace.ID? { reduceMotion ? nil : tagSpace }
 
     private var isRest: Bool {
         if case .rest = model.phase { return true }
@@ -196,11 +206,13 @@ struct SessionHUD: View {
         case .rest(let remaining, let total):
             VStack(spacing: Theme.Space.s) {
                 CameraCard(model: model)
-                RestNextCard(model: model, remaining: remaining, total: total)
+                RestNextCard(model: model, remaining: remaining, total: total, tagSpace: tag)
+                    .transition(arrival)
             }
         default:
             VStack(spacing: Theme.Space.s) {
-                ThisSetCard(model: model)
+                ThisSetCard(model: model, tagSpace: tag)
+                    .transition(arrival)
                 CameraCard(model: model)
             }
         }
@@ -244,6 +256,8 @@ private struct HUDCard<Content: View>: View {
 /// A yellow tag at hands-free scale: the next set waiting on him (`TargetTag`, read from the bench).
 private struct HUDTag: View {
     var text: String
+    /// The tag that moves between the set card and the rest card (nil under Reduce Motion).
+    var travels: Namespace.ID?
     var body: some View {
         Text(text)
             .font(.hudLabel.weight(.semibold))
@@ -252,6 +266,14 @@ private struct HUDTag: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(Theme.yellow, in: RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
+            .contentTransition(.opacity)
+            .travelling(in: travels)
+    }
+}
+
+private extension View {
+    @ViewBuilder func travelling(in space: Namespace.ID?) -> some View {
+        if let space { matchedGeometryEffect(id: "next-tag", in: space) } else { self }
     }
 }
 
@@ -266,11 +288,13 @@ private struct TargetText: View {
             if let load {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(Format.number(load)).font(.system(size: size, weight: .bold).monospacedDigit())
+                        .contentTransition(.numericText())
                     Text("lb").font(.system(size: size * 0.36, weight: .semibold))
                 }
                 Text("×").font(.system(size: size * 0.42, weight: .semibold)).foregroundStyle(Theme.textSecondary)
             }
             Text(reps).font(.system(size: size, weight: .bold).monospacedDigit())
+                .contentTransition(.numericText())
         }
         .foregroundStyle(Theme.navy)
         .lineLimit(1)
@@ -300,43 +324,57 @@ struct LiftsStrip: View {
     var exercises: [SessionHUDModel.ExerciseDots]
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            ForEach(Array(exercises.enumerated()), id: \.element.id) { i, ex in
-                if ex.isAddOn, i > 0, !exercises[i - 1].isAddOn {
-                    VerticalCardDivider().frame(height: 40).padding(.horizontal, 6)
-                }
-                let current = ex.dots.contains(.current)
-                VStack(spacing: 7) {
-                    Text(ex.name)
-                        .font(.system(size: 17, weight: current ? .bold : .semibold))
-                        .foregroundStyle(current ? Theme.navy : Theme.textSecondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    HStack(spacing: 5) {
-                        ForEach(Array(ex.dots.enumerated()), id: \.offset) { _, dot in Dot(dot: dot) }
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            }
+        // At hands-free size when today's lifts fit (four, or five short ones); a step smaller only
+        // when they don't, and never truncated, so every name stays whole.
+        ViewThatFits(in: .horizontal) {
+            row(nameSize: 22)
+            row(nameSize: 20)
+            row(nameSize: 18)
         }
         .padding(.vertical, Theme.Space.s)
-        .padding(.horizontal, Theme.Space.xs)
+        .padding(.horizontal, Theme.Space.m)
+        .frame(maxWidth: .infinity)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Today: " + exercises.map { "\($0.name), \($0.dots.filter { $0 == .done }.count) of \($0.dots.count)" }.joined(separator: "; "))
     }
 
+    private func row(nameSize: CGFloat) -> some View {
+        HStack(alignment: .top, spacing: 0) {
+            ForEach(Array(exercises.enumerated()), id: \.element.id) { i, ex in
+                if i > 0 {
+                    if ex.isAddOn, !exercises[i - 1].isAddOn {
+                        Spacer(minLength: Theme.Space.xs)
+                        VerticalCardDivider().frame(height: 48)
+                    }
+                    Spacer(minLength: Theme.Space.s)
+                }
+                let current = ex.dots.contains(.current)
+                VStack(spacing: Theme.Space.xs) {
+                    Text(ex.name)
+                        .font(.system(size: nameSize, weight: current ? .bold : .semibold))
+                        .foregroundStyle(current ? Theme.navy : Theme.textSecondary)
+                        .fixedSize()
+                    HStack(spacing: 6) {
+                        ForEach(Array(ex.dots.enumerated()), id: \.offset) { _, dot in Dot(dot: dot) }
+                    }
+                    .frame(height: 22)
+                }
+            }
+        }
+    }
+
     private struct Dot: View {
         var dot: SessionHUDModel.ExerciseDots.Dot
         var body: some View {
             switch dot {
-            case .done: Circle().fill(Theme.navy).frame(width: 11, height: 11)
+            case .done: Circle().fill(Theme.navy).frame(width: 15, height: 15)
             case .current:
-                Circle().fill(Theme.yellow).frame(width: 17, height: 17)
-                    .overlay(Circle().strokeBorder(Theme.navy, lineWidth: 2))
-            case .upcoming: Circle().strokeBorder(Theme.border, lineWidth: 2).frame(width: 11, height: 11)
-            case .skipped: Capsule().fill(Theme.textSecondary).frame(width: 12, height: 3)
+                Circle().fill(Theme.yellow).frame(width: 22, height: 22)
+                    .overlay(Circle().strokeBorder(Theme.navy, lineWidth: 2.5))
+            case .upcoming: Circle().strokeBorder(Theme.textSecondary.opacity(0.45), lineWidth: 2.5).frame(width: 15, height: 15)
+            case .skipped: Capsule().fill(Theme.textSecondary).frame(width: 16, height: 4)
             }
         }
     }
@@ -355,8 +393,10 @@ struct AudioConnection: View {
             Text(onHim ? label : "\(label) · too far")
                 .foregroundStyle(onHim ? Theme.cobalt : Theme.navy)
         }
-        .font(.system(size: 17, weight: .semibold))
+        .font(.hudLabel.weight(.semibold))
         .lineLimit(1)
+        // Beside the full lockup "Phone mic · too far" needs to give a little; never truncate it.
+        .minimumScaleFactor(0.75)
         .padding(.horizontal, 13)
         .padding(.vertical, 8)
         .background(onHim ? Theme.cobaltTint : Theme.yellow, in: Capsule())
@@ -368,13 +408,15 @@ struct AudioConnection: View {
 /// In a pocket the screen isn't the point: the pill says the buzzes carry it.
 struct PocketPill: View {
     var body: some View {
-        Label("Pocket · buzzes on", systemImage: "iphone.radiowaves.left.and.right")
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(Theme.cobalt)
-            .lineLimit(1)
-            .padding(.horizontal, 13)
-            .padding(.vertical, 8)
-            .background(Theme.cobaltTint, in: Capsule())
+        ViewThatFits(in: .horizontal) {
+            Label("Pocket · buzzes on", systemImage: "iphone.radiowaves.left.and.right").fixedSize()
+            Text("Pocket · buzzes on").lineLimit(1).minimumScaleFactor(0.75)
+        }
+        .font(.hudLabel.weight(.semibold))
+        .foregroundStyle(Theme.cobalt)
+        .padding(.horizontal, 13)
+        .padding(.vertical, 8)
+        .background(Theme.cobaltTint, in: Capsule())
     }
 }
 
@@ -410,13 +452,14 @@ struct StateLine: View {
 /// and the target at hands-free scale.
 private struct ThisSetCard: View {
     var model: SessionHUDModel
+    var tagSpace: Namespace.ID?
     var body: some View {
         HUDCard(title: nil) {
             Text(model.exercise).font(.system(size: 28, weight: .bold)).foregroundStyle(Theme.navy).lineLimit(1).minimumScaleFactor(0.7)
-            SetTag(model: model)
+            SetTag(model: model, travels: tagSpace)
             TargetText(load: model.load, reps: model.reps, size: 76)
             if let last = model.lastTime {
-                Text(last).font(.system(size: 20)).foregroundStyle(Theme.textSecondary).lineLimit(1)
+                Text(last).font(.hudLabel).foregroundStyle(Theme.textSecondary).lineLimit(1)
             }
         }
     }
@@ -508,20 +551,15 @@ private struct CameraCard: View {
         switch model.phase {
         case .ready:
             CameraCaption {
-                HStack(spacing: 8) {
-                    Text("Say")
-                    HUDTag(text: "go")
-                    Text("when you lift.")
-                }
-                .font(.system(size: 26, weight: .bold))
+                SayGo().font(.system(size: 26, weight: .bold))
             }
         case .armed:
             CameraCaption {
                 Label("Watching you. Only your movement starts it.", systemImage: "eye")
-                    .font(.system(size: 19, weight: .semibold))
+                    .font(.hudLabel.weight(.semibold))
             }
         case .recording:
-            CameraCaption { Text("Counting when you rack it.").font(.system(size: 19, weight: .semibold)) }
+            CameraCaption { Text("Counting when you rack it.").font(.hudLabel.weight(.semibold)) }
         case .rest:
             if !model.result.isEmpty { ResultSticker(facts: model.result) }
         default:
@@ -537,7 +575,7 @@ private struct CameraPill<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         HStack(spacing: 8) { content }
-            .font(.system(size: 20, weight: .semibold).monospacedDigit())
+            .font(.hudLabel.weight(.semibold))
             .foregroundStyle(ink)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
@@ -591,6 +629,7 @@ private struct RestNextCard: View {
     var model: SessionHUDModel
     var remaining: Int
     var total: Int
+    var tagSpace: Namespace.ID?
     var body: some View {
         let over = remaining <= 0
         let fullness = over || total <= 0 ? 0 : Double(remaining) / Double(total)
@@ -608,10 +647,10 @@ private struct RestNextCard: View {
                 CardDivider()
                 HStack(spacing: Theme.Space.s) {
                     Text("Next").font(.hudLabel.weight(.semibold)).foregroundStyle(Theme.textSecondary)
-                    HUDTag(text: next)
+                    HUDTag(text: next, travels: tagSpace)
                 }
                 if let ask = model.nextAsk {
-                    Text(ask).font(.system(size: 19)).foregroundStyle(Theme.navy)
+                    Text(ask).font(.hudLabel).foregroundStyle(Theme.navy)
                 }
             }
         }
@@ -624,8 +663,21 @@ private struct RestNextCard: View {
 /// The role and set as the yellow tag, the way Train shows "Set 4 of 4".
 private struct SetTag: View {
     var model: SessionHUDModel
+    var travels: Namespace.ID?
     var body: some View {
-        HUDTag(text: [model.role, model.setLabel].compactMap { $0 }.joined(separator: " · "))
+        HUDTag(text: [model.role, model.setLabel].compactMap { $0 }.joined(separator: " · "), travels: travels)
+    }
+}
+
+/// "Say "go" when you lift.": the word in bold quotes, like the voice card's hints, so the set's
+/// tag stays the only yellow (DESIGN.md rule 3).
+private struct SayGo: View {
+    var ink: Color = .white
+    var body: some View {
+        (Text("Say ") + Text("\u{201C}go\u{201D}").fontWeight(.heavy) + Text(" when you lift."))
+            .foregroundStyle(ink)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
     }
 }
 
@@ -641,12 +693,7 @@ private struct ReadyCard: View {
                 Text(last).font(.hudLabel).foregroundStyle(Theme.textSecondary)
             }
             Spacer(minLength: Theme.Space.s)
-            HStack(spacing: 8) {
-                Text("Say").foregroundStyle(Theme.navy)
-                HUDTag(text: "go")
-                Text("when you lift.").foregroundStyle(Theme.navy)
-            }
-            .font(.system(size: 28, weight: .bold))
+            SayGo(ink: Theme.navy).font(.system(size: 28, weight: .bold))
         }
     }
 }
@@ -669,7 +716,7 @@ private struct ArmedCard: View {
                     .background(Theme.cobaltTint, in: Circle())
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Watching you").font(.hudLabel.weight(.semibold)).foregroundStyle(Theme.navy)
-                    Text("Only your movement starts it.").font(.system(size: 18)).foregroundStyle(Theme.textSecondary)
+                    Text("Only your movement starts it.").font(.hudLabel).foregroundStyle(Theme.textSecondary)
                 }
             }
             .accessibilityElement(children: .combine)
@@ -691,6 +738,7 @@ private struct RecordingCard: View {
                 }
                 Text(Format.duration(TimeInterval(elapsed))).font(.system(size: 120, weight: .bold).monospacedDigit())
                     .foregroundStyle(Theme.navy)
+                    .contentTransition(.numericText())
             }
             .padding(.top, Theme.Space.xs)
             CardDivider()
@@ -749,7 +797,7 @@ private struct ResultRow: View {
                 if let count { Text(count.text).font(.system(size: 34, weight: .bold).monospacedDigit()).foregroundStyle(Theme.navy) }
                 if let source {
                     Text(source.text.prefix(1).uppercased() + source.text.dropFirst())
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.hudLabel.weight(.semibold))
                         .foregroundStyle(Theme.cobalt)
                         .padding(.horizontal, 10).padding(.vertical, 4)
                         .background(Theme.cobaltTint, in: Capsule())
@@ -778,6 +826,7 @@ private struct HoldCard: View {
                 .foregroundStyle(Theme.navy)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
+                .contentTransition(.numericText(countsDown: true))
             HStack(spacing: Theme.Space.xs) {
                 ForEach(1...max(1, count), id: \.self) { i in
                     Capsule().fill(i < index ? Theme.navy : i == index ? Theme.yellow : Theme.border).frame(height: 10)
@@ -804,10 +853,10 @@ private struct DoneCard: View {
                 CardDivider()
             }
             ForEach(summary?.notes ?? [], id: \.self) { note in
-                Text(note).font(.system(size: 19)).foregroundStyle(Theme.textSecondary)
+                Text(note).font(.hudLabel).foregroundStyle(Theme.textSecondary)
             }
             Spacer(minLength: Theme.Space.s)
-            Text("Your coach sees all of it on Thursday.").font(.system(size: 19, weight: .semibold)).foregroundStyle(Theme.navy)
+            Text("Your coach sees all of it on Thursday.").font(.hudLabel.weight(.semibold)).foregroundStyle(Theme.navy)
         }
     }
 }
@@ -906,7 +955,7 @@ private struct EndButton: View {
 
     var body: some View {
         Text(label)
-            .font(.headline)
+            .font(.hudLabel.weight(.semibold))
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: 56)
             .background(pressing ? Theme.cobaltPressed : Theme.cobalt,
