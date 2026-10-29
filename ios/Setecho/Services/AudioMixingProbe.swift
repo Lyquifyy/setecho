@@ -8,7 +8,9 @@ import Observation
 /// the whole time as in a session: the phone mic only, iOS 26's high-quality recording alone (the
 /// app's AirPods setting), and the old call-quality HFP last, as it can stop his music (Oct 29). Each
 /// step records the options iOS applied, the mic that listened, whether his music was still playing,
-/// and any error, so the one that makes the session non-mixable is found on the device.
+/// and any error, so the one that makes the session non-mixable is found on the device. First, a
+/// session start step by step (Oct 29: the music still stopped there with the mic at full quality):
+/// the app's own audio with the mic open, then the camera, then a spoken line.
 @MainActor
 @Observable
 final class AudioMixingProbe {
@@ -38,6 +40,7 @@ final class AudioMixingProbe {
         running = true
         rows = []
         defer { running = false }
+        await sessionStart()
         for (name, base) in Self.setups {
             let engine = AVAudioEngine()
             await step(name, "set up and activate") {
@@ -49,8 +52,16 @@ final class AudioMixingProbe {
             }
             // The mic open, as in a session: HFP and high-quality recording only engage while recording.
             let input = engine.inputNode
-            input.installTap(onBus: 0, bufferSize: 2048, format: input.outputFormat(forBus: 0)) { _, _ in }
-            try? engine.start()
+            let format = input.outputFormat(forBus: 0)
+            if format.sampleRate > 0, format.channelCount > 0 {
+                // @Sendable so the closure is not main-actor isolated: the tap runs on the realtime
+                // audio thread, and a main-actor tap crashed this test on the first buffer (Oct 29).
+                input.installTap(onBus: 0, bufferSize: 2048, format: format) { @Sendable _, _ in }
+                try? engine.start()
+            } else {
+                rows.append(Row(setup: name, step: "open the mic", applied: [], musicPlaying: session.isOtherAudioPlaying,
+                                mic: "no mic", error: "the input has no format"))
+            }
             try? await Task.sleep(for: .seconds(1))
             await step(name, "lower the music") {
                 try self.session.setCategory(.playAndRecord, mode: .default, options: base.union(.duckOthers))
@@ -77,6 +88,30 @@ final class AudioMixingProbe {
         // Back to the app's own configuration, and the input it would choose.
         try? AirPodsMic.shared.apply(to: session, ducking: false)
         try? session.setPreferredInput(AirPodsMic.shared.preferredInput(in: session))
+    }
+
+    /// A session start, one piece at a time, as SessionCoordinator does it: where his music stops.
+    private func sessionStart() async {
+        let setup = "Session start"
+        await step(setup, "before anything") {}
+        let audio = AudioService()
+        audio.wantsVoiceProcessing = Settings.shared.voiceProcessing
+        await step(setup, "audio set up") { audio.configure() }
+        try? await Task.sleep(for: .seconds(1))
+        await step(setup, "mic open") { audio.startListening() }
+        try? await Task.sleep(for: .seconds(2))
+        let camera = SetDetector(mediaDirectory: FileManager.default.temporaryDirectory, sessionId: UUID())
+        if await SetDetector.requestCamera() {
+            await step(setup, "camera on") { camera.start() }
+            try? await Task.sleep(for: .seconds(2.5))
+        }
+        await audio.speak("Testing your music, one, two, three.")
+        await step(setup, "a line spoken") {}
+        try? await Task.sleep(for: .seconds(1.5))
+        await step(setup, "1.5 s later") {}
+        camera.stop()
+        audio.stopListening()
+        try? await Task.sleep(for: .seconds(1))
     }
 
     private func step(_ setup: String, _ name: String, _ action: () throws -> Void) async {

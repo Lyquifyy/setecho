@@ -60,6 +60,7 @@ final class AudioService {
     private var drainTask: Task<Void, Never>?
     private var speechQueue: [String] = []
     @ObservationIgnored private var routeObserver: NSObjectProtocol?
+    @ObservationIgnored private var musicObserver: NSObjectProtocol?
     private var cuePlayer: AVAudioPlayer?
 
     init() {
@@ -73,10 +74,18 @@ final class AudioService {
                 self.configure()
             }
         }
+        // iOS says when another app's audio starts or stops: the debug JSON shows the moment his
+        // music stopped against every step around it (Oct 29: it stopped at a session start).
+        musicObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.silenceSecondaryAudioHintNotification, object: nil, queue: .main) { [weak self] note in
+            let raw = note.userInfo?[AVAudioSessionSilenceSecondaryAudioHintTypeKey] as? UInt
+            let began = raw.flatMap(AVAudioSession.SilenceSecondaryAudioHintType.init(rawValue:)) == .begin
+            Task { @MainActor in self?.logAudio(began ? "his music started" : "his music stopped", lowered: false, error: nil) }
+        }
     }
 
     isolated deinit {
         if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
+        if let musicObserver { NotificationCenter.default.removeObserver(musicObserver) }
     }
 
     // MARK: Session

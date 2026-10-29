@@ -48,7 +48,7 @@ struct DeveloperView: View {
                     Task { await mixingProbe.run() }
                 }
                 .disabled(mixingProbe.running)
-                Text("Play music on your AirPods first. Over about 20 seconds it lowers and restores the music under three mic settings; it should dip and come back each time. Each line names the mic that listened. The last setting is the old call-quality one and may stop your music: that is the bug it shows.")
+                Text("Play music on your AirPods first. It starts a session one piece at a time (audio, mic, camera, a spoken line), then lowers and restores the music under three mic settings, about 35 seconds in all. Each line says whether your music was still playing and which mic listened; the first line that says NOT playing is the culprit. The last setting is the old call-quality one and may stop your music on purpose.")
                     .font(.footnote).secondaryText()
                 ForEach(mixingProbe.summary, id: \.self) { line in
                     Text(line).font(.footnote).foregroundStyle(line.contains("ok · music playing") ? Theme.textSecondary : Theme.navy)

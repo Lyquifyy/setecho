@@ -212,6 +212,7 @@ final class SessionCoordinator {
             detector.onSetEnd = { [weak self] end in self?.cameraSetEnded(at: end) }
             detector.onClipsReady = { [weak self] clips in self?.clipsReady(clips) }
             detector.start()
+            audio.logAudio("camera on", lowered: false, error: nil)
         }
         if firstSession, !rehearsal { conversation.say(Self.firstSessionIntro) }
         conversation.say(engine.intro)
