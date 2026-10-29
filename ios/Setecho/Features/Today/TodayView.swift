@@ -31,7 +31,8 @@ struct TodayView: View {
     }
 
     var body: some View {
-        ScreenScaffold {
+        // A rest day has nothing to start: no footer, not a disabled button (DESIGN.md, Today).
+        ScreenScaffold(showsFooter: today?.day.isRest != true) {
             TitleBlock(eyebrow: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()), title: "Today")
             if let reply = store.pendingReply {
                 SectionCard("Coach reply", accessory: { TargetTag(text: "Review") }) {
@@ -77,12 +78,17 @@ struct TodayView: View {
             }
             .fixedSize(horizontal: false, vertical: true)
         } footer: {
-            // The only tap of a training day.
-            Button(today?.day.isRest == true ? "Rest day" : "Start session") {
-                if Settings.shared.hasSeenSessionIntro { showSession = true } else { showIntro = true }
+            if today == nil {
+                // First run: importing the program is the one thing to do.
+                Button("Import the program") { AppRouter.shared.showImport = true }.buttonStyle(.setechoPrimary)
+            } else {
+                // The only tap of a training day.
+                Button("Start session") {
+                    if Settings.shared.hasSeenSessionIntro { showSession = true } else { showIntro = true }
+                }
+                .buttonStyle(.setechoPrimary)
+                .disabled(!canStart)
             }
-            .buttonStyle(.setechoPrimary)
-            .disabled(!canStart)
         }
         .fullScreenCover(isPresented: $showIntro, onDismiss: {
             if startAfterIntro { startAfterIntro = false; showSession = true }
@@ -175,8 +181,6 @@ struct TodayView: View {
             SectionCard("Today's session") {
                 Text("Import your coach's program to see today's session.")
                     .font(.subheadline).secondaryText()
-                Button("Import the program", systemImage: "square.and.arrow.down") { AppRouter.shared.showImport = true }
-                    .buttonStyle(.setechoTonalWide)
             }
         }
     }

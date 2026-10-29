@@ -121,6 +121,8 @@ struct SummaryRow: Equatable, Identifiable {
 struct SummaryCard: View {
     let sections: [SummarySection]
     var onTap: ((SummaryRow) -> Void)?
+    /// Off inside a hands-free screen's white sheet, which is already the card.
+    var framed = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
@@ -143,10 +145,10 @@ struct SummaryCard: View {
                 }
             }
         }
-        .padding(Theme.cardPadding)
+        .padding(framed ? Theme.cardPadding : EdgeInsets())
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+        .background(framed ? Theme.surface : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(framed ? Theme.border : .clear, lineWidth: 1))
     }
 
     private func line(_ row: SummaryRow, editable: Bool) -> some View {
@@ -207,7 +209,8 @@ struct AthleteLine: View {
 }
 
 /// An answer the moment it is stored: the check draws itself, then the field, the value as the
-/// coach will read it, and where it came from.
+/// coach will read it, and where it came from. A soft page-coloured tile, since it sits on the
+/// hands-free screen's white sheet.
 struct AnswerCard: View {
     let label: String
     let value: String
@@ -222,14 +225,13 @@ struct AnswerCard: View {
                     .font(.hudLabel.weight(.semibold))
                     .foregroundStyle(Theme.navy)
                     .fixedSize(horizontal: false, vertical: true)
-                SourceChip(source: source)
+                SourceChip(source: source, size: .hud)
             }
             Spacer(minLength: 0)
         }
         .padding(Theme.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+        .background(Theme.page, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label): \(value). Source: \(source)")
     }
@@ -278,7 +280,8 @@ struct CheckShape: Shape {
 // MARK: - The steps
 
 /// The steps of a flow as one track: done steps in cobalt, the current one on yellow (the one thing
-/// waiting on the athlete), the rest as hairlines. Titles sit beneath each segment.
+/// waiting on the athlete), the rest as hairlines. Beneath, one line at hands-free size names the
+/// step he's on ("Photos · 3 of 5"): five titles can't fit across the phone at 22 pt.
 struct StepTrack: View {
     struct Step: Identifiable, Equatable {
         let id: String
@@ -288,29 +291,38 @@ struct StepTrack: View {
     let steps: [Step]
     /// The index of the current step; `steps.count` once every step is done.
     let current: Int
+    /// On the navy stage: done steps white (cobalt can't be read on navy), the rest dim.
+    var onStage = false
+
+    private var doneColor: Color { onStage ? Theme.onStage : Theme.cobalt }
+    private var pendingColor: Color { onStage ? Theme.onStageTrack : Theme.border }
+    private var ink: Color { onStage ? Theme.onStage : Theme.navy }
+    private var secondaryInk: Color { onStage ? Theme.onStageSecondary : Theme.textSecondary }
 
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Space.xs) {
-            ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
-                let state = index < current ? State.done : index == current ? .current : .pending
-                VStack(spacing: Theme.Space.xs) {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            HStack(spacing: Theme.Space.xs) {
+                ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
+                    let state = index < current ? State.done : index == current ? .current : .pending
                     Capsule()
-                        .fill(state == .pending ? Theme.border : state == .done ? Theme.cobalt : Theme.yellow)
-                        .frame(height: 6)
-                    HStack(spacing: 3) {
-                        if state == .done {
-                            Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(Theme.cobalt)
-                        }
-                        Text(step.title)
-                            .font(.subheadline.weight(state == .current ? .semibold : .regular))
-                            .foregroundStyle(state == .pending ? Theme.textSecondary : Theme.navy)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
+                        .fill(state == .pending ? pendingColor : state == .done ? doneColor : Theme.yellow)
+                        .frame(height: 8)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(step.title), \(state == .done ? "done" : state == .current ? "now" : "to come")")
                 }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(step.title), \(state == .done ? "done" : state == .current ? "now" : "to come")")
             }
+            HStack(spacing: Theme.Space.xs) {
+                if current < steps.count {
+                    Text(steps[current].title).font(.hudLabel.weight(.semibold)).foregroundStyle(ink)
+                    Text("· \(current + 1) of \(steps.count)").font(.hudLabel).foregroundStyle(secondaryInk)
+                } else {
+                    Image(systemName: "checkmark").font(.hudLabel.weight(.bold)).foregroundStyle(doneColor)
+                    Text("All \(steps.count) done").font(.hudLabel.weight(.semibold)).foregroundStyle(ink)
+                }
+            }
+            .lineLimit(1)
+            .contentTransition(.opacity)
+            .accessibilityHidden(true)
         }
         .animation(.snappy(duration: 0.45), value: current)
     }
@@ -341,6 +353,11 @@ struct VoiceBar: View {
     let phase: VoicePhase
     /// The mic level above the room, 0…1, for the waveform while listening.
     var level: Double = 0
+    /// Which voice is speaking ("Ava (Premium)"), named while it speaks, so a fallback to a lesser
+    /// voice is never a mystery.
+    var voiceName: String?
+    /// Off inside a hands-free screen's white sheet, which is already the card.
+    var framed = true
 
     var body: some View {
         HStack(spacing: Theme.Space.m) {
@@ -368,11 +385,11 @@ struct VoiceBar: View {
                 .contentTransition(.opacity)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, Theme.Space.s)
+        .padding(.horizontal, framed ? Theme.Space.s : 0)
         .padding(.vertical, Theme.Space.xs)
         .frame(maxWidth: .infinity, minHeight: 72)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+        .background(framed ? Theme.surface : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(framed ? Theme.border : .clear, lineWidth: 1))
         .animation(.snappy(duration: 0.3), value: phase)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
@@ -380,7 +397,7 @@ struct VoiceBar: View {
 
     private var label: String {
         switch phase {
-        case .speaking: "Setecho"
+        case .speaking: voiceName.map { "Setecho · \($0)" } ?? "Setecho"
         case .listening: level > 0.25 ? "Hearing you" : "Your turn"
         case .thinking: "Hearing that…"
         case .paused: "Take your time. Say \"I'm back\" when you're ready."
@@ -434,8 +451,10 @@ struct ThinkingDots: View {
 
 // MARK: - Hold to stop
 
-/// The one tap target of a hands-free screen: it fills as it is held, so a brush against the phone
-/// never ends anything and a real press shows it is working.
+/// The one tap target of a hands-free screen, and the action he wants least, so it's tonal (cobalt
+/// on cobalt tint) and the target, the clock or the question owns the screen (DESIGN.md rule 9).
+/// It fills with solid cobalt as it is held, so a brush against the phone never ends anything and
+/// a real press shows it is working.
 struct HoldButton: View {
     let title: String
     var duration: Double = 1.0
@@ -444,18 +463,21 @@ struct HoldButton: View {
     @State private var pressing = false
 
     var body: some View {
+        let label = Text(title).font(.hudLabel.weight(.semibold)).frame(maxWidth: .infinity)
         ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).fill(Theme.cobalt)
+            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).fill(Theme.cobaltTint)
+            label.foregroundStyle(Theme.cobalt)
+            // The fill, and the label turning white wherever the fill has reached.
             GeometryReader { geometry in
-                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                    .fill(Theme.cobaltPressed)
+                let fill = RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                     .frame(width: pressing ? geometry.size.width : 0)
-                    .animation(pressing ? .linear(duration: duration) : .easeOut(duration: 0.2), value: pressing)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                ZStack {
+                    fill.foregroundStyle(Theme.cobalt)
+                    label.foregroundStyle(.white).frame(maxHeight: .infinity).mask(fill)
+                }
+                .animation(pressing ? .linear(duration: duration) : .easeOut(duration: 0.2), value: pressing)
             }
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 60)

@@ -196,7 +196,8 @@ private struct ImportField: View {
 
 // MARK: - Program review
 
-private struct ProgramReviewView: View {
+/// Internal, not private, so the screen renders (ScreenRenderTests) can show it.
+struct ProgramReviewView: View {
     @Bindable var model: ImportModel
     let onSave: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -320,7 +321,8 @@ struct ExerciseRow: View {
 
 // MARK: - Form review
 
-private struct FormReviewView: View {
+/// Internal, not private, so the screen renders (ScreenRenderTests) can show it.
+struct FormReviewView: View {
     @Bindable var model: ImportModel
     let onSave: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -394,7 +396,8 @@ private struct FieldPlanRow: View {
 /// How the coach adjusts loads, one `RuleRow` each, drafted from his instructions, beside his words.
 /// The same card lists how hard each kind of set goes, the rest after top sets, warm-ups, the
 /// check-in cadence and his quiet day. Nothing applies until it's confirmed.
-private struct RulesReviewView: View {
+/// Internal, not private, so the screen renders (ScreenRenderTests) can show it.
+struct RulesReviewView: View {
     @Bindable var model: ImportModel
     let onSave: () -> Void
     @Environment(\.dismiss) private var dismiss

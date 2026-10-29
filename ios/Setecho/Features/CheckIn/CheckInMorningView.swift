@@ -31,12 +31,12 @@ struct CheckInMorningView: View {
             if model.isDone {
                 Button("Open to send") { model.showReview = true }.buttonStyle(.setechoPrimary)
                 HStack {
-                    LinkButton(title: "Read it back", chevron: .none) { Task { await model.readBack() } }
+                    LinkButton(title: "Read it back", chevron: .none, hud: true) { Task { await model.readBack() } }
                     Spacer()
-                    LinkButton(title: "Start over", chevron: .none) { Task { await model.startOver() } }
+                    LinkButton(title: "Start over", chevron: .none, hud: true) { Task { await model.startOver() } }
                     Spacer()
                     // The way out once it's done: the answers are saved, the tab can send later.
-                    LinkButton(title: "Done for now", chevron: .none) { Task { await model.leave() } }
+                    LinkButton(title: "Done for now", chevron: .none, hud: true) { Task { await model.leave() } }
                 }
             } else {
                 HoldButton(title: "Hold to stop",

@@ -1,8 +1,8 @@
 import AVFoundation
 import SwiftUI
 
-/// Photo session (DESIGN.md): the camera fills the screen, last week's outline shows faintly for
-/// alignment, the pose name sits in the HUD, the four slots run along the bottom. No taps needed.
+/// Photo session (DESIGN.md): the hands-free stage and sheet, his camera on the stage and the pose,
+/// the hold-still meter and the four slots on the sheet. No taps needed.
 struct PhotoSessionView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(Store.self) private var store
@@ -16,9 +16,6 @@ struct PhotoSessionView: View {
     var body: some View {
         ZStack {
             Theme.cameraFill.ignoresSafeArea()
-            if coordinator.phase != .review {
-                CameraPreview(session: coordinator.capture.captureSession).ignoresSafeArea()
-            }
             switch coordinator.phase {
             case .review:
                 if let set = coordinator.photoSet {
@@ -47,58 +44,19 @@ struct PhotoSessionView: View {
     }
 
     private var hud: some View {
-        VStack {
-            VStack(spacing: Theme.Space.s) {
-                if let pose = coordinator.currentPose {
-                    Text("\(Pose.allCases.firstIndex(of: pose)! + 1) of 4").font(.hudLabel).foregroundStyle(Theme.surface)
-                    Text(pose.hudTitle).font(.hudState).foregroundStyle(Theme.surface)
-                } else if coordinator.phase == .aligning {
-                    Text("Lining up with last week…").font(.hudState).foregroundStyle(Theme.surface)
-                } else {
-                    Text("Starting the camera…").font(.hudState).foregroundStyle(Theme.surface)
-                }
-                if let heard = coordinator.heard {
-                    Text("“\(heard)”").font(.hudLabel).foregroundStyle(Theme.surface.opacity(0.8)).lineLimit(1)
-                }
-                if let cue = coordinator.cue {
-                    Text(cue)
-                        .font(.hudLabel)
-                        .foregroundStyle(Theme.navy)
-                        .padding(.horizontal, Theme.Space.m)
-                        .padding(.vertical, Theme.Space.xs)
-                        .background(Theme.yellow, in: RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
-                }
-                if coordinator.capture.framing == .good {
-                    // Read from the tripod: framed, and how long the hold has to go.
-                    ProgressView(value: coordinator.stillProgress)
-                        .tint(Theme.cobalt)
-                        .frame(width: 260)
-                        .scaleEffect(x: 1, y: 3)
-                        .accessibilityLabel("Holding still")
-                }
-            }
-            .padding(.top, Theme.Space.xl)
-            .padding(.horizontal, Theme.gutter)
-            .frame(maxWidth: .infinity)
-            .background(Theme.cameraFill.opacity(0.55))
-
-            Spacer()
-
-            VStack(spacing: Theme.Space.s) {
-                PoseSlots(slots: coordinator.slots)
-                Text("Hold to cancel")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.surface)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .contentShape(Rectangle())
-                    .onLongPressGesture(minimumDuration: 1.0) {
-                        coordinator.cancel()
-                        dismiss()
-                    }
-                    .accessibilityLabel("Cancel photo session")
-            }
-            .padding(Theme.gutter)
-            .background(Theme.cameraFill.opacity(0.7))
+        PhotoSessionHUD(
+            model: PhotoSessionHUDModel(
+                pose: coordinator.currentPose,
+                status: coordinator.phase == .aligning ? "Lining up with last week…" : "Starting the camera…",
+                cue: coordinator.cue,
+                heard: coordinator.heard,
+                holding: coordinator.capture.framing == .good ? coordinator.stillProgress : nil,
+                slots: coordinator.slots),
+            // The whole frame, not a crop of it: the framing check judges the full picture.
+            camera: AnyView(CameraPreview(session: coordinator.capture.captureSession, gravity: .resizeAspect))
+        ) {
+            coordinator.cancel()
+            dismiss()
         }
     }
 
@@ -115,14 +73,110 @@ struct PhotoSessionView: View {
     }
 }
 
+/// What the photo session shows, as plain values: the live view fills it from the coordinator,
+/// and the screen renders draw it without a camera.
+struct PhotoSessionHUDModel {
+    /// The pose being taken; nil while the camera starts or lines up with last week.
+    var pose: Pose?
+    /// What's happening before the first pose: "Starting the camera…".
+    var status: String
+    /// The framing check's line, said and shown: "Step back a little".
+    var cue: String?
+    /// What he just said, as heard.
+    var heard: String?
+    /// The hold-still meter, 0…1, once he's framed; nil until then.
+    var holding: Double?
+    var slots: [(pose: Pose, slot: PoseSlots.Slot)]
+}
+
+/// The photo session on the hands-free `StageSheet`: his camera fills the stage (the whole of him
+/// has to fit, so the sheet stays short), with the pose count on a pill and the framing cue on a
+/// white pill where he can read it from the tripod. The sheet names the pose in `.hudState`, then
+/// the hold-still meter or what was heard, the four slots and "Hold to cancel".
+struct PhotoSessionHUD: View {
+    var model: PhotoSessionHUDModel
+    var camera: AnyView?
+    var onCancel: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        StageSheet {
+            ZStack {
+                Theme.cameraFill
+                if let camera { camera }
+            }
+        } overlay: {
+            VStack(alignment: .leading, spacing: Theme.Space.s) {
+                HStack(spacing: Theme.Space.s) {
+                    StageMark()
+                    if let pose = model.pose {
+                        Text("\(Pose.allCases.firstIndex(of: pose)! + 1) of 4")
+                            .font(.hudLabel.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 44)
+                            .background(Theme.cameraFill.opacity(0.78), in: Capsule())
+                            .contentTransition(.numericText())
+                    }
+                    Spacer(minLength: 0)
+                }
+                Spacer(minLength: 0)
+                if let cue = model.cue {
+                    // The one correction to make, where he's looking: white, so the current slot
+                    // stays the one yellow.
+                    Label(cue, systemImage: "arrow.up.and.down.and.arrow.left.and.right")
+                        .font(.hudState)
+                        .foregroundStyle(Theme.navy)
+                        .padding(.horizontal, Theme.Space.m)
+                        .padding(.vertical, Theme.Space.s)
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+                        .frame(maxWidth: .infinity)
+                        .transition(reduceMotion ? .opacity : .scale(scale: 0.94).combined(with: .opacity))
+                }
+            }
+        } sheet: {
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                Text(model.pose?.hudTitle ?? model.status)
+                    .font(.hudState)
+                    .foregroundStyle(Theme.navy)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .contentTransition(.opacity)
+                if let holding = model.holding {
+                    VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                        Text("Hold still").font(.hudLabel.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+                        GeometryReader { proxy in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Theme.cobaltTint)
+                                Capsule().fill(Theme.cobalt).frame(width: proxy.size.width * max(0, min(1, holding)))
+                            }
+                        }
+                        .frame(height: 12)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Holding still")
+                    .accessibilityValue("\(Int(holding * 100)) percent")
+                } else if let heard = model.heard {
+                    Text("\u{201C}\(heard)\u{201D}").font(.hudLabel.weight(.semibold)).foregroundStyle(Theme.cobalt).lineLimit(1)
+                }
+                PoseSlots(slots: model.slots)
+                HoldButton(title: "Hold to cancel", accessibilityHint: "Press and hold to stop the photo session.", action: onCancel)
+            }
+        }
+        .animation(reduceMotion ? .easeInOut(duration: 0.25) : .spring(duration: 0.45, bounce: 0.12), value: model.cue)
+        .animation(reduceMotion ? .easeInOut(duration: 0.25) : .spring(duration: 0.45, bounce: 0.12), value: model.pose)
+    }
+}
+
 /// AVCaptureVideoPreviewLayer in SwiftUI.
 struct CameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
+    /// Fill by default; the photo session fits, so he sees all of what the framing check sees.
+    var gravity: AVLayerVideoGravity = .resizeAspectFill
 
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
         view.previewLayer.session = session
-        view.previewLayer.videoGravity = .resizeAspectFill
+        view.previewLayer.videoGravity = gravity
         return view
     }
 

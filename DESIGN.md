@@ -20,13 +20,13 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 6. **Section titles are sentence case and sit inside the card.**
 7. **Every number uses tabular digits.** Loads are in pounds, formatted only through `Format`.
 8. **The wordmark is an image** (`Image("Lockup")` / `Image("Wordmark")`). Never type "Setecho" in a serif font.
-9. **One primary button per screen**, in the `FooterBar`.
+9. **One primary button per screen**, in the `FooterBar`. The hands-free screens (rule 10) have none while they run: their "Hold to end session" / "Hold to stop" is the tonal `HoldButton`, filling to solid cobalt as it's held, so the action he wants least never outshouts the set or the question (decided Oct 29). A primary button returns once it's done ("Open to send", "Review and send").
 10. **Session, Check-in morning, Photo session and Wrap-up are full-screen and hands-free.** No tab bar. No action may *require* a tap; every tap target has a voice equivalent. A session never requires the tripod: with the phone in a pocket, voice runs it (and the watch, if it's built).
 11. **Every number shows where it came from.** A check-in answer filled from data carries a `SourceChip`. The model never produces a number; numbers come from Apple Health, the training log or what the athlete said. A logged rep count shows how it was counted: Plan, Watch, Phone, Measured or You said.
 12. **The athlete's words stay theirs.** Spoken answers are tidied, not rewritten. Casual stays casual.
 13. **Never coach on Setecho's own authority.** No form judgments, no nutrition advice, no rules Setecho invents. A next-set suggestion always names the coach's rule it came from, the athlete decides, and the coach sees it in the check-in. A machine-taken swap stays within the same lift or his own alternates, and every swap and reorder reaches him in the check-in. The coach's plan is shown as the coach's plan.
 14. **Every voice action is echoed on screen and out loud, and can be undone by saying "undo".** A low-confidence command is asked back as the action ("Twelve reps on set 2?"), never acted on silently; chatter and other people's voices are never answered, only shown ("Heard: …").
-15. Hit targets are at least 44 pt, and icon-only buttons carry an `accessibilityLabel`. The app is light mode only, the session screen included.
+15. Hit targets are at least 44 pt, and icon-only buttons carry an `accessibilityLabel`. The app is light mode only. The hands-free screens are half dark by design: a camera or navy stage over a white sheet (`StageSheet`, decided Oct 29). Never a dark theme.
 16. **Nothing from the coach's reply changes the plan until the athlete approves it.** Every proposed change shows the coach's exact words beside it, and an applied reply can be reverted from History.
 
 ## Tokens
@@ -47,23 +47,29 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 | `Theme.fieldFill` | #E4E9F4 | Search and text fields |
 | `Theme.recording` | #E5484D | Recording dot only |
 | `Theme.cameraFill` | #10142A | Camera and thumbnail placeholders |
+| `Theme.stage` | #171D36 | The hands-free stage when the camera isn't on it |
+| `Theme.onStage` / `Theme.onStageSecondary` | #FFFFFF / #B4BCD8 | The big thing on the stage / secondary text on it (8.6:1) |
+| `Theme.onStageTrack` | #3A4263 | Upcoming segments on the stage (holds, steps) |
+| `Theme.Radius.sheet` | 28 pt | The top corners of a hands-free screen's white sheet |
 | Card radius / padding / gap | 16 / 16–18 / 16 pt | `SectionCard`, `Theme.gutter` |
 | Control radius | 12 pt | Buttons, fields |
 
 **Type:** SF Pro everywhere except the wordmark image.
 - **Standard screens:** `.screenTitle`, `.sectionTitle`, `.metricXL` / `.metricL`.
-- **Hands-free screens are read from 2–3 m away:** add `.hudTarget` (96 pt bold, tabular) for "225 × 8", `.hudState` (34 pt semibold) for the state line, and `.hudLabel` (22 pt) for everything else. Nothing smaller on those screens.
+- **Hands-free screens are read from 2–3 m away:** add `.hudTarget` (96 pt bold, tabular) for "225 × 8", `.hudState` (34 pt semibold) for the state line, and `.hudLabel` (22 pt) for everything else. Nothing smaller on those screens. The one exception is the session's lifts strip, which must fit the whole day across the top: its names step from 20 to 17 to 15 pt, then fall back to a bar per lift with only the current lift named (Zander, Oct 29: the names have to fit).
 
 ## Components
 
 **Built** (`ios/Setecho/DesignSystem/`):
 - `ScreenScaffold`, `BrandHeader`, `TitleBlock`, `SectionCard`, `CardDivider`, `VerticalCardDivider`, `FooterBar`
+- `StageSheet` (the hands-free layout: a stage across the top, edge to edge, and a white sheet across the bottom ending in the hold-to-stop) and `StageMark` (the logo mark on a white tile: the brand on hands-free screens, never the full lockup)
 - `.setechoPrimary`, `.setechoOutline`, `LinkButton`, `PlayButton`, `CloseButton`
 - `TargetTag`, `LoadRepsText`, `MetricText`, `SetThumbnail`, `Format`
 - `.setechoTonal` / `.setechoTonalWide` (the in-card action: cobalt text on a cobalt-tint fill, with an icon; use it instead of a bare text link when a card offers something to do), `IconButton` (44 pt round tonal icon, always labeled)
 - `SegmentTabs` (tabs inside a screen; the selected tab is cobalt; a count badge goes yellow only when that count is waiting on the athlete), `TileCard` (a half-width card that is one tappable thing; two side by side), `MeterBar` (a thin cobalt progress bar), `DisclosureChevron`
 - `ExerciseDisclosureRow` (one exercise as a single line, "Bench press · 4 × 8", that opens to the sheet's details)
-- The spoken check-in (`Conversation.swift`): `ConversationTranscript` with `SetechoLine`, `AthleteLine` and `AnswerCard`; `AnimatedCheck` (the check that draws itself, also on a ready `FieldRow`); `StepTrack`; `VoiceBar` with `WaveformBars` and `ThinkingDots`; `HoldButton`
+- The spoken check-in (`Conversation.swift`): `ConversationTranscript` with `SetechoLine`, `AthleteLine` and `AnswerCard` (its `SourceChip` at `.hud` size); `AnimatedCheck` (the check that draws itself, also on a ready `FieldRow`); `StepTrack` (one segment per step, and one `.hudLabel` line naming the current one, "Photos · 3 of 5"); `VoiceBar` with `WaveformBars` and `ThinkingDots` (it names the voice while it speaks, "Setecho · Ava (Premium)"); `HoldButton` (tonal, filling to cobalt as it's held; the session's end button too)
+- `LinkButton(hud: true)` for the links a hands-free screen shows once it's done ("Read it back"); `ScreenScaffold(showsFooter:)` drops the footer bar when there's nothing to start, instead of a disabled primary button
 
 **Leaving a sheet or cover:**
 - **The first screen of every sheet or cover** gets the X: `ScreenScaffold(onClose: { dismiss() })` puts a `CloseButton` in the header's top-right, where the More menu sits on a tab. There's no "Back", "Cancel" or "Done" link at the top of the content.
@@ -75,7 +81,7 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 
 | Component | Use |
 |---|---|
-| `SourceChip(source:)` | Small cobalt-tint capsule naming where an answer came from: "Withings", "MacroFactor", "Garmin", "Training log", "You said · Wed", and for rep counts "Plan", "Watch", "Phone", "Measured". Tapping it shows the underlying values. |
+| `SourceChip(source:size:)` | Small cobalt-tint capsule (`.hud` at 22 pt on the hands-free screens) naming where an answer came from: "Withings", "MacroFactor", "Garmin", "Training log", "You said · Wed", and for rep counts "Plan", "Watch", "Phone", "Measured". Tapping it shows the underlying values. |
 | `FieldRow(field:)` | One check-in field: the coach's label, the answer, its `SourceChip`, and a state (filled, drafted → yellow "Confirm" `TargetTag`, missing → secondary "Ask in wrap-up"). |
 | `HUDState(state:)` | The hands-free state line, with an icon: Ready · Recording (red dot) · Saved · Rest 2:14 · Listening. |
 | `ListeningIndicator` | A cobalt-tint pulse shown whenever the mic is taking commands, so the athlete knows when they're heard. |
@@ -106,7 +112,8 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 - **Purpose:** the home base. What's planned today, and where the current check-in stands.
 - **Today's session card:** the coach's day, e.g. "Day 2", titled in the card, with "4 exercises · 9 sets". Each exercise is one `ExerciseDisclosureRow` ("Lat Pulldown · 2 × 8–10"), closed by default so the whole day fits on screen; tapping one opens the sheet's details (load, RPE, equipment, rest, his "or" options, notes, last time). Any add-on joining it sits below a `CardDivider` ("+ Abs · 1 of 2 this week"). A bottom row of tonal buttons: "Change day", "What to say" and an icon to open or close every exercise.
 - **Morning card,** on a day an on-waking add-on is due: "This morning: stomach vacuums · 4 × 20 s · 2 of 4 this week", with "Start".
-- **Rest day:** the session card becomes "Rest day" with his cardio line ("25 minutes of fasted LISS"). No Start button.
+- **Rest day:** the session card becomes "Rest day" with his cardio line ("25 minutes of fasted LISS"). No Start button, and no footer.
+- **First run** (nothing imported): the session card says to import his program, and the footer is "Import the program".
 - **Check-in and Photos tiles,** side by side (`TileCard`): Check-in shows "11 of 22 ready", a `MeterBar` and the due day, and opens the Check-in tab; on check-in morning it shows a yellow "Due today" tag and starts the check-in. Photos shows last taken and next due, and opens Photo session.
 - **Which day:** a seven-day cycle follows the day of the week (Day 1 on Monday); "Change day" overrides it for today.
 - **Loading:** while anything is being read (Import, the draft, Review and send), one `LoadingCard` with a short line, never a bare spinner.
@@ -127,19 +134,22 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 
 ### Session (full-screen, hands-free)
 - **Purpose:** a whole training session with zero taps after Start. The phone stands on the tripod 2–3 m away, facing him from the bench (Settings → "Camera faces you"); he glances at it, and the ear carries the rest (four tones and three haptics: armed, set started, set ended, rest's up).
-- **Built from:** `SessionHUD` (Features/Session/SessionHUD.swift), drawn from `SessionHUDModel(engine:live:)` every quarter second. The app's own grammar at hands-free scale: the cool page, white hairline cards with their title inside, navy SF Pro bold with tabular numbers, the yellow tag for the one thing waiting on him, cobalt only for the lockup, data sources ("Measured", the mic in use) and the end button, the red dot only while recording. No dark mode, no state colour fields.
-- **Always on screen, top to bottom:** the lockup and the audio connection (a cobalt-tint pill naming the mic, yellow "Phone mic · too far" when it's the phone's own); the lifts strip (today's lifts as short names, a dot per set: done navy, the current one yellow, upcoming open, skipped a dash; an add-on as one entry after a hairline); the main area; the voice card; the cobalt "Hold to end session" button (a 1.2 s long press, the only tap target; "end session" by voice works too).
-- **The camera card** (Ready, Armed, Recording, Rest, when the camera sees him): his own picture filling the space the cards leave, as on the Filming board. The state is the dark pill top-left ("○ Ready", yellow "● Armed · lift when ready", "● Recording · 0:24"), yellow corner brackets sit on him once the camera has locked on, and the foot of the frame says what to do ("Say [go] when you lift.", "Watching you. Only your movement starts it.", "Counting when you rack it."). The front camera is shown mirrored, like a mirror.
+- **Built from:** `SessionHUD` (Features/Session/SessionHUD.swift) on the hands-free `StageSheet`, drawn from `SessionHUDModel(engine:live:)` every quarter second. His own picture fills the stage, edge to edge and under the status bar; one white sheet across the bottom carries the set. Navy SF Pro bold with tabular numbers, the yellow tag for the one thing waiting on him, cobalt for the mark, data sources ("Measured", the mic in use) and the tonal end button, the red dot only while recording. Without the camera (a hold, the pocket, the end) the stage is `Theme.stage` navy with the one big thing in white. Half dark, never a dark theme (decided Oct 29). Every state is said once: on the camera's pill, or on the navy stage.
+- **On the stage, top to bottom:** the lifts strip on a white bar (today's lifts as short names, a dot per set: done navy, the current one yellow, upcoming open, skipped a dash; an add-on as one entry after a hairline); then the mark (`StageMark`), the state pill ("○ Ready", yellow "● Armed · lift when ready", "● Recording · 0:24", "▶ Your last set") and the audio connection (a cobalt-tint pill naming the mic, yellow "Phone mic · too far" when it's the phone's own). Short of room the audio pill drops to its icon first, then the state pill to its short form ("Armed", "Rec 0:24"); the warning always keeps its words. Yellow corner brackets sit on him once the camera has locked on. The front camera is shown mirrored, like a mirror.
+- **The strip always fits:** names step down from 20 to 17 to 15 pt to fit the day whole; a day too long even then (his real days run to 19 sets) becomes one flexible bar per lift, a segment per set, with the lift he's on named above ("Stationary · 1 of 6"). Never a truncated name, and nothing on the screen may lay it out wider than the phone (`sessionScreenNeverOutgrowsThePhone`).
+- **The audio pill** says "No mic" when there's none, and "Phone mic · too far" only for the phone's own mic.
+- **In the sheet, top to bottom:** the state's block (below), one voice line, the tonal "Hold to end session" `HoldButton` (a 1.2 s long press that fills to cobalt, the only tap target; "end session" by voice works too).
 - **States:**
-  - **Ready / Armed / Recording:** a compact card above the camera: the exercise, the set as the yellow tag ("Back-off · set 2 of 2"), the target "65 lb × 8–10" at 76 pt, last time. No rep number while recording.
-  - **Rest:** the camera card plays the set he just did, looping and silent, with its result on a white sticker ("9 reps", a `SourceChip`-style "Measured", "slowed 41% · failure"). Below it, the countdown (it thins from heavy to regular as the rest drains; "+0:40 over" in secondary once it runs out), and the next set as the yellow tag with what to say.
-  - **Hold:** no camera: the hold's name, "Hold 2 of 4" as the yellow tag, the countdown, a track of the holds.
-  - **Pocket** (the camera running but not seeing him): no camera card and no voice card; the pill reads "Pocket · buzzes on"; the countdown and the next set, larger.
-  - **Done:** "Today's top sets" (each exercise's best set, "Beat the logbook" as the yellow tag), flags, notes, gym changes, SAM's median, "Your coach sees all of it on Thursday."
-- **The voice card** (the check-in's voice bar at hands-free scale): his words in cobalt as the stream hears them, his words while the turn is read, Setecho's line filling from secondary to navy as it's said, the last line for 8 s; idle, "Say "…" or "…"" from `VoiceGuide.hints`.
-- **A question waiting on him** (outside rest, where the next-set card carries it) stays on its own card with a yellow "Asked" tag until it's answered or lapses.
+  - **Ready / Armed / Recording:** one sheet for all three, so only the pill changes as he lifts: the exercise and the set as the yellow tag ("Back-off · set 2 of 2") on one line, the target "65 lb × 8–10" at 72 pt, last time. No rep number while recording.
+  - **Rest:** the stage plays the set he just did, looping and silent, with its result on a white sticker at its foot ("11 reps", a `SourceChip`-style "Measured", "slowed 46% · failure"). The sheet: the countdown (it thins from heavy to regular as the rest drains; "+0:40 over" in secondary once it runs out) and the next set as the yellow tag. What to say to it ("Say "go with it" or a weight.") is the voice line's.
+  - **Hold:** the navy stage: "Holding", the countdown at 140 pt in white, a track of the holds (done white, current yellow). The sheet: the hold's name and "Hold 2 of 4" as the yellow tag.
+  - **Pocket** (the camera running but not seeing him): the navy stage with "Resting" and the countdown; the pill reads "Pocket · buzzes on"; the sheet keeps only the next set. No voice line.
+  - **Done:** the navy stage: "Done" and "Your coach sees all of it on Thursday."; the sheet: "Today's top sets" (each exercise's best set, "Beat the logbook" as the yellow tag under it), then flags, notes, gym changes, SAM's median; "Hold to close".
+- **The voice line** (the check-in's voice bar, in the sheet): his words in cobalt as the stream hears them, his words while the turn is read, Setecho's line filling from secondary to navy as it's said, the last line for 8 s. Idle, the one thing to say now: "Say "go" when you lift." in Ready, the next set's question in Rest, otherwise "Say "…" or "…"" from `VoiceGuide.hints`.
+- **A question waiting on him** (outside rest, where the voice line carries it) stays in the sheet with a yellow "Asked" tag until it's answered or lapses.
 - **Coach cue, add-ons, warm-ups:** a cue is spoken; an add-on's lifts follow the day's under its name in the strip; a warm-up shows as "Warm-up 2" in the set tag.
-- **Review:** `SessionHUDRenderTests` and `SessionHUDMappingTests` render every state (`TEST_RUNNER_HUD_SHOTS=<folder>`, `TEST_RUNNER_HUD_CAMERA=<frame>` for a sample picture).
+- **Motion:** states spring into place (the set card and the rest card rise in, the yellow tag moves from the set card to the next-set card), and the target, clocks and counts roll (`.numericText`). Under Reduce Motion every one of these is a plain fade.
+- **Review:** `SessionHUDRenderTests` and `SessionHUDMappingTests` render every state (`TEST_RUNNER_HUD_SHOTS=<folder>`, `TEST_RUNNER_HUD_CAMERA=<frame>` for a sample picture). `make screens` renders every screen of the app into `design/screens/` with contact sheets, for reviewing them side by side.
 
 ### How a session works (before the first session, and Settings → Sessions)
 - **Shown once,** when Start session is tapped for the first time; its footer "Start session" opens the session. From Settings it's the same screen with "Done".
@@ -154,7 +164,7 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 ### Photo session (full-screen, hands-free)
 - **Purpose:** the four check-in photos with no taps, framed like last week.
 - **The order is the coach's:** Front · Right side, arms up · Back · Left side, arms up.
-- **Layout:** the camera fills the screen. The pose name in `.hudState` ("Turn right · arms up"). `PoseSlots` along the bottom.
+- **Layout:** the hands-free `StageSheet` (`PhotoSessionHUD`, drawn from `PhotoSessionHUDModel`). The stage shows the whole camera frame, fitted, not cropped, so he sees all of what the framing check judges, with the mark and "2 of 4" on a pill; the framing cue ("Step back a little") sits on a white pill at the stage's foot, so the current slot stays the one yellow. The sheet: the pose name in `.hudState` ("Right side to camera · arms up"), then the cobalt hold-still meter once he's framed (or what was heard), `PoseSlots` (Front · Right · Back · Left at `.hudLabel`, the current one ringed yellow) and the tonal "Hold to cancel".
 - **Flow:**
   1. The framing check speaks ("step back a little") until the whole body is in frame.
   2. The app calls each pose and waits until the athlete is still.
@@ -173,10 +183,9 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 - **Purpose:** the whole check-in as one conversation on check-in morning: weight, glucose, photos, the coach's questions, then review.
 - **Start:** "Hey Siri, start my Setecho check-in", the check-in-day notification, or Today's "Start check-in".
 - **Layout, top to bottom** (`ConversationScreen`, shared with the wrap-up):
-  - the lockup, and which check-in this is ("Thursday check-in", or "Practice run" on any other day)
-  - `StepTrack`: Weight · Glucose · Photos · Questions · Review, done steps in cobalt with a check, the current one on yellow
-  - `ConversationTranscript`, sitting at the bottom of its space and growing upward: every line Setecho said (`SetechoLine`; the one being asked now in `.hudState`, earlier ones settled to `.hudLabel` secondary), the athlete's words as heard (`AthleteLine`, on the cobalt-tint bubble, right), and each answer the moment it is stored (`AnswerCard`: the check draws itself, the field, the value, its `SourceChip`)
-  - `VoiceBar`: whose turn it is. A live waveform and "Your turn" / "Hearing you" while the mic is open, Setecho's own pulse while it speaks, a thinking beat while a turn is read, a quiet "Take your time" while he takes his
+  - **The navy stage:** the mark and which check-in this is ("Thursday check-in", or "Practice run" on any other day); `StepTrack` (Weight · Glucose · Photos · Questions · Review as five segments, done steps white, the current one on yellow, and one line naming the current step, "Photos · 3 of 5", then "All 5 done"); and the line being asked now, in white `.hudState` (`.hudQuestion` when it's long). Earlier lines leave the screen: the voice said them.
+  - **The white sheet:** what just happened since the last question, two things at most: the athlete's words as heard (`AthleteLine`, on the cobalt-tint bubble, right) and each answer the moment it is stored (`AnswerCard`: the check draws itself, the field, the value, its `SourceChip`). Once it's done, the `SummaryCard` instead, scrolling.
+  - `VoiceBar` in the sheet: whose turn it is. A live waveform and "Your turn" / "Hearing you" while the mic is open, Setecho's own pulse while it speaks, a thinking beat while a turn is read, a quiet "Take your time" while he takes his
   - `HoldButton` "Hold to stop", which fills as it is held; once everything is answered, "Open to send" and "Read it back"
 - **Voice:** an acknowledgment and the next question go out in one breath ("Okay, 180.8. And your fasted glucose?"); the coach's questions follow each other the way a person asks them ("Now, your coach's questions. …", "And how's your recovery been?", "Last one. …"), and "say that again" asks plainly.
 - **Review:** every data-filled field is read back once ("Nutrition consistency came in at 86%, 6 of 7 days within targets. Sound right?"), except the weight (its own step), anything he already said or confirmed this morning, and the coach's own lines (cardio protocol, weeks to show, last check-in's weight). A number in reply replaces the value, commas and all ("10,000 steps"). "Last one" is said only before the real last check, counting the read-backs. Then the summary: one `SummaryCard` on screen (From you this morning · From Apple Health and your log · Photos · Still open, one line per field in his order) and a short spoken count ("22 of 22 ready: 11 from you this morning, 10 from Apple Health and your log, and your 4 photos"), before "ready to send?".

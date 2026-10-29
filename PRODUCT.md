@@ -30,7 +30,7 @@ Setecho is the spotter, not the coach. It counts and measures every set (Meta SA
 - Every runtime model is Meta's (Muse Spark, Voice Transcribe, SAM 3.1); speech is Apple's on-device voice.
 - Never coaches on its own authority: no form, food or programming advice; suggestions apply the coach's confirmed rules and the athlete decides.
 - Every voice action is said back and can be undone.
-- Light mode only (confirmed again Oct 28 for the session screen).
+- Light mode only. The hands-free screens are half dark by design (Oct 29): his camera or a navy stage on top, a white sheet below. Never a dark theme.
 
 ## Brand Commitments
 

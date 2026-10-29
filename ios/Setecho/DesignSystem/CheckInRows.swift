@@ -2,14 +2,18 @@ import SwiftUI
 
 /// Small cobalt-tint capsule naming where an answer came from: "Withings", "Training log", "You said · Wed".
 struct SourceChip: View {
+    /// `.hud` on the hands-free screens, read from 2–3 m (nothing there below `.hudLabel`).
+    enum Size { case standard, hud }
+
     let source: String
+    var size: Size = .standard
 
     var body: some View {
         Text(source)
-            .font(.caption.weight(.semibold))
+            .font(size == .hud ? .hudLabel.weight(.semibold) : .caption.weight(.semibold))
             .foregroundStyle(Theme.cobalt)
             .lineLimit(1)
-            .padding(.horizontal, Theme.Space.xs)
+            .padding(.horizontal, size == .hud ? Theme.Space.s : Theme.Space.xs)
             .padding(.vertical, Theme.Space.xxs)
             .background(Theme.cobaltTint, in: Capsule())
             .accessibilityLabel("Source: \(source)")

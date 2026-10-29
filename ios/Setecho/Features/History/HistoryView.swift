@@ -23,8 +23,11 @@ struct HistoryView: View {
 
     /// The tabs across the top: one kind of history at a time instead of one long scroll.
     enum Section: Hashable { case sessions, checkIns, photos, plan }
-    @State private var section: Section = .sessions
+    @State private var section: Section
     @State private var showLastTime = false
+
+    /// Opens on Sessions; the screen renders (ScreenRenderTests) open it on each tab.
+    init(section: Section = .sessions) { _section = State(initialValue: section) }
 
     var body: some View {
         let sessions = store.sessions.filter { !$0.sets.isEmpty }.sorted { $0.startedAt > $1.startedAt }

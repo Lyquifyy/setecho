@@ -27,6 +27,17 @@ enum Theme {
     static let recording = Color(hex: 0xE5484D)
     static let cameraFill = Color(hex: 0x10142A)
 
+    // MARK: The hands-free stage (Session, Check-in morning, Wrap-up)
+    /// The top of a hands-free screen when the camera isn't on it: navy, holding the one big thing
+    /// in white. Half the screen, never the whole app (Oct 29: darker colours, no dark theme).
+    static let stage = Color(hex: 0x171D36)
+    /// The big thing on the stage.
+    static let onStage = Color.white
+    /// Secondary text on the stage: 8.6:1 on `stage`.
+    static let onStageSecondary = Color(hex: 0xB4BCD8)
+    /// Upcoming segments on the stage (the holds track, the step track).
+    static let onStageTrack = Color(hex: 0x3A4263)
+
     // MARK: Spacing (pt)
     enum Space {
         static let xxs: CGFloat = 4
@@ -43,6 +54,8 @@ enum Theme {
         static let control: CGFloat = 12
         static let tag: CGFloat = 8
         static let bubble: CGFloat = 14
+        /// The white sheet across the bottom of a hands-free screen.
+        static let sheet: CGFloat = 28
     }
 
     /// Internal padding of a section card: 16 pt top, 18 pt sides and bottom.
