@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// The four check-in photo slots in the coach's order: empty, current (yellow ring) or captured.
+/// On the photo session's sheet, so each is named at hands-free size: Front · Right · Back · Left.
 struct PoseSlots: View {
     enum Slot: Equatable {
         case empty
@@ -16,7 +17,7 @@ struct PoseSlots: View {
                 VStack(spacing: Theme.Space.xxs) {
                     ZStack {
                         RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous)
-                            .fill(Theme.cameraFill)
+                            .fill(Theme.fieldFill)
                         if case .captured(let image) = item.slot {
                             if let image {
                                 Image(uiImage: image).resizable().scaledToFill()
@@ -27,17 +28,18 @@ struct PoseSlots: View {
                                 .shadow(radius: 2)
                         }
                     }
-                    .aspectRatio(3 / 4, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 84)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous)
                             .strokeBorder(item.slot == .current ? Theme.yellow : Theme.border, lineWidth: item.slot == .current ? 4 : 1)
                     )
-                    Text(item.pose.title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Theme.navy)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
+                    Text(item.pose.shortTitle)
+                        .font(.hudLabel.weight(item.slot == .current ? .bold : .semibold))
+                        .foregroundStyle(item.slot == .current ? Theme.navy : Theme.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("\(item.pose.title): \(label(item.slot))")

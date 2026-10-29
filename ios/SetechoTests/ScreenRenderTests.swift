@@ -144,6 +144,13 @@ enum ScreenShots {
         // MARK: Photos
         add(.init(name: "50-photos-review", group: "Photos", title: "Photo session · review", settle: .milliseconds(1500),
                   view: { s in wrap(s, PhotoSessionView(store: s, existing: s.photoSets.max { $0.takenAt < $1.takenAt })) }))
+        for (name, title, model) in PhotoStates.all {
+            add(.init(name: name, group: "Photos", title: title, statusBar: false, view: { s in
+                let latest = s.photoSets.max { $0.takenAt < $1.takenAt }
+                let thumbs = latest.map { ScreenFixtures.photoThumbnails($0, in: s) } ?? [:]
+                return wrap(s, PhotoSessionHUD(model: model(thumbs), camera: PhotoStates.camera(model(thumbs).pose, thumbs)) {})
+            }))
+        }
         add(.init(name: "51-photo-viewer", group: "Photos", title: "Photo viewer", statusBar: false, settle: .milliseconds(1500),
                   view: { s in
                       guard let set = s.photoSets.max(by: { $0.takenAt < $1.takenAt }) else { return AnyView(EmptyView()) }
@@ -198,6 +205,39 @@ enum ScreenShots {
     static func hudTitle(_ name: String) -> String {
         ["1-ready": "Ready", "1b-ready-long-day": "Ready · a six-lift day", "2-armed": "Armed", "3-recording": "Recording", "4-rest": "Rest", "4b-rest-overtime": "Rest's up",
          "5-hold": "Hold", "6-pocket": "Pocket", "7-session-end": "Session end"][name] ?? name
+    }
+}
+
+/// The photo session's live states, as the coordinator would fill them, with the fixture
+/// silhouettes standing in for the camera.
+@MainActor
+enum PhotoStates {
+    typealias Thumbs = [Pose: UIImage]
+
+    static func slots(current: Pose?, taken: [Pose], _ thumbs: Thumbs) -> [(pose: Pose, slot: PoseSlots.Slot)] {
+        Pose.allCases.map { pose in
+            if pose == current { return (pose, .current) }
+            if taken.contains(pose) { return (pose, .captured(thumbs[pose])) }
+            return (pose, .empty)
+        }
+    }
+
+    static var all: [(String, String, (Thumbs) -> PhotoSessionHUDModel)] {
+        [
+            ("50a-photos-lining-up", "Photo session · lining up", { t in
+                PhotoSessionHUDModel(pose: nil, status: "Lining up with last week…", slots: slots(current: nil, taken: [], t)) }),
+            ("50b-photos-framing", "Photo session · framing cue", { t in
+                PhotoSessionHUDModel(pose: .front, status: "", cue: "Step back a little", slots: slots(current: .front, taken: [], t)) }),
+            ("50c-photos-holding", "Photo session · holding still", { t in
+                PhotoSessionHUDModel(pose: .rightArmsUp, status: "", heard: nil, holding: 0.6, slots: slots(current: .rightArmsUp, taken: [.front], t)) }),
+            ("50d-photos-heard", "Photo session · heard", { t in
+                PhotoSessionHUDModel(pose: .leftArmsUp, status: "", heard: "retake the front after this", slots: slots(current: .leftArmsUp, taken: [.front, .rightArmsUp, .back], t)) }),
+        ]
+    }
+
+    static func camera(_ pose: Pose?, _ thumbs: Thumbs) -> AnyView? {
+        guard let image = thumbs[pose ?? .front] else { return nil }
+        return AnyView(Image(uiImage: image).resizable().scaledToFit())
     }
 }
 

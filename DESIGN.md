@@ -163,7 +163,7 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 ### Photo session (full-screen, hands-free)
 - **Purpose:** the four check-in photos with no taps, framed like last week.
 - **The order is the coach's:** Front · Right side, arms up · Back · Left side, arms up.
-- **Layout:** the camera fills the screen. The pose name in `.hudState` ("Turn right · arms up"). `PoseSlots` along the bottom.
+- **Layout:** the hands-free `StageSheet` (`PhotoSessionHUD`, drawn from `PhotoSessionHUDModel`). The stage shows the whole camera frame, fitted, not cropped, so he sees all of what the framing check judges, with the mark and "2 of 4" on a pill; the framing cue ("Step back a little") sits on a white pill at the stage's foot, so the current slot stays the one yellow. The sheet: the pose name in `.hudState` ("Right side to camera · arms up"), then the cobalt hold-still meter once he's framed (or what was heard), `PoseSlots` (Front · Right · Back · Left at `.hudLabel`, the current one ringed yellow) and the tonal "Hold to cancel".
 - **Flow:**
   1. The framing check speaks ("step back a little") until the whole body is in frame.
   2. The app calls each pose and waits until the athlete is still.
