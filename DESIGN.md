@@ -26,7 +26,7 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 12. **The athlete's words stay theirs.** Spoken answers are tidied, not rewritten. Casual stays casual.
 13. **Never coach on Setecho's own authority.** No form judgments, no nutrition advice, no rules Setecho invents. A next-set suggestion always names the coach's rule it came from, the athlete decides, and the coach sees it in the check-in. A machine-taken swap stays within the same lift or his own alternates, and every swap and reorder reaches him in the check-in. The coach's plan is shown as the coach's plan.
 14. **Every voice action is echoed on screen and out loud, and can be undone by saying "undo".** A low-confidence command is asked back as the action ("Twelve reps on set 2?"), never acted on silently; chatter and other people's voices are never answered, only shown ("Heard: …").
-15. Hit targets are at least 44 pt, and icon-only buttons carry an `accessibilityLabel`. The app is light mode only.
+15. Hit targets are at least 44 pt, and icon-only buttons carry an `accessibilityLabel`. The app is light mode only, the session screen included.
 16. **Nothing from the coach's reply changes the plan until the athlete approves it.** Every proposed change shows the coach's exact words beside it, and an applied reply can be reverted from History.
 
 ## Tokens
@@ -126,24 +126,20 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 - **Footer:** "Save program" / "Save check-in form".
 
 ### Session (full-screen, hands-free)
-- **Purpose:** a whole training session with zero taps after Start. The phone sits on the tripod, 2–3 m away.
-- **Layout, top to bottom:** exercise name (`.hudLabel`); target "225 × 8" with "Set 3 of 4" (`.hudTarget`, yellow tag on the set counter); `HUDState`; `InputStatus` at the end of the state line; the last set's result line with its count's `SourceChip` ("Measured" from SAM; "Phone" only as the fallback) and its `EffortLine`; `VoiceEcho` when relevant; up next.
+- **Purpose:** a whole training session with zero taps after Start. The phone stands on the tripod 2–3 m away, facing him from the bench (Settings → "Camera faces you"); he glances at it, and the ear carries the rest (four tones and three haptics: armed, set started, set ended, rest's up).
+- **Built from:** `SessionHUD` (Features/Session/SessionHUD.swift), drawn from `SessionHUDModel(engine:live:)` every quarter second. The app's own grammar at hands-free scale: the cool page, white hairline cards with their title inside, navy SF Pro bold with tabular numbers, the yellow tag for the one thing waiting on him, cobalt only for the lockup, data sources ("Measured", the mic in use) and the end button, the red dot only while recording. No dark mode, no state colour fields.
+- **Always on screen, top to bottom:** the lockup and the audio connection (a cobalt-tint pill naming the mic, yellow "Phone mic · too far" when it's the phone's own); the lifts strip (today's lifts as short names, a dot per set: done navy, the current one yellow, upcoming open, skipped a dash; an add-on as one entry after a hairline); the main area; the voice card; the cobalt "Hold to end session" button (a 1.2 s long press, the only tap target; "end session" by voice works too).
+- **The camera card** (Ready, Armed, Recording, Rest, when the camera sees him): his own picture filling the space the cards leave, as on the Filming board. The state is the dark pill top-left ("○ Ready", yellow "● Armed · lift when ready", "● Recording · 0:24"), yellow corner brackets sit on him once the camera has locked on, and the foot of the frame says what to do ("Say [go] when you lift.", "Watching you. Only your movement starts it.", "Counting when you rack it."). The front camera is shown mirrored, like a mirror.
 - **States:**
-  - **Ready:** waiting for the bar to move.
-  - **Recording:** set detected, red dot.
-  - **Saved:** the set is logged with the plan's load and anything said. The count and the effort arrive from SAM during rest.
-  - **Rest:** a countdown; the measured result and its `EffortLine`; the next set, with a `SuggestionTag` when his rule suggests a change; and the line being spoken, as text.
-  - **Listening:** a voice command in progress.
-  - **Taken** (stretch): a `TakenCard` replaces the up-next line, and the rest timer keeps running.
-  - **Warm-up:** "Warm-up 2" in `HUDState`; the set counter doesn't move.
-  - **Hold:** a timed set. The countdown in `.hudTarget` ("0:42"), the hold's name in `.hudLabel`, and no camera state.
-- **Coach cue:** when one plays, `VoiceEcho` shows "Coach · Incline DB press" with his words.
-- **Add-ons:** the day's add-on comes after the last lift, under its own name in Up next ("Abs"). A rest-pause set shows "Rest-pause · 20 total" as its target.
-- **Phone in a pocket:** the screen doesn't matter. The Lock Screen Live Activity and the watch carry the target and the rest countdown.
-- **Voice commands:** "felt like a 9" · "that was 7 reps" · "drop to 215" / "add 5" · "skip this set" · "next exercise" · "note for check-in: …" · "undo" · "pause" · "end session" · a number, to answer "was that 7 or 8?" · "say that again" (replays the coach's cue) · "yes" / "no" · "go with it" / "keep it" (a suggestion) · "the bench is taken", then "go with it" / "the other one" / "I'll wait", and "it's free" · "doing dumbbells instead" · "add abs" / "skip abs" · "I'm doing Day 5 today" · "top set" / "that was a warm-up" · "flag that".
-- **Lock screen / Live Activity:** the rest countdown and the next set, for when the phone is pocketed between stations.
-- **The only tap target:** "End session", which needs a long press. Saying "end session" works too.
-- **What can I say?** Until the first set is logged, the echo line reads "Not sure what to say? Ask "what can I say?"". Asked between sets, the answer is spoken and echoed: the few lines that work right then (`VoiceGuide.spokenHelp`), never the whole list.
+  - **Ready / Armed / Recording:** a compact card above the camera: the exercise, the set as the yellow tag ("Back-off · set 2 of 2"), the target "65 lb × 8–10" at 76 pt, last time. No rep number while recording.
+  - **Rest:** the camera card plays the set he just did, looping and silent, with its result on a white sticker ("9 reps", a `SourceChip`-style "Measured", "slowed 41% · failure"). Below it, the countdown (it thins from heavy to regular as the rest drains; "+0:40 over" in secondary once it runs out), and the next set as the yellow tag with what to say.
+  - **Hold:** no camera: the hold's name, "Hold 2 of 4" as the yellow tag, the countdown, a track of the holds.
+  - **Pocket** (the camera running but not seeing him): no camera card and no voice card; the pill reads "Pocket · buzzes on"; the countdown and the next set, larger.
+  - **Done:** "Today's top sets" (each exercise's best set, "Beat the logbook" as the yellow tag), flags, notes, gym changes, SAM's median, "Your coach sees all of it on Thursday."
+- **The voice card** (the check-in's voice bar at hands-free scale): his words in cobalt as the stream hears them, his words while the turn is read, Setecho's line filling from secondary to navy as it's said, the last line for 8 s; idle, "Say "…" or "…"" from `VoiceGuide.hints`.
+- **A question waiting on him** (outside rest, where the next-set card carries it) stays on its own card with a yellow "Asked" tag until it's answered or lapses.
+- **Coach cue, add-ons, warm-ups:** a cue is spoken; an add-on's lifts follow the day's under its name in the strip; a warm-up shows as "Warm-up 2" in the set tag.
+- **Review:** `SessionHUDRenderTests` and `SessionHUDMappingTests` render every state (`TEST_RUNNER_HUD_SHOTS=<folder>`, `TEST_RUNNER_HUD_CAMERA=<frame>` for a sample picture).
 
 ### How a session works (before the first session, and Settings → Sessions)
 - **Shown once,** when Start session is tapped for the first time; its footer "Start session" opens the session. From Settings it's the same screen with "Done".
