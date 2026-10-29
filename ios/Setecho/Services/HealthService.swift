@@ -6,6 +6,7 @@ import HealthKit
 /// Rules from HANDOFF.md §7: daily cumulative sums anchored at local midnight; the first bodyMass
 /// sample each morning in pounds; sleep per night as the asleep stages ending that morning;
 /// LISS as walking, elliptical, stair climbing or cycling workouts.
+/// Weight comes from Withings direct when it's connected, else Apple Health (HANDOFF.md §9).
 @MainActor
 final class HealthService: @unchecked Sendable {
     struct DayReading: Equatable {
@@ -22,9 +23,23 @@ final class HealthService: @unchecked Sendable {
 
     struct Week {
         var days: [DayReading]
-        /// Metric -> source app names, e.g. "weight": "Withings".
+        /// Metric -> source app names, e.g. "weight": "Withings". "weight.direct": "Withings" when
+        /// the week's latest weigh-in came straight from Withings, not through Apple Health.
         var sources: [String: String]
     }
+
+    /// One weigh-in from either route.
+    struct WeightSample: Equatable, Sendable {
+        var at: Date
+        var lb: Double
+        var source: String
+        var direct: Bool
+    }
+
+    /// Withings writes the same weigh-in to Apple Health once its app is opened: one within this
+    /// long of a direct one is that weigh-in again.
+    nonisolated static let duplicateWindow: TimeInterval = 2 * 60
+    nonisolated static let directSource = "Withings"
 
     static let lissTypes: Set<HKWorkoutActivityType> = [.walking, .elliptical, .stairClimbing, .cycling]
 
@@ -38,9 +53,11 @@ final class HealthService: @unchecked Sendable {
 
     private let store = HKHealthStore()
     private let calendar: Calendar
+    private let direct: (any DirectWeightSource)?
 
-    init(calendar: Calendar = .current) {
+    init(calendar: Calendar = .current, direct: (any DirectWeightSource)? = WithingsService.shared) {
         self.calendar = calendar
+        self.direct = direct
     }
 
     var isAvailable: Bool { HKHealthStore.isHealthDataAvailable() }
@@ -57,9 +74,10 @@ final class HealthService: @unchecked Sendable {
         try await store.requestAuthorization(toShare: [], read: Self.readTypes)
     }
 
-    /// Whether a bodyMass sample exists since `hour` o'clock today (the weight fallback).
+    /// Whether a weigh-in exists since `hour` o'clock today: Withings direct, else a bodyMass sample.
     func hasWeighIn(sinceHour hour: Int, now: Date = .now) async -> Bool {
         let since = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: now) ?? calendar.startOfDay(for: now)
+        if await direct?.directWeighIns(from: since, to: now)?.isEmpty == false { return true }
         let query = HKSampleQueryDescriptor(
             predicates: [.quantitySample(type: HKQuantityType(.bodyMass), predicate: HKQuery.predicateForSamples(withStart: since, end: now))],
             sortDescriptors: [], limit: 1
@@ -68,8 +86,10 @@ final class HealthService: @unchecked Sendable {
     }
 
     /// Today's weigh-in in pounds, if there is one since `hour`: the one value Check-in morning offers.
+    /// Withings direct first; Apple Health when it isn't connected or has nothing yet.
     func weighInLb(sinceHour hour: Int, now: Date = .now) async -> Double? {
         let since = calendar.date(bySettingHour: hour, minute: 0, second: 0, of: now) ?? calendar.startOfDay(for: now)
+        if let latest = await direct?.directWeighIns(from: since, to: now)?.last { return latest.lb }
         let query = HKSampleQueryDescriptor(
             predicates: [.quantitySample(type: HKQuantityType(.bodyMass), predicate: HKQuery.predicateForSamples(withStart: since, end: now))],
             sortDescriptors: [SortDescriptor(\.startDate, order: .reverse)], limit: 1
@@ -95,11 +115,17 @@ final class HealthService: @unchecked Sendable {
             return days.indices.contains(d) ? d : nil
         }
 
+        // Withings direct, when connected, fetches (at most every 10 minutes) while Health is read.
+        async let directRows = direct?.directWeighIns(from: startDay, to: end)
         async let sumRows = readSums(startDay: startDay, end: end)
         async let weightRows = readWeights(startDay: startDay, end: end)
         async let sleepRows = readSleep(startDay: startDay, end: end)
         async let workoutRows = readWorkouts(startDay: startDay, end: end)
-        let (sums, weights, sleeps, workouts) = try await (sumRows, weightRows, sleepRows, workoutRows)
+        let (sums, healthWeights, sleeps, workouts) = try await (sumRows, weightRows, sleepRows, workoutRows)
+        let weights = Self.mergeWeights(
+            health: healthWeights.map { WeightSample(at: $0.start, lb: $0.value, source: $0.source, direct: false) },
+            direct: await directRows
+        )
 
         for row in sums {
             guard let i = index(row.day) else { continue }
@@ -114,11 +140,10 @@ final class HealthService: @unchecked Sendable {
             let label = Self.dailySums.first { $0.0.rawValue == row.identifier }?.2 ?? row.identifier
             for source in row.sources { sources[label, default: []].insert(source) }
         }
-        for row in weights {
-            guard let i = index(row.start) else { continue }
-            if days[i].weighInLb == nil { days[i].weighInLb = row.value }
-            sources["weight", default: []].insert(row.source)
-        }
+        let firstWeights = Self.firstPerDay(weights, day: index)
+        for (i, lb) in firstWeights.byDay { days[i].weighInLb = lb }
+        for row in weights { sources["weight", default: []].insert(row.source) }
+        if firstWeights.latestDirect { sources["weight.direct"] = [Self.directSource] }
         for row in sleeps {
             guard let i = index(row.end) else { continue }
             days[i].sleepHours = (days[i].sleepHours ?? 0) + row.end.timeIntervalSince(row.start) / 3600
@@ -130,6 +155,31 @@ final class HealthService: @unchecked Sendable {
             sources["workouts", default: []].insert(row.source)
         }
         return Week(days: days, sources: sources.mapValues { $0.sorted().joined(separator: ", ") })
+    }
+
+    /// Weight from Withings direct when connected (`direct` non-nil), else Apple Health. A Health
+    /// sample that is the same weigh-in as a direct one is dropped; Health still fills a day Withings
+    /// has nothing for. Oldest first.
+    nonisolated static func mergeWeights(health: [WeightSample], direct: [WithingsWeighIn]?) -> [WeightSample] {
+        guard let direct else { return health.sorted { $0.at < $1.at } }
+        let fromWithings = direct.map { WeightSample(at: $0.at, lb: $0.lb, source: directSource, direct: true) }
+        let rest = health.filter { sample in
+            !fromWithings.contains { abs($0.at.timeIntervalSince(sample.at)) <= duplicateWindow }
+        }
+        return (fromWithings + rest).sorted { $0.at < $1.at }
+    }
+
+    /// The first weigh-in each day (the morning one), and whether the latest of those came straight
+    /// from Withings: that one is the check-in's current weight, so it names its source.
+    nonisolated static func firstPerDay(_ weights: [WeightSample], day: (Date) -> Int?) -> (byDay: [Int: Double], latestDirect: Bool) {
+        var byDay: [Int: Double] = [:]
+        var latest: (day: Int, direct: Bool)?
+        for row in weights.sorted(by: { $0.at < $1.at }) {
+            guard let i = day(row.at), byDay[i] == nil else { continue }
+            byDay[i] = row.lb
+            if latest == nil || i > latest!.day { latest = (i, row.direct) }
+        }
+        return (byDay, latest?.direct ?? false)
     }
 
     private func readSums(startDay: Date, end: Date) async throws -> [SumRow] {

@@ -28,6 +28,7 @@ from app import (
     sets_api,
     spotter,
     voice,
+    withings,
 )
 from app.schemas import FormImport, Program, RulesImport, StrictModel
 
@@ -39,6 +40,7 @@ app.include_router(checkin_turn.router)
 app.include_router(spotter.router)
 app.include_router(realtime.router)
 app.include_router(session_turn.router)
+app.include_router(withings.router)
 
 
 @app.exception_handler(importing.ImportError_)

@@ -1099,7 +1099,7 @@ In the order above. Specs:
   - **Done when:** a session with the tripod on some exercises and the phone in a pocket for the rest has zero taps after Start.
 - **Withings direct.** The athlete's scale is on Wi-Fi, so each weigh-in reaches Withings' servers within moments. Reading it from Withings' public API means the Withings app never has to be opened. About half a day.
   - **Human:** registers a Public API app on Withings' developer dashboard (no contract), with the callback `https://setecho-api.fly.dev/withings/callback`, and sets `WITHINGS_CLIENT_ID` and `WITHINGS_CLIENT_SECRET` as Fly secrets. Never in the repo.
-  - **Sign-in:** the phone opens `https://account.withings.com/oauth2_user/authorize2` (scope `user.metrics`, a random `state`) in `ASWebAuthenticationSession`.
+  - **Sign-in:** the phone opens `https://account.withings.com/oauth2_user/authorize2` (scope `user.metrics`, a random `state`) in `ASWebAuthenticationSession`. It gets that URL from `GET /withings/authorize?state=…` → `{url}`, so the client id never ships in the app (built Oct 29).
     - `GET /withings/callback` only redirects to `setecho://withings?code=…&state=…`.
     - The phone checks `state` and posts the code to `POST /withings/token` at once, because the code expires in 30 s.
     - The backend exchanges it at `https://wbsapi.withings.net/v2/oauth2` (`action=requesttoken`) and returns `{accessToken, refreshToken, expiresAt}`.
@@ -1108,7 +1108,7 @@ In the order above. Specs:
     - Decode `value × 10^unit` kg, convert to lb, and return `[{at, lb}]`.
     - Follow `more`/`offset` until `more` is 0.
   - **When:** fetch when Setecho comes to the foreground and when the check-in is drafted, never more than once every 10 minutes (Withings' rule). No webhooks: they'd need a stateful backend and push, and the check-in only needs the weight when it's drafted.
-  - **HealthService:** weight comes from Withings direct when connected, else Apple Health, with provenance "Withings" vs "Withings via Apple Health". If both have the same weigh-in, keep the direct one.
+  - **HealthService:** weight comes from Withings direct when connected, else Apple Health, with provenance "Withings" vs "Withings via Apple Health". If both have the same weigh-in, keep the direct one. The phone marks a direct latest weigh-in with `WeekFacts.sources["weight.direct"] = "Withings"`, and the backend cites it as "Withings".
   - **Connections:** a Withings card (DESIGN.md).
   - **Tests:** value/unit decoding, kg → lb, pagination, refresh rotation, and the fallback to Apple Health when the token is missing or refused.
 - **WhatsApp history import.** The athlete exports the coach chat in WhatsApp (Export Chat → Include Media) and shares the ZIP in.

@@ -56,6 +56,14 @@ def by_id(draft):
     return {a.fieldId: a for a in draft.answers}
 
 
+def test_a_weight_read_straight_from_withings_says_so():
+    direct = FACTS.model_copy(update={"sources": FACTS.sources | {"weight.direct": "Withings"}})
+    draft = checkin.build_draft(request(facts=direct), agent=lambda req, fields: {})
+    weight = by_id(draft)["current_body_weight"]
+    assert weight.text == "180.8"
+    assert weight.provenance[0].source == "Withings"
+
+
 def test_data_fields_come_from_code_with_sources():
     draft = checkin.build_draft(request(), agent=lambda req, fields: {})
     a = by_id(draft)

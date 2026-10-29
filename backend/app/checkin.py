@@ -167,6 +167,10 @@ def on_plan(facts: WeekFacts, day: DayFacts) -> bool | None:
 
 
 def _source(facts: WeekFacts, key: str, default: str) -> str:
+    """Reads "<app> via Apple Health", or the app alone when the phone read it straight from the app's API
+    (Withings direct, HANDOFF.md §9): the phone marks that with a "<key>.direct" entry naming the app."""
+    if direct := facts.sources.get(f"{key}.direct"):
+        return direct
     app = facts.sources.get(key)
     return f"{app} via Apple Health" if app else default
 

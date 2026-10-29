@@ -1,0 +1,10 @@
+{"status": 0, "body": {
+  "updatetime": 1793516400, "timezone": "America/Chicago", "more": 0, "offset": 0,
+  "measuregrps": [
+    {"grpid": 9003, "attrib": 0, "date": 1793086400, "created": 1793086405, "modified": 1793086405, "category": 1,
+     "deviceid": "synthetic-scale", "measures": [{"value": 8190, "type": 1, "unit": -2, "algo": 0, "fm": 3}]},
+    {"grpid": 9004, "attrib": 2, "date": 1793172800, "created": 1793172805, "modified": 1793172805, "category": 1,
+     "deviceid": null, "measures": [{"value": 818, "type": 1, "unit": -1}]},
+    {"grpid": 9005, "attrib": 0, "date": 1793172900, "created": 1793172905, "modified": 1793172905, "category": 2,
+     "deviceid": null, "measures": [{"value": 80000, "type": 1, "unit": -3}]}
+  ]}}

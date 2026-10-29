@@ -36,6 +36,7 @@ struct BrandHeader: View {
                     AppRouter.shared.showImport = true
                 }
                 Button("Add coach reply", systemImage: "text.bubble") { AppRouter.shared.showAddReply = true }
+                Button("Connections", systemImage: "link") { AppRouter.shared.showConnections = true }
             }
             Section {
                 Button("Settings", systemImage: "gearshape") { AppRouter.shared.showSettings = true }
