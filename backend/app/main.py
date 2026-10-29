@@ -20,6 +20,7 @@ from app import (
     checkin_api,
     checkin_turn,
     coach,
+    history,
     importing,
     meta,
     photos_api,
@@ -41,6 +42,7 @@ app.include_router(spotter.router)
 app.include_router(realtime.router)
 app.include_router(session_turn.router)
 app.include_router(withings.router)
+app.include_router(history.router)
 
 
 @app.exception_handler(importing.ImportError_)

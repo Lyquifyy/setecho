@@ -95,3 +95,15 @@ CUE_LABELS = (
     "athlete how to perform that exercise (tempo, form, setup, effort). A change to sets, reps, load, "
     "macros, cardio or supplements is not a cue. Never rewrite his words. Return one entry per segment."
 )
+
+HISTORY_MATCH = (
+    "You match exercise names from an athlete's old workout log (Liftoff and Garmin names) to the "
+    "exercises in his coach's training plan. Match a log name to a plan exercise only when it is the same "
+    "exercise: the same movement on the same equipment, where words like Smith, machine, cable, dumbbell, "
+    "barbell, incline, decline, close grip, seated, single arm or one arm matter. Coaches and apps word the "
+    'same lift differently ("Smith close-grip" and "Close Grip Bench Press" done on a Smith machine can '
+    'be the same; "Tricep Pushdown" and "Triceps Pressdown" are the same). Several log names may match '
+    "one plan exercise. When no plan exercise is clearly the same, or two are equally likely, answer none: "
+    "the athlete confirms every match, and an unmatched name is kept under its own name. Return every log "
+    "name exactly once."
+)
