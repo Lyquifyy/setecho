@@ -133,6 +133,7 @@ def test_code_exchange_returns_both_tokens_and_expiry(configured, withings_api):
     body = r.json()
     assert body["accessToken"] == "synthetic-access-1"
     assert body["refreshToken"] == "synthetic-refresh-1"
+    assert body["expiresAt"].endswith("Z") and "." not in body["expiresAt"]
     expires = datetime.fromisoformat(body["expiresAt"])
     assert 10790 <= (expires - before).total_seconds() <= 10810
     form = sent[0]["form"]

@@ -124,7 +124,7 @@ def weights(body: dict) -> list[dict]:
 
 
 def token(body: dict, now: datetime | None = None) -> TokenResponse:
-    now = now or datetime.now(UTC)
+    now = (now or datetime.now(UTC)).replace(microsecond=0)  # whole seconds: plain ISO 8601 on the phone
     try:
         return TokenResponse(
             accessToken=body["access_token"],
