@@ -42,7 +42,7 @@ Every line of code in this repo was written between the kickoff (12:24 PM ET, Oc
 - **Oct 26:** the backend and the iOS app; importing the coach's sheet and form; the hands-free session; the photo session; the check-in draft; the backend deployed.
 - **Oct 27:** SAM as the count of record, with rep speeds and the slowdown; the coach's training cycle, add-ons and rules; Check-in morning; the coach-reply loop; measured effort and the rule engine; the spotter line.
 - **Oct 28:** the voice moved to Apple's on-device speech (Meta models only); the between-set conversation; fixes from the first gym test (sets start on the athlete's word, the camera follows only him, hearing him over gym noise); machine taken; the session screen.
-- **Oct 29:** the first real check-in sent through Setecho.
+- **Oct 29:** the first real check-in sent through Setecho; Withings direct; the WhatsApp history import; Liftoff and Garmin history, so Last time is real from the first session.
 - **Oct 30 – Nov 4:** *(to fill in as it lands)*
 
 
