@@ -172,6 +172,7 @@ final class SessionCoordinator {
             guard let self else { return }
             SessionDebug.append(event, sessionId: self.engine.session.id, in: self.store.mediaDirectory)
         }
+        let musicBefore = audio.isMusicPlaying
         audio.configure()
         audio.detectorConfig = { VoiceDetector.Config.session(sampleRate: $0) }
         audio.allowsBargeIn = true
@@ -214,6 +215,16 @@ final class SessionCoordinator {
             detector.start()
             audio.logAudio("camera on", lowered: false, error: nil)
         }
+        // Oct 29: his music app pauses when the AirPods become the mic with it already playing, and
+        // carries on once he presses play. Say so, once, rather than leave the gym silent.
+        if musicBefore, AirPodsMic.shared.isActive, !rehearsal {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !self.audio.isMusicPlaying else { return }
+                self.audio.logAudio("his music paused at the start", lowered: false, error: nil)
+                self.conversation.say(Self.musicPausedLine)
+            }
+        }
         if firstSession, !rehearsal { conversation.say(Self.firstSessionIntro) }
         conversation.say(engine.intro)
         // The tripod is 2-3 m away: the phone's own mic misses short commands under gym music.
@@ -221,6 +232,9 @@ final class SessionCoordinator {
         await playCueIfDue()
         conversation.show(engine.beginLeadInIfDue())
     }
+
+    /// His music paused as the AirPods mic came on (HANDOFF.md §7, The AirPods mic never asks for HFP).
+    static let musicPausedLine = "Your music paused when your AirPods mic came on. Press play to bring it back."
 
     /// Before his first session ever, about 15 seconds: how to talk to it, so he never needs a list
     /// (HANDOFF.md §7, Talk to it like a person).

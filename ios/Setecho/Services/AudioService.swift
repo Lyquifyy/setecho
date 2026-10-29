@@ -22,6 +22,8 @@ final class AudioService {
     private(set) var levelDB: Double = -120
     private(set) var noiseFloorDB: Double?
     private(set) var inputDescription = "—"
+    /// Another app's audio (his music) is playing right now.
+    var isMusicPlaying: Bool { session.isOtherAudioPlaying }
     /// The live input in plain words for the session HUD: "AirPods mic", "External mic", "Phone mic".
     private(set) var inputLabel = "No mic"
     /// The input is on him (AirPods, the DJI receiver, a headset), not the phone on the tripod.

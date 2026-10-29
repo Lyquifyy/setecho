@@ -93,11 +93,19 @@ final class AudioMixingProbe {
     /// A session start, one piece at a time, as SessionCoordinator does it: where his music stops.
     private func sessionStart() async {
         let setup = "Session start"
+        let musicBefore = session.isOtherAudioPlaying
         await step(setup, "before anything") {}
         let audio = AudioService()
         audio.wantsVoiceProcessing = Settings.shared.voiceProcessing
         await step(setup, "audio set up") { audio.configure() }
         try? await Task.sleep(for: .seconds(1))
+        // Oct 29: his music paused right here, as the AirPods became the mic. Does it carry on once
+        // he presses play again? Up to 15 s for him to, then the rest of the start with it playing.
+        if musicBefore, !session.isOtherAudioPlaying {
+            await step(setup, "your music paused: press play now") {}
+            for _ in 0..<30 where !session.isOtherAudioPlaying { try? await Task.sleep(for: .milliseconds(500)) }
+            await step(setup, "after you pressed play") {}
+        }
         await step(setup, "mic open") { audio.startListening() }
         try? await Task.sleep(for: .seconds(2))
         let camera = SetDetector(mediaDirectory: FileManager.default.temporaryDirectory, sessionId: UUID())
