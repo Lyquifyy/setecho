@@ -45,3 +45,6 @@ watch/bin/
 
 # Working files and references, local only: never committed, never linked from the README (HANDOFF.md §11)
 design/
+
+# Local design-tool state (decision pages, mocks)
+.impeccable/

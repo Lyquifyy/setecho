@@ -27,29 +27,29 @@ enum Theme {
     static let recording = Color(hex: 0xE5484D)
     static let cameraFill = Color(hex: 0x10142A)
 
-    /// The session screen's own palette (DESIGN.md Session, Oct 28 redesign): one colour per state,
-    /// always with the state named in text, and a dark variant for a dim gym or a pocket. Only the
-    /// session screen uses these; the rest of the app stays light.
+    /// The session screen's cue-card world (DESIGN.md Session, Oct 28 redesign). Light only. The
+    /// top band is a field of the state's colour, read from the bench in peripheral vision, with
+    /// white type on it (each at 4.5:1 or better); the card below is white stock with navy type.
+    /// Cobalt stays for data sources (measured, the mic in use), yellow for the one thing waiting on him.
     enum Session {
-        static let page = Color(light: 0xEEF2F9, dark: 0x0B0E1A)
-        static let card = Color(light: 0xFFFFFF, dark: 0x161B2E)
-        static let text = Color(light: 0x171D36, dark: 0xF2F4FA)
-        static let textSecondary = Color(light: 0x4C5573, dark: 0xA4ACC4)
-        static let hairline = Color(light: 0xD1D9EC, dark: 0x2A3150)
-        /// Ready: neutral.
-        static let ready = Color(light: 0x4C5573, dark: 0xA4ACC4)
-        /// Armed: amber, never the yellow of "the next thing waiting on you".
-        static let armed = Color(light: 0xD9822B, dark: 0xF2A65A)
-        /// Recording: the recording red.
-        static let recording = Color(light: 0xE5484D, dark: 0xFF6369)
-        /// Rest: a calm blue, not cobalt (cobalt stays for actions and data sources).
-        static let rest = Color(light: 0x2F80ED, dark: 0x5EA1FF)
-        /// Overtime: the rest's blue, quieter.
-        static let overtime = Color(light: 0x7A8BB0, dark: 0x6E7DA3)
-        /// Done.
-        static let done = Color(light: 0x2E9E5B, dark: 0x4CC27E)
-        /// A tint behind a state's colour.
-        static func tint(_ color: Color) -> Color { color.opacity(0.14) }
+        /// The state fields, in the band.
+        static let ready = Color(hex: 0x171D36)
+        static let armed = Color(hex: 0xA4520A)
+        static let recording = Color(hex: 0xC42B33)
+        static let rest = Color(hex: 0x0D5FA8)
+        static let overtime = Color(hex: 0x4F5B78)
+        static let done = Color(hex: 0x1C7A48)
+        /// Type and marks on a state field.
+        static let onField = Color.white
+        static let onFieldSecondary = Color.white.opacity(0.78)
+        static let onFieldTrack = Color.white.opacity(0.32)
+        /// The card's ground, and the words still to be spoken in a line being read aloud.
+        static let card = Color.white
+        static let unspoken = Color(hex: 0xB9C1D6)
+        /// The highlighter stroke under the one thing waiting on him (the brand yellow, as ink).
+        static let highlighter = Color(hex: 0xF0CD50)
+        /// The card's lift off the band.
+        static let cardShadow = Color(hex: 0x171D36).opacity(0.18)
     }
 
     // MARK: Spacing (pt)
@@ -85,16 +85,5 @@ extension Color {
             blue: Double(hex & 0xFF) / 255,
             opacity: opacity
         )
-    }
-}
-
-extension Color {
-    /// A colour with a light and a dark value, resolved by the view's colour scheme.
-    init(light: UInt32, dark: UInt32) {
-        self.init(uiColor: UIColor { traits in
-            let hex = traits.userInterfaceStyle == .dark ? dark : light
-            return UIColor(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
-                           blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
-        })
     }
 }

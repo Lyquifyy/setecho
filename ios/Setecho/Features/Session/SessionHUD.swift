@@ -1,13 +1,23 @@
 import SwiftUI
+import UIKit
 
-/// The session screen, redesigned after the Oct 28 gym test (HANDOFF.md §7, The session screen;
-/// DESIGN.md Session): readable from 3 m, one big thing at a time, friendly rounded cards, a colour
-/// per state that is always named in text too. Always on screen: the progress strip, the live
-/// mic, the last exchange and two or three things to say. The ear carries the session; this is for
-/// a glance.
-///
-/// Built from a plain model so the six states render as previews (and as screenshots in
-/// `SessionHUDRenderTests`) before any of it is wired to the engine.
+// THESIS: The session screen is a cue card held up across the room. It says one thing at a time,
+// in type he reads from the bench, and refuses the fitness dashboard of rings, tiles and chat bubbles.
+// OWN-WORLD: A full-width band of the state's colour (navy ready, amber armed, red recording, blue
+// rest, slate overtime, green done) carries the day's lifts and the audio connection in white. Below
+// it, one sheet of white card stock with navy SF Pro: compressed heavy numerals, a yellow highlighter
+// stroke under the one thing waiting on him, cobalt only for data sources.
+// STORY: From the bench he knows the state by colour, where he is by the strip, what to do by the
+// sentence, and that he was heard by the voice line, without walking to the phone.
+// FIRST VIEWPORT: Band (top ~190 pt): lifts strip, state word, audio connection. Card: the sentence at
+// monumental scale, its supporting line, then the voice line (a disc and the words as they're said).
+// FORM: surface structure "the cue card", 4th on the ranked list, seed b397f982.
+// SIGNATURE: the rest countdown thins from black to light as the rest drains; a spoken line fills
+// word by word as Setecho says it.
+// FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+
+/// Everything the session screen shows, as plain values: previews and `SessionHUDRenderTests` draw
+/// every state from it before it is wired to the engine.
 struct SessionHUDModel: Equatable {
     enum Phase: Equatable {
         case ready
@@ -27,9 +37,22 @@ struct SessionHUDModel: Equatable {
         var isAddOn = false
     }
 
-    struct Exchange: Equatable {
-        var heard: String
-        var said: String?
+    /// The talking indicator: what's being said right now, by whom.
+    enum Voice: Equatable {
+        /// Nothing being said: two or three things he could say now.
+        case idle(hints: [String])
+        /// He's talking; his words as they arrive.
+        case hearing(String, level: Double)
+        /// His words are in; the turn is being read.
+        case thinking(String)
+        /// Setecho is saying a line; `spoken` of its words have been said.
+        case speaking(String, spoken: Int)
+    }
+
+    /// One fact about the last set, and whether it's a data source (cobalt, like a source chip).
+    struct Fact: Equatable, Hashable {
+        var text: String
+        var source = false
     }
 
     struct Summary: Equatable {
@@ -37,53 +60,48 @@ struct SessionHUDModel: Equatable {
             var id: String { exercise }
             var exercise: String
             var top: String
-            var note: String?
-        }
-        /// A flag, a note or a gym change, with its SF Symbol.
-        struct Extra: Equatable, Hashable {
-            var icon: String
-            var text: String
+            var beat: String?
         }
         var lines: [Line]
-        var extras: [Extra]
+        var notes: [String]
     }
 
     var phase: Phase
-    /// The phone is in a pocket (camera off duty): the same states with no preview, dimmed.
+    /// The phone is in a pocket (camera off duty): only the essentials, larger.
     var pocket = false
-    var exercise: String
-    var role: String?
-    var setLabel: String
-    var target: String
-    var lastTime: String?
-    var hint: String?
     var progress: [ExerciseDots]
     var micLabel: String
     var micOnHim: Bool
-    var micLevel: Double
-    var exchange: Exchange?
-    var phrases: [String]
-    /// Rest: the set just done, "11 reps · measured · slowed 46% · failure".
-    var result: String?
-    /// Rest: what's next, "Back-off 145 × 8–10", and what to say to it.
+    var exercise: String
+    /// "Top set", "Back-off", "Warm-up 2"…
+    var role: String?
+    var setLabel: String
+    /// "145 × 8"
+    var target: String
+    var lastTime: String?
+    var voice: Voice
+    /// Rest: the set just done, as facts.
+    var result: [Fact] = []
+    /// Rest: the next set ("Back-off 145 × 8") and what to say to it.
     var next: String?
     var nextAsk: String?
     var summary: Summary?
 }
 
 extension SessionHUDModel.Phase {
+    /// The state, always named in text: never colour alone.
     var name: String {
         switch self {
         case .ready: "Ready"
         case .armed: "Armed"
         case .recording: "Recording"
-        case .rest(let left, _): left > 0 ? "Rest" : "Rest's up"
-        case .hold: "Hold"
+        case .rest(let left, _): left > 0 ? "Resting" : "Rest's up"
+        case .hold: "Holding"
         case .done: "Done"
         }
     }
 
-    var color: Color {
+    var field: Color {
         switch self {
         case .ready: Theme.Session.ready
         case .armed: Theme.Session.armed
@@ -95,440 +113,519 @@ extension SessionHUDModel.Phase {
     }
 }
 
+// MARK: The screen
+
 struct SessionHUD: View {
     var model: SessionHUDModel
 
     var body: some View {
-        VStack(spacing: Theme.Space.m) {
-            ProgressStrip(exercises: model.progress)
-            HStack {
-                StateBadge(phase: model.phase)
-                Spacer(minLength: Theme.Space.s)
-                MicLevel(label: model.micLabel, onHim: model.micOnHim, level: model.micLevel)
-            }
-            main
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                .id(model.phase.name)
-            if let exchange = model.exchange { ExchangeBubbles(exchange: exchange) }
-            PhraseChips(phrases: model.phrases)
-            Text(model.phase == .done ? "Hold to close" : "Hold to end session")
-                .font(.headline)
-                .foregroundStyle(Theme.Session.textSecondary)
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .overlay(Capsule().strokeBorder(Theme.Session.hairline, lineWidth: 1.5))
+        VStack(spacing: 0) {
+            StateBand(model: model)
+            CueCard(model: model)
+                .padding(.top, -26) // the card lifts over the band's lower edge
         }
-        .padding(Theme.gutter)
-        .background(Theme.Session.page.ignoresSafeArea())
-        // In a pocket the screen dims: the dark palette, darker still, and the haptics carry it.
-        .overlay { if model.pocket { Color.black.opacity(0.35).ignoresSafeArea().allowsHitTesting(false) } }
-        .environment(\.colorScheme, model.pocket ? .dark : colorScheme)
-        .animation(.spring(duration: 0.45), value: model.phase)
-    }
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    @ViewBuilder private var main: some View {
-        switch model.phase {
-        case .ready: ReadyPanel(model: model)
-        case .armed: ArmedPanel(model: model)
-        case .recording(let elapsed): RecordingPanel(model: model, elapsed: elapsed)
-        case .rest(let remaining, let total): RestPanel(model: model, remaining: remaining, total: total)
-        case .hold(let remaining, let total, let index, let count): HoldPanel(model: model, remaining: remaining, total: total, index: index, count: count)
-        case .done: SummaryPanel(summary: model.summary)
-        }
+        .background(model.phase.field.ignoresSafeArea())
+        .animation(.smooth(duration: 0.5), value: model.phase)
+        .environment(\.colorScheme, .light)
     }
 }
 
-// MARK: Always on screen
+/// The state's colour field: the day's lifts, the state's name and the audio connection, in white.
+struct StateBand: View {
+    var model: SessionHUDModel
 
-/// Today's exercises as short names, a dot per set: done (filled), current (ringed), upcoming
-/// (hollow), skipped (a dash). Add-ons after a divider.
-struct ProgressStrip: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            LiftsStrip(exercises: model.progress)
+            HStack(alignment: .center) {
+                Text(model.phase.name)
+                    .font(.system(size: 32, weight: .heavy).width(.condensed))
+                    .foregroundStyle(Theme.Session.onField)
+                    .lineLimit(1)
+                    .contentTransition(.opacity)
+                Spacer(minLength: Theme.Space.s)
+                if model.pocket {
+                    PocketPill()
+                } else {
+                    AudioConnection(label: model.micLabel, onHim: model.micOnHim)
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .padding(.bottom, 26 + 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// Today's lifts across the top, as he asked to keep them: a short name, a dot per set. Done dots
+/// filled, the current one ringed, upcoming ones open, a skipped exercise a dash; add-ons after a rule.
+struct LiftsStrip: View {
     var exercises: [SessionHUDModel.ExerciseDots]
 
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Space.s) {
+        HStack(alignment: .top, spacing: 0) {
             ForEach(Array(exercises.enumerated()), id: \.element.id) { i, ex in
                 if ex.isAddOn, i > 0, !exercises[i - 1].isAddOn {
-                    Rectangle().fill(Theme.Session.hairline).frame(width: 1.5, height: 38)
+                    Rectangle().fill(Theme.Session.onFieldTrack).frame(width: 1.5, height: 40).padding(.horizontal, 6)
                 }
-                VStack(spacing: 6) {
+                let current = ex.dots.contains(.current)
+                VStack(spacing: 7) {
                     Text(ex.name)
-                        .font(.system(size: 15, weight: ex.dots.contains(.current) ? .bold : .medium))
-                        .foregroundStyle(ex.dots.contains(.current) ? Theme.Session.text : Theme.Session.textSecondary)
+                        .font(.system(size: 17, weight: current ? .bold : .semibold))
+                        .foregroundStyle(current ? Theme.Session.onField : Theme.Session.onFieldSecondary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                    HStack(spacing: 4) {
-                        ForEach(Array(ex.dots.enumerated()), id: \.offset) { _, dot in DotView(dot: dot) }
+                        .minimumScaleFactor(0.7)
+                    HStack(spacing: 5) {
+                        ForEach(Array(ex.dots.enumerated()), id: \.offset) { _, dot in Dot(dot: dot) }
                     }
                 }
                 .frame(maxWidth: .infinity)
             }
         }
-        .padding(.vertical, Theme.Space.s)
-        .padding(.horizontal, Theme.Space.s)
-        .background(Theme.Session.card, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(exercises.map { "\($0.name), \($0.dots.filter { $0 == .done }.count) of \($0.dots.count) done" }.joined(separator: "; "))
+        .accessibilityLabel("Today: " + exercises.map { "\($0.name), \($0.dots.filter { $0 == .done }.count) of \($0.dots.count)" }.joined(separator: "; "))
     }
 
-    private struct DotView: View {
+    private struct Dot: View {
         var dot: SessionHUDModel.ExerciseDots.Dot
         var body: some View {
             switch dot {
-            case .done: Circle().fill(Theme.Session.text).frame(width: 10, height: 10)
+            case .done: Circle().fill(Theme.Session.onField).frame(width: 11, height: 11)
             case .current:
-                Circle().strokeBorder(Theme.Session.text, lineWidth: 2).frame(width: 14, height: 14)
-                    .overlay(Circle().fill(Theme.Session.text).frame(width: 5, height: 5))
-            case .upcoming: Circle().strokeBorder(Theme.Session.textSecondary, lineWidth: 1.5).frame(width: 10, height: 10)
-            case .skipped: Capsule().fill(Theme.Session.textSecondary).frame(width: 10, height: 2.5)
+                Circle().strokeBorder(Theme.Session.onField, lineWidth: 2.5).frame(width: 17, height: 17)
+                    .overlay(Circle().fill(Theme.Session.onField).frame(width: 6, height: 6))
+            case .upcoming: Circle().strokeBorder(Theme.Session.onFieldSecondary, lineWidth: 1.75).frame(width: 11, height: 11)
+            case .skipped: Capsule().fill(Theme.Session.onFieldSecondary).frame(width: 12, height: 3)
             }
         }
     }
 }
 
-/// The state, named and coloured: never colour alone.
-struct StateBadge: View {
-    var phase: SessionHUDModel.Phase
-
-    var body: some View {
-        HStack(spacing: Theme.Space.xs) {
-            Circle().fill(phase.color).frame(width: 14, height: 14)
-            Text(phase.name).font(.system(size: 22, weight: .bold))
-        }
-        .foregroundStyle(phase.color)
-        .padding(.horizontal, Theme.Space.m)
-        .padding(.vertical, Theme.Space.xs)
-        .background(Theme.Session.tint(phase.color), in: Capsule())
-        .accessibilityLabel("State: \(phase.name)")
-    }
-}
-
-/// A small live waveform that moves when he talks. Red with "Can't hear you, phone mic" when the
-/// only input is the phone's own mic, far away on the tripod.
-struct MicLevel: View {
+/// What's connected for audio: the mic in use, in white when it's on him, and a plain yellow
+/// warning when it's the phone's own mic on the tripod (the one thing he can fix).
+struct AudioConnection: View {
     var label: String
     var onHim: Bool
-    var level: Double
 
     var body: some View {
-        let color = onHim ? Theme.Session.text : Theme.Session.recording
-        HStack(spacing: Theme.Space.xs) {
-            WaveformBars(level: onHim ? level : min(level, 0.2), animating: level > 0.05, color: color)
-                .frame(height: 30)
-            Text(onHim ? label : "Can't hear you, \(label.lowercased())")
+        HStack(spacing: 8) {
+            Image(systemName: onHim ? (label.contains("AirPods") ? "airpodspro" : "mic.fill") : "exclamationmark.triangle.fill")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(color)
+            Text(onHim ? label : "\(label) · too far")
+                .font(.system(size: 17, weight: .semibold))
                 .lineLimit(1)
         }
+        .foregroundStyle(onHim ? Theme.Session.onField : Theme.navy)
+        .padding(.horizontal, 13)
+        .padding(.vertical, 8)
+        .background(onHim ? Theme.Session.onFieldTrack : Theme.Session.highlighter, in: Capsule())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(onHim ? "Listening on \(label)" : "Can't hear you well: \(label)")
+        .accessibilityLabel(onHim ? "Listening on \(label)" : "Using the \(label). It's too far to hear you well.")
     }
 }
 
-/// What he said and what Setecho said, as two small chat bubbles (they fade after 10 s).
-struct ExchangeBubbles: View {
-    var exchange: SessionHUDModel.Exchange
-
+/// In a pocket the screen isn't the point: the pill says the buzzes carry it.
+struct PocketPill: View {
     var body: some View {
-        VStack(spacing: Theme.Space.xs) {
-            HStack {
-                Spacer(minLength: 60)
-                Text(exchange.heard)
-                    .font(.system(size: 19, weight: .medium))
-                    .foregroundStyle(Theme.Session.text)
-                    .padding(.horizontal, Theme.Space.m).padding(.vertical, 10)
-                    .background(Theme.Session.tint(Theme.Session.rest), in: RoundedRectangle(cornerRadius: Theme.Radius.bubble, style: .continuous))
-            }
-            if let said = exchange.said {
-                HStack {
-                    Text(said)
-                        .font(.system(size: 19, weight: .medium))
-                        .foregroundStyle(Theme.Session.text)
-                        .padding(.horizontal, Theme.Space.m).padding(.vertical, 10)
-                        .background(Theme.Session.card, in: RoundedRectangle(cornerRadius: Theme.Radius.bubble, style: .continuous))
-                    Spacer(minLength: 60)
-                }
-            }
-        }
+        Label("Pocket · buzzes on", systemImage: "iphone.radiowaves.left.and.right")
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(Theme.Session.onField)
+            .lineLimit(1)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 8)
+            .background(Theme.Session.onFieldTrack, in: Capsule())
     }
 }
 
-/// Two or three things he could say now (`VoiceGuide.hints`).
-struct PhraseChips: View {
-    var phrases: [String]
+// MARK: The card
 
-    var body: some View {
-        // One row when they fit, else two: a chip is never cut short.
-        ViewThatFits(in: .horizontal) {
-            row(phrases)
-            VStack(spacing: Theme.Space.xs) {
-                row(Array(phrases.prefix(2)))
-                row(Array(phrases.dropFirst(2)))
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("You could say: " + phrases.joined(separator: ", "))
-    }
-
-    private func row(_ items: [String]) -> some View {
-        HStack(spacing: Theme.Space.xs) {
-            ForEach(items, id: \.self) { phrase in
-                Text("\u{201C}\(phrase)\u{201D}")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Theme.Session.text)
-                    .lineLimit(1)
-                    .fixedSize()
-                    .padding(.horizontal, Theme.Space.s).padding(.vertical, 9)
-                    .background(Theme.Session.card, in: Capsule())
-                    .overlay(Capsule().strokeBorder(Theme.Session.hairline, lineWidth: 1))
-            }
-        }
-    }
-}
-
-// MARK: The main area, by state
-
-private struct HUDCard<Content: View>: View {
-    var accent: Color?
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.xs) { content }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(Theme.cardPadding)
-            .background(Theme.Session.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(alignment: .leading) {
-                if let accent { Capsule().fill(accent).frame(width: 5).padding(.vertical, 16) }
-            }
-    }
-}
-
-/// The exercise, the set's role and the target, then last time and the hint.
-private struct ReadyPanel: View {
+/// One sheet of white card stock: the sentence for this moment, its supporting line, the voice line.
+struct CueCard: View {
     var model: SessionHUDModel
 
     var body: some View {
-        VStack(spacing: Theme.Space.s) {
-            Spacer(minLength: 0)
-            Text(model.exercise).font(.system(size: 32, weight: .bold)).foregroundStyle(Theme.Session.text)
-                .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.7)
-            Text([model.role, model.setLabel].compactMap { $0 }.joined(separator: " · "))
-                .font(.system(size: 20, weight: .semibold)).foregroundStyle(Theme.navy)
-                .padding(.horizontal, Theme.Space.s).padding(.vertical, 6)
-                .background(Theme.yellow, in: RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
-            Text(model.target).font(.hudTarget).foregroundStyle(Theme.Session.text).lineLimit(1).minimumScaleFactor(0.5)
-            if let last = model.lastTime { Text(last).font(.hudLabel).foregroundStyle(Theme.Session.textSecondary) }
-            Spacer(minLength: 0)
-            if let hint = model.hint {
-                Label(hint, systemImage: "waveform")
-                    .font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.Session.text)
+        VStack(alignment: .leading, spacing: 0) {
+            sentence
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.top, 30)
+                .id(model.phase.name + (model.pocket ? "-pocket" : ""))
+                .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+            if !model.pocket, model.voice != .idle(hints: []) {
+                VoiceLine(voice: model.voice, accent: model.phase.field)
             }
+            HoldToEnd(label: model.phase == .done ? "Hold to close" : "Hold to end")
+                .padding(.top, 10)
         }
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 22)
+        .padding(.bottom, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            UnevenRoundedRectangle(topLeadingRadius: 30, topTrailingRadius: 30, style: .continuous)
+                .fill(Theme.Session.card)
+                .shadow(color: Theme.Session.cardShadow, radius: 18, y: -4)
+                .ignoresSafeArea(edges: .bottom)
+        )
+    }
+
+    @ViewBuilder private var sentence: some View {
+        switch model.phase {
+        case .ready: ReadySentence(model: model)
+        case .armed: ArmedSentence(model: model)
+        case .recording(let elapsed): RecordingSentence(model: model, elapsed: elapsed)
+        case .rest(let remaining, let total): RestSentence(model: model, remaining: remaining, total: total)
+        case .hold(let remaining, let total, let index, let count):
+            HoldSentence(model: model, remaining: remaining, total: total, index: index, count: count)
+        case .done: DoneSentence(summary: model.summary)
+        }
     }
 }
 
-/// A pulsing amber ring, "Lift when you're ready", and the camera's small view with his outline.
-private struct ArmedPanel: View {
-    var model: SessionHUDModel
+// MARK: Type
 
-    var body: some View {
-        VStack(spacing: Theme.Space.m) {
-            Spacer(minLength: 0)
-            TimelineView(.animation(minimumInterval: 1 / 30)) { context in
-                let t = context.date.timeIntervalSinceReferenceDate
-                let pulse = 0.5 + 0.5 * sin(t * 3)
-                ZStack {
-                    Circle().stroke(Theme.Session.tint(Theme.Session.armed), lineWidth: 26)
-                    Circle().stroke(Theme.Session.armed, lineWidth: 10).scaleEffect(0.92 + 0.06 * pulse).opacity(0.55 + 0.45 * pulse)
-                    VStack(spacing: 6) {
-                        Text("Lift when").font(.system(size: 30, weight: .bold))
-                        Text("you're ready").font(.system(size: 30, weight: .bold))
-                        Text(model.target).font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.Session.textSecondary)
-                    }
-                    .foregroundStyle(Theme.Session.text)
+private extension Font {
+    /// The card's sentences: heavy, tight, read from the bench.
+    static func cue(_ size: CGFloat, _ weight: Font.Weight = .heavy) -> Font { .system(size: size, weight: weight) }
+    /// Targets and clocks: compressed black numerals, tabular.
+    static func numerals(_ size: CGFloat) -> Font { .system(size: size, weight: .black).width(.compressed).monospacedDigit() }
+    /// A clock whose weight follows a value (0 light … 1 black): the rest drains out of the digits.
+    static func drainingNumerals(_ size: CGFloat, fullness: Double) -> Font {
+        // From black at the start to regular when it runs out: thinner, never too thin to read from the bench.
+        let weight = UIFont.Weight(rawValue: CGFloat(0.0 + 0.62 * max(0, min(1, fullness))))
+        let base = UIFont.systemFont(ofSize: size, weight: weight, width: .compressed)
+        let tabular = base.fontDescriptor.addingAttributes([.featureSettings: [[
+            UIFontDescriptor.FeatureKey.type: kNumberSpacingType, UIFontDescriptor.FeatureKey.selector: kMonospacedNumbersSelector,
+        ]]])
+        return Font(UIFont(descriptor: tabular, size: size))
+    }
+}
+
+/// The yellow highlighter stroke behind the one thing waiting on him: slightly skewed, under the
+/// lower part of the words, like a real marker.
+private struct Highlighted: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 6)
+            .background {
+                GeometryReader { proxy in
+                    Capsule(style: .continuous)
+                        .fill(Theme.Session.highlighter)
+                        .frame(height: proxy.size.height * 0.55)
+                        .rotationEffect(.degrees(-1.4))
+                        .offset(y: proxy.size.height * 0.42)
                 }
-                .frame(width: 250, height: 250)
             }
-            if !model.pocket { CameraThumbnail() }
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity)
     }
 }
 
-/// The camera's view, small, with an outline on him (the lock-on). A placeholder in previews.
-private struct CameraThumbnail: View {
+private extension View {
+    func highlighted() -> some View { modifier(Highlighted()) }
+}
+
+/// The role and set, quietly under the exercise ("Top set · set 1 of 2").
+private struct RoleLine: View {
+    var model: SessionHUDModel
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).fill(Theme.cameraFill)
-            Image(systemName: "figure.strengthtraining.traditional")
-                .font(.system(size: 54)).foregroundStyle(.white.opacity(0.55))
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(Theme.Session.armed, style: StrokeStyle(lineWidth: 3, dash: [8, 5]))
-                .frame(width: 70, height: 84)
-            Text("Locked on you").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(Theme.Session.armed, in: Capsule())
-                .frame(maxHeight: .infinity, alignment: .bottom).padding(.bottom, 8)
-        }
-        .frame(width: 150, height: 120)
-        .accessibilityLabel("Camera locked on you")
+        Text([model.role, model.setLabel].compactMap { $0 }.joined(separator: " · "))
+            .font(.cue(24, .semibold))
+            .foregroundStyle(Theme.textSecondary)
     }
 }
 
-/// A red dot and the elapsed time. No rep number until it's measured.
-private struct RecordingPanel: View {
+// MARK: Sentences, by state
+
+private struct ReadySentence: View {
+    var model: SessionHUDModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(model.exercise).font(.cue(38)).foregroundStyle(Theme.navy).lineLimit(2).minimumScaleFactor(0.7)
+            RoleLine(model: model)
+            Text(model.target).font(.numerals(150)).foregroundStyle(Theme.navy).lineLimit(1).minimumScaleFactor(0.5)
+            if let last = model.lastTime {
+                Text(last).font(.cue(24, .medium)).foregroundStyle(Theme.textSecondary)
+            }
+            Spacer(minLength: 0)
+            HStack(spacing: 0) {
+                Text("Say ")
+                Text("go").highlighted()
+                Text(" when you lift.")
+            }
+            .font(.cue(40))
+            .foregroundStyle(Theme.navy)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .padding(.bottom, 18)
+        }
+    }
+}
+
+private struct ArmedSentence: View {
+    var model: SessionHUDModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Lift when\nyou're ready.").font(.cue(58)).foregroundStyle(Theme.navy).lineSpacing(-4)
+            Text(model.target).font(.numerals(110)).foregroundStyle(Theme.navy).lineLimit(1).minimumScaleFactor(0.6)
+            RoleLine(model: model)
+            Spacer(minLength: 0)
+            LockedOn(field: Theme.Session.armed)
+                .padding(.bottom, 18)
+        }
+    }
+}
+
+/// The camera has him: a figure inside a dashed frame, and the words.
+private struct LockedOn: View {
+    var field: Color
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(field, style: StrokeStyle(lineWidth: 3, dash: [7, 5]))
+                Image(systemName: "figure.strengthtraining.traditional").font(.system(size: 30, weight: .semibold)).foregroundStyle(field)
+            }
+            .frame(width: 62, height: 62)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Watching you").font(.cue(24, .bold)).foregroundStyle(Theme.navy)
+                Text("Only your movement starts it.").font(.cue(22, .medium)).foregroundStyle(Theme.textSecondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct RecordingSentence: View {
     var model: SessionHUDModel
     var elapsed: Int
-
     var body: some View {
-        VStack(spacing: Theme.Space.m) {
-            Spacer(minLength: 0)
-            Text(model.exercise).font(.system(size: 28, weight: .bold)).foregroundStyle(Theme.Session.text).lineLimit(1).minimumScaleFactor(0.7)
-            Text([model.role, model.setLabel].compactMap { $0 }.joined(separator: " · "))
-                .font(.hudLabel).foregroundStyle(Theme.Session.textSecondary)
-            HStack(spacing: Theme.Space.m) {
-                TimelineView(.animation(minimumInterval: 1 / 2)) { context in
+        VStack(alignment: .leading, spacing: 4) {
+            Text(model.exercise).font(.cue(34)).foregroundStyle(Theme.navy).lineLimit(1).minimumScaleFactor(0.7)
+            RoleLine(model: model)
+            HStack(alignment: .center, spacing: 16) {
+                TimelineView(.animation(minimumInterval: 0.5)) { context in
                     let on = Int(context.date.timeIntervalSinceReferenceDate * 2) % 2 == 0
-                    Circle().fill(Theme.Session.recording).frame(width: 34, height: 34).opacity(on ? 1 : 0.55)
+                    Circle().fill(Theme.Session.recording).frame(width: 30, height: 30).opacity(on ? 1 : 0.35)
                 }
-                Text(Format.duration(TimeInterval(elapsed))).font(.hudTarget).foregroundStyle(Theme.Session.text)
+                Text(Format.duration(TimeInterval(elapsed))).font(.numerals(170)).foregroundStyle(Theme.navy)
             }
-            Text("Counting after the set").font(.hudLabel).foregroundStyle(Theme.Session.textSecondary)
+            Text("Counting when you rack it.").font(.cue(26, .semibold)).foregroundStyle(Theme.textSecondary)
             Spacer(minLength: 0)
-            if !model.pocket {
-                HStack {
-                    Spacer()
-                    CameraThumbnail().scaleEffect(0.8)
-                }
-            }
         }
-        .frame(maxWidth: .infinity)
     }
 }
 
-/// A big countdown ring (overtime +0:40 in a calmer colour), then the result card and the next card.
-private struct RestPanel: View {
+private struct RestSentence: View {
     var model: SessionHUDModel
     var remaining: Int
     var total: Int
 
     var body: some View {
-        VStack(spacing: Theme.Space.s) {
-            // The ring gives way to the cards: as big as the screen allows, never pushing anything off it.
-            CountdownRing(remaining: remaining, total: total, color: remaining > 0 ? Theme.Session.rest : Theme.Session.overtime,
-                          caption: remaining > 0 ? "rest" : "over")
-                .aspectRatio(1, contentMode: .fit)
-                .frame(minWidth: 120, maxWidth: 230, minHeight: 120, maxHeight: 230)
-                .layoutPriority(-1)
-            if let result = model.result {
-                HUDCard(accent: nil) {
-                    Text("Last set").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.Session.textSecondary)
-                    Text(result).font(.system(size: 21, weight: .semibold)).foregroundStyle(Theme.Session.text)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+        let over = remaining <= 0
+        let fullness = over || total <= 0 ? 0 : Double(remaining) / Double(total)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(over ? "+" + Format.duration(TimeInterval(-remaining)) : Format.duration(TimeInterval(remaining)))
+                    .font(.drainingNumerals(model.pocket ? 210 : 170, fullness: fullness))
+                    .foregroundStyle(over ? Theme.Session.overtime : Theme.navy)
+                    .contentTransition(.numericText(countsDown: true))
+                Text(over ? "over" : "rest").font(.cue(26, .semibold)).foregroundStyle(Theme.textSecondary)
             }
+            if !model.result.isEmpty, !model.pocket {
+                FactLine(facts: model.result)
+            }
+            Spacer(minLength: 0)
             if let next = model.next {
-                HUDCard(accent: nil) {
-                    Text("Next").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.Session.textSecondary)
-                    Text(next).font(.system(size: 24, weight: .bold)).foregroundStyle(Theme.navy)
-                        .padding(.horizontal, Theme.Space.xs).padding(.vertical, 4)
-                        .background(Theme.yellow, in: RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
-                    if let ask = model.nextAsk {
-                        Text(ask).font(.system(size: 18, weight: .medium)).foregroundStyle(Theme.Session.textSecondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Next").font(.cue(24, .semibold)).foregroundStyle(Theme.textSecondary)
+                    Text(next).font(.cue(model.pocket ? 46 : 40)).foregroundStyle(Theme.navy).lineLimit(1).minimumScaleFactor(0.7).highlighted()
+                    if let ask = model.nextAsk, !model.pocket {
+                        Text(ask).font(.cue(24, .medium)).foregroundStyle(Theme.textSecondary)
                     }
                 }
+                .padding(.bottom, 18)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-/// A big countdown ring with the hold's name and "2 of 4".
-private struct HoldPanel: View {
+/// "11 reps · measured" over "slowed 46% · failure": the count and where it came from (cobalt, like a
+/// source chip), then the effort. Two deliberate lines, never a wrap mid-phrase.
+private struct FactLine: View {
+    var facts: [SessionHUDModel.Fact]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            line(Array(facts.prefix(2)))
+            if facts.count > 2 { line(Array(facts.dropFirst(2))) }
+        }
+        .font(.cue(30, .bold))
+    }
+
+    private func line(_ items: [SessionHUDModel.Fact]) -> Text {
+        items.enumerated().reduce(Text("")) { text, item in
+            let piece = Text(item.element.text).foregroundStyle(item.element.source ? Theme.cobalt : Theme.navy)
+            return item.offset == 0 ? piece : text + Text("  ·  ").foregroundStyle(Theme.Session.unspoken) + piece
+        }
+    }
+}
+
+private struct HoldSentence: View {
     var model: SessionHUDModel
     var remaining: Int
     var total: Int
     var index: Int
     var count: Int
-
     var body: some View {
-        VStack(spacing: Theme.Space.m) {
-            Spacer(minLength: 0)
-            Text(model.exercise).font(.system(size: 32, weight: .bold)).foregroundStyle(Theme.Session.text)
-            CountdownRing(remaining: remaining, total: total, color: Theme.Session.rest, caption: "hold")
-                .frame(width: 260, height: 260)
-            Text("\(index) of \(count)").font(.hudState).foregroundStyle(Theme.Session.textSecondary)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(model.exercise).font(.cue(40)).foregroundStyle(Theme.navy)
+            Text("Hold \(index) of \(count)").font(.cue(26, .semibold)).foregroundStyle(Theme.textSecondary)
+            Text(Format.duration(TimeInterval(remaining)))
+                .font(.drainingNumerals(210, fullness: total > 0 ? Double(remaining) / Double(total) : 0))
+                .foregroundStyle(Theme.navy)
+            HoldTrack(index: index, count: count)
             Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity)
     }
 }
 
-/// The ring: the share of the time left, the time in the middle, "+0:40" once it runs over.
-struct CountdownRing: View {
-    var remaining: Int
-    var total: Int
-    var color: Color
-    var caption: String
-
+/// The holds as segments: done filled, the current one in the rest's blue, upcoming open.
+private struct HoldTrack: View {
+    var index: Int
+    var count: Int
     var body: some View {
-        let share = remaining > 0 && total > 0 ? Double(remaining) / Double(total) : 0
-        ZStack {
-            Circle().stroke(Theme.Session.tint(color), lineWidth: 18)
-            Circle().trim(from: 0, to: share)
-                .stroke(color, style: StrokeStyle(lineWidth: 18, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(.linear(duration: 1), value: share)
-            VStack(spacing: 0) {
-                Text(remaining >= 0 ? Format.duration(TimeInterval(remaining)) : "+" + Format.duration(TimeInterval(-remaining)))
-                    .font(.system(size: 72, weight: .bold).monospacedDigit())
-                    .foregroundStyle(remaining > 0 ? Theme.Session.text : color)
-                    .minimumScaleFactor(0.6)
-                Text(caption).font(.system(size: 20, weight: .semibold)).foregroundStyle(Theme.Session.textSecondary)
+        HStack(spacing: 8) {
+            ForEach(1...max(1, count), id: \.self) { i in
+                Capsule()
+                    .fill(i < index ? Theme.navy : i == index ? Theme.Session.rest : Theme.border)
+                    .frame(height: 10)
             }
-            .padding(Theme.Space.l)
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(remaining > 0 ? "\(Format.duration(TimeInterval(remaining))) \(caption) left" : "Rest's up, \(Format.duration(TimeInterval(-remaining))) over")
+        .accessibilityHidden(true)
     }
 }
 
-/// Session end: each exercise's top set, any logbook beaten, flags and notes, then "Saved."
-private struct SummaryPanel: View {
+private struct DoneSentence: View {
     var summary: SessionHUDModel.Summary?
-
     var body: some View {
-        VStack(spacing: Theme.Space.m) {
-            Image(systemName: "checkmark.circle.fill").font(.system(size: 64)).foregroundStyle(Theme.Session.done)
-            HUDCard(accent: nil) {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Saved.").font(.cue(64)).foregroundStyle(Theme.navy)
+            VStack(alignment: .leading, spacing: 14) {
                 ForEach(summary?.lines ?? []) { line in
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(line.exercise).font(.system(size: 19, weight: .semibold)).foregroundStyle(Theme.Session.text)
-                        Spacer(minLength: Theme.Space.s)
-                        Text(line.top).font(.system(size: 19, weight: .bold).monospacedDigit()).foregroundStyle(Theme.Session.text)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(line.exercise).font(.cue(24, .semibold)).foregroundStyle(Theme.textSecondary)
+                            Spacer(minLength: 10)
+                            Text(line.top).font(.numerals(44)).foregroundStyle(Theme.navy)
+                        }
+                        if let beat = line.beat {
+                            Text(beat).font(.cue(22, .bold)).foregroundStyle(Theme.navy).highlighted()
+                        }
                     }
-                    if let note = line.note {
-                        Text(note).font(.system(size: 16, weight: .medium)).foregroundStyle(Theme.Session.done)
-                    }
-                    if line != summary?.lines.last { Rectangle().fill(Theme.Session.hairline).frame(height: 1) }
                 }
             }
-            ForEach(summary?.extras ?? [], id: \.self) { extra in
-                Label(extra.text, systemImage: extra.icon).font(.system(size: 17, weight: .medium)).foregroundStyle(Theme.Session.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            if let notes = summary?.notes, !notes.isEmpty {
+                Text(notes.joined(separator: "\n")).font(.cue(22, .medium)).foregroundStyle(Theme.textSecondary).lineSpacing(4)
             }
-            Text("Saved.").font(.hudState).foregroundStyle(Theme.Session.done)
+            Text("Your coach sees all of it on Thursday.").font(.cue(22, .medium)).foregroundStyle(Theme.textSecondary)
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-// MARK: The six states, for previews and the screenshots
+// MARK: The voice line
+
+/// The session's talking indicator, the check-in's voice bar at gym scale: a disc that moves with
+/// whoever is talking, and the words themselves. His words appear as he says them, in cobalt;
+/// Setecho's line fills word by word as it's spoken. Idle, it offers two or three things to say.
+struct VoiceLine: View {
+    var voice: SessionHUDModel.Voice
+    var accent: Color
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            disc
+            words.frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 16)
+        .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
+        .animation(.snappy(duration: 0.3), value: voice)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibility)
+    }
+
+    private var disc: some View {
+        ZStack {
+            Circle().fill(discFill)
+            switch voice {
+            case .idle:
+                Image(systemName: "waveform").font(.system(size: 24, weight: .semibold)).foregroundStyle(Theme.cobalt)
+            case .hearing(_, let level):
+                WaveformBars(level: level, animating: true, color: .white)
+            case .thinking:
+                ThinkingDots()
+            case .speaking:
+                WaveformBars(level: 0.55, animating: true, color: .white)
+            }
+        }
+        .frame(width: 64, height: 64)
+    }
+
+    private var discFill: Color {
+        switch voice {
+        case .idle, .thinking: Theme.cobaltTint
+        case .hearing: Theme.cobalt
+        case .speaking: accent
+        }
+    }
+
+    @ViewBuilder private var words: some View {
+        switch voice {
+        case .idle(let hints):
+            hints.enumerated().reduce(Text("Say ").foregroundStyle(Theme.textSecondary)) { line, item in
+                let joiner = item.offset == 0 ? "" : (item.offset == hints.count - 1 ? " or " : ", ")
+                return line + Text(joiner).foregroundStyle(Theme.textSecondary)
+                    + Text("\u{201C}\(item.element)\u{201D}").foregroundStyle(Theme.navy)
+            }
+            .font(.cue(24, .semibold))
+            .lineLimit(2)
+            .minimumScaleFactor(0.8)
+        case .hearing(let said, _), .thinking(let said):
+            Text("\u{201C}\(said)\u{201D}").font(.cue(28, .bold)).foregroundStyle(Theme.cobalt).lineLimit(2).minimumScaleFactor(0.8)
+        case .speaking(let line, let spoken):
+            line.split(separator: " ").enumerated().reduce(Text("")) { text, item in
+                text + Text((item.offset == 0 ? "" : " ") + item.element)
+                    .foregroundStyle(item.offset < spoken ? Theme.navy : Theme.Session.unspoken)
+            }
+            .font(.cue(28, .bold))
+            .lineLimit(2)
+            .minimumScaleFactor(0.8)
+        }
+    }
+
+    private var accessibility: String {
+        switch voice {
+        case .idle(let hints): "You could say: " + hints.joined(separator: ", ")
+        case .hearing(let said, _): "Hearing you: \(said)"
+        case .thinking(let said): "Heard: \(said)"
+        case .speaking(let line, _): "Setecho: \(line)"
+        }
+    }
+}
+
+/// The long press that ends the session (no tap ends anything): quiet, at the foot of the card.
+private struct HoldToEnd: View {
+    var label: String
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle().strokeBorder(Theme.border, lineWidth: 3).frame(width: 22, height: 22)
+            Text(label).font(.system(size: 18, weight: .semibold)).foregroundStyle(Theme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .accessibilityLabel("\(label) session")
+        .accessibilityHint("Press and hold, or say end session")
+    }
+}
+
+// MARK: The states, for previews and the screenshots
 
 extension SessionHUDModel {
     private static let day5: [ExerciseDots] = [
@@ -540,58 +637,52 @@ extension SessionHUDModel {
     ]
 
     static let ready = SessionHUDModel(
-        phase: .ready, exercise: "Incline DB press", role: "Back-off", setLabel: "Set 2 of 2", target: "65 × 8–10",
-        lastTime: "Last time 60 × 10", hint: "Say go when you lift.", progress: day5, micLabel: "AirPods mic", micOnHim: true,
-        micLevel: 0.1, exchange: .init(heard: "what's next?", said: "Back-off at 65, his rule."), phrases: ["go", "what did I do last time?"])
+        phase: .ready, progress: day5, micLabel: "AirPods mic", micOnHim: true, exercise: "Incline DB press", role: "Back-off",
+        setLabel: "set 2 of 2", target: "65 × 8–10", lastTime: "Last time 60 × 10", voice: .idle(hints: ["what did I do last time?", "where am I?"]))
 
     static let armed = SessionHUDModel(
-        phase: .armed, exercise: "Incline DB press", role: "Back-off", setLabel: "Set 2 of 2", target: "65 × 8–10",
-        progress: day5, micLabel: "AirPods mic", micOnHim: true, micLevel: 0.7, exchange: .init(heard: "go", said: nil),
-        phrases: ["done, 9", "where am I?"])
+        phase: .armed, progress: day5, micLabel: "AirPods mic", micOnHim: true, exercise: "Incline DB press", role: "Back-off",
+        setLabel: "set 2 of 2", target: "65 × 8–10", voice: .speaking("Set two. Lift when you're ready.", spoken: 3))
 
     static let recording = SessionHUDModel(
-        phase: .recording(elapsed: 24), exercise: "Incline DB press", role: "Back-off", setLabel: "Set 2 of 2", target: "65 × 8–10",
-        progress: day5, micLabel: "AirPods mic", micOnHim: true, micLevel: 0.3, phrases: ["done", "done, 9"])
+        phase: .recording(elapsed: 24), progress: day5, micLabel: "AirPods mic", micOnHim: true, exercise: "Incline DB press",
+        role: "Back-off", setLabel: "set 2 of 2", target: "65 × 8–10", voice: .idle(hints: ["done", "done, 9"]))
 
     static let rest = SessionHUDModel(
-        phase: .rest(remaining: 100, total: 180), exercise: "Incline DB press", role: "Top set", setLabel: "Set 1 of 2", target: "80 × 6–8",
-        progress: day5, micLabel: "AirPods mic", micOnHim: true, micLevel: 0.05,
-        exchange: .init(heard: "how long left?", said: "One forty left."), phrases: ["that was 9", "how long left?", "the bench is taken"],
-        result: "11 reps · measured · slowed 46% · failure", next: "Back-off 65 × 8–10", nextAsk: "Say \u{201C}go with it\u{201D} or a weight.")
+        phase: .rest(remaining: 100, total: 180), progress: day5, micLabel: "AirPods mic", micOnHim: true, exercise: "Incline DB press",
+        role: "Top set", setLabel: "set 1 of 2", target: "80 × 6–8", voice: .hearing("how long left", level: 0.6),
+        result: [.init(text: "11 reps"), .init(text: "measured", source: true), .init(text: "slowed 46%"), .init(text: "failure")],
+        next: "Back-off 65 × 8–10", nextAsk: "Say \u{201C}go with it\u{201D} or a weight.")
 
     static let restOvertime: SessionHUDModel = {
         var m = rest
         m.phase = .rest(remaining: -40, total: 180)
-        m.exchange = nil
+        m.voice = .speaking("Rest's up.", spoken: 2)
         return m
     }()
 
     static let hold = SessionHUDModel(
-        phase: .hold(remaining: 14, total: 20, index: 2, count: 4), exercise: "Stomach vacuums", setLabel: "Hold 2 of 4", target: "20 s",
+        phase: .hold(remaining: 14, total: 20, index: 2, count: 4),
         progress: [.init(name: "Vacuums", dots: [.done, .current, .upcoming, .upcoming])], micLabel: "Phone mic", micOnHim: false,
-        micLevel: 0.1, phrases: ["done", "hold on"])
+        exercise: "Stomach vacuums", setLabel: "hold 2 of 4", target: "20 s", voice: .idle(hints: ["done", "hold on"]))
 
     static let pocket: SessionHUDModel = {
         var m = rest
         m.pocket = true
-        m.micLabel = "Phone mic"
-        m.micOnHim = false
-        m.exchange = nil
+        m.phase = .rest(remaining: 72, total: 180)
         return m
     }()
 
     static let done = SessionHUDModel(
-        phase: .done, exercise: "", setLabel: "", target: "",
+        phase: .done,
         progress: [.init(name: "Smith CG", dots: [.done, .done]), .init(name: "Incline", dots: [.done, .done]),
                    .init(name: "Flyes", dots: [.done, .done]), .init(name: "Dips", dots: [.skipped]),
                    .init(name: "Abs", dots: [.done, .done], isAddOn: true)],
-        micLabel: "AirPods mic", micOnHim: true, micLevel: 0, phrases: [],
-        summary: .init(lines: [.init(exercise: "Smith close-grip", top: "205 × 9", note: "Beat the logbook: 200 × 9"),
+        micLabel: "AirPods mic", micOnHim: true, exercise: "", setLabel: "", target: "", voice: .idle(hints: []),
+        summary: .init(lines: [.init(exercise: "Smith close-grip", top: "205 × 9", beat: "Beat the logbook"),
                                .init(exercise: "Incline DB press", top: "80 × 11"),
                                .init(exercise: "Cable flyes", top: "30 × 12")],
-                       extras: [.init(icon: "flag.fill", text: "Flagged for your coach: incline top set"),
-                                .init(icon: "text.bubble.fill", text: "Note: left shoulder pinched"),
-                                .init(icon: "arrow.uturn.right", text: "Skipped: dips (bench taken)")]))
+                       notes: ["Flagged: incline top set", "Noted: left shoulder pinched", "Skipped: dips, bench taken"]))
 
     /// Every state for the screenshots, in order.
     static let gallery: [(String, SessionHUDModel)] = [
@@ -601,17 +692,10 @@ extension SessionHUDModel {
 }
 
 #Preview("Ready") { SessionHUD(model: .ready) }
-#Preview("Ready, dark") { SessionHUD(model: .ready).preferredColorScheme(.dark) }
 #Preview("Armed") { SessionHUD(model: .armed) }
-#Preview("Armed, dark") { SessionHUD(model: .armed).preferredColorScheme(.dark) }
 #Preview("Recording") { SessionHUD(model: .recording) }
-#Preview("Recording, dark") { SessionHUD(model: .recording).preferredColorScheme(.dark) }
 #Preview("Rest") { SessionHUD(model: .rest) }
-#Preview("Rest, dark") { SessionHUD(model: .rest).preferredColorScheme(.dark) }
-#Preview("Rest overtime") { SessionHUD(model: .restOvertime) }
+#Preview("Rest's up") { SessionHUD(model: .restOvertime) }
 #Preview("Hold") { SessionHUD(model: .hold) }
-#Preview("Hold, dark") { SessionHUD(model: .hold).preferredColorScheme(.dark) }
 #Preview("Pocket") { SessionHUD(model: .pocket) }
-#Preview("Pocket, dark") { SessionHUD(model: .pocket).preferredColorScheme(.dark) }
 #Preview("Session end") { SessionHUD(model: .done) }
-#Preview("Session end, dark") { SessionHUD(model: .done).preferredColorScheme(.dark) }
