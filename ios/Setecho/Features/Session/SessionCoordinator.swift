@@ -72,6 +72,16 @@ final class SessionCoordinator {
         self.conversation = SessionConversation(engine: engine)
         self.voice = SystemSpeaker(audio: audio, cacheDirectory: store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
         self.detector = SetDetector(mediaDirectory: store.mediaDirectory, sessionId: engine.session.id, front: settings.frontCameraInSessions)
+        if settings.talkativeSpotter {
+            let name = settings.athleteFirstName.isEmpty ? nil : settings.athleteFirstName
+            conversation.rephrase = { line, turn, previous in Talk.rephrase(line, turn: turn, name: name, previous: previous) }
+            conversation.react = { [api] facts, recent in
+                let request = SpotterLineRequest(moment: "reaction", facts: facts, recent: recent,
+                                                 styleHints: (name.map { ["first name: \($0)"] } ?? []) + ["casual"])
+                guard let line = try? await api.spotterLine(request, timeout: 6), line.ok else { return nil }
+                return line.text
+            }
+        }
         if settings.coachVoiceInSessions {
             engine.cues = Dictionary(store.cues.filter(\.approved).map { ($0.exerciseId, $0) }, uniquingKeysWith: { a, _ in a })
         }

@@ -98,7 +98,7 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 Tabs: **Today / History / Check-in.** The More menu has two sections: from your coach (Import program and form, Add coach reply, Import WhatsApp chat, Import Liftoff and Garmin; Connections when built) and Settings.
 
 ### Settings (More menu)
-- **Cards, in order:** You (first name, show date) · Training (training days, cardio protocol, what you can load) · Check-in (morning reminder, 7-day average weight) · Sessions ("Coach's voice in sessions" on, "Next-set suggestions" on, "Machine-taken help" on (stretch), AirPods mic) · Voice (the voice picker, Personal Voice) · Voice tone (speed, pitch, warmth, clarity, "Play sample") · Developer.
+- **Cards, in order:** You (first name, show date) · Training (training days, cardio protocol, what you can load) · Check-in (morning reminder, 7-day average weight) · Sessions ("Coach's voice in sessions" on, "Next-set suggestions" on, "Talkative spotter" on, "Machine-taken help" on (stretch), AirPods mic) · Voice (the voice picker, Personal Voice) · Voice tone (speed, pitch, warmth, clarity, "Play sample") · Developer.
 - **Developer:** a "Developer tools" switch (off). On, it adds "Open developer tools" and the Facts link on the Check-in tab. Nothing for testing or tuning appears on the everyday screens otherwise.
 - **Developer tools screen:** Rehearsal (your own WhatsApp number, "Send check-ins to my own chat", "Rehearse check-in morning") · Filming (filming mode and its takes, to AirDrop) · Session data (each session's tuning JSON, to share) · Diagnostics (the phone probes and turn timings).
 

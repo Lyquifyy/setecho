@@ -34,6 +34,9 @@ final class Settings {
     func setTone(_ tone: VoiceTone, for voiceId: String) { voiceTones[voiceId] = tone.clamped }
     /// Next-set suggestions (P4). On by default; only with a confirmed coach's rule.
     var nextSetSuggestions: Bool { didSet { defaults.set(nextSetSuggestions, forKey: "nextSetSuggestions") } }
+    /// Settings → "Talkative spotter" (Oct 29): lines said like a training partner, plus a short reaction
+    /// after each working set written by Muse Spark from the set's facts. On by default.
+    var talkativeSpotter: Bool { didSet { defaults.set(talkativeSpotter, forKey: "talkativeSpotter") } }
     /// Settings → "Start holds automatically": a hold starts itself after "Three, two, one" (HANDOFF.md §7, Add-ons).
     var autoStartHolds: Bool { didSet { defaults.set(autoStartHolds, forKey: "autoStartHolds") } }
     /// Settings → "Machine-taken help": his options when a machine's taken. Off, his own swaps still work and are logged.
@@ -102,6 +105,7 @@ final class Settings {
         legacyRate = defaults.object(forKey: "voiceRate") as? Double
         voiceTones = (defaults.data(forKey: "voiceTones")).flatMap { try? JSONDecoder().decode([String: VoiceTone].self, from: $0) } ?? [:]
         nextSetSuggestions = defaults.object(forKey: "nextSetSuggestions") as? Bool ?? true
+        talkativeSpotter = defaults.object(forKey: "talkativeSpotter") as? Bool ?? true
         autoStartHolds = defaults.object(forKey: "autoStartHolds") as? Bool ?? false
         machineTakenHelp = defaults.object(forKey: "machineTakenHelp") as? Bool ?? true
         hasSeenSessionIntro = defaults.bool(forKey: "hasSeenSessionIntro")

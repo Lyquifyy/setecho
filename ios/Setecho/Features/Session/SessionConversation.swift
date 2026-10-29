@@ -60,6 +60,14 @@ final class SessionConversation {
     @ObservationIgnored var cameraSet: () -> (phone: RepCounter.Result?, willMeasure: Bool)? = { nil }
     /// After a command is applied: the coordinator's side of it (close a clip, replay a cue, save the logbook).
     @ObservationIgnored var applied: (VoiceCommandResponse, _ wasRecording: Bool) -> Void = { _, _ in }
+    /// Settings → "Talkative spotter": each line said like a training partner (`Talk.rephrase`). Nil
+    /// says the engine's exact templates.
+    @ObservationIgnored var rephrase: ((_ line: String, _ turn: Int, _ previous: String?) -> String)?
+    /// Settings → "Talkative spotter": after a working set's facts, one short reaction written by
+    /// Muse Spark from the same facts (`/spotter/line`, moment "reaction", every number checked).
+    /// Nil, or a nil answer, says nothing more.
+    @ObservationIgnored var react: (@MainActor (SpotterFacts, [String]) async -> String?)?
+    private var talkTurn = 0
     /// One record per utterance for the session's debug JSON.
     @ObservationIgnored var record: (SessionDebug.UtteranceRecord) -> Void = { _ in }
     @ObservationIgnored var now: () -> Date = { .now }
@@ -224,10 +232,28 @@ final class SessionConversation {
         if outcome.askBack != nil || outcome.echo != nil { askBack = outcome.askBack ?? engine.pendingAskText }
         if let replaceable = outcome.spotterReplaceable, !replaceable.isEmpty { spokenLine = replaceable }
         if let speech = outcome.speech { say(speech) }
+        if let facts = outcome.spotterFacts, facts.repSource != RepSource.plan.rawValue, facts.role != SetRole.warmup.rawValue {
+            reactAfter(facts)
+        }
+    }
+
+    /// The reaction comes after the facts, during the rest, and only if nothing has happened since:
+    /// no new utterance, no set started, nothing waiting on his answer.
+    private func reactAfter(_ facts: SpotterFacts) {
+        guard let react else { return }
+        let mark = said.count
+        let recent = Array(said.suffix(5))
+        Task { [weak self] in
+            guard let text = await react(facts, recent), !text.isEmpty, let self else { return }
+            guard case .rest = self.engine.state, self.engine.pendingAsk == nil, self.said.count == mark, self.queue.isEmpty else { return }
+            self.say(text)
+        }
     }
 
     /// Lines go to the voice one at a time, in the order they were made.
-    func say(_ line: String) {
+    func say(_ template: String) {
+        talkTurn += 1
+        let line = rephrase?(template, talkTurn, said.last) ?? template
         said.append(line)
         engine.lastSpoken = line
         speechQueue.append(line)

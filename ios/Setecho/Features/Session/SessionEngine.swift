@@ -948,9 +948,10 @@ final class SessionEngine {
         recentLines.append(line.facts)
         if recentLines.count > 5 { recentLines.removeFirst() }
         lastEcho = suggestion.map { "Next: \(Format.number($0.toLb)) × \(targetRepsText) · his rule" } ?? lastEcho
-        guard !speech.isEmpty else { return .none }
+        guard !speech.isEmpty else { return Outcome(spotterFacts: facts) }
         let replaceable = mode == .restLine ? [line.facts, line.effort].compactMap { $0 }.joined(separator: " ") : line.effort
-        return Outcome(speech: speech, echo: lastEcho, spotterFacts: mode == .restLine ? facts : nil, spotterReplaceable: replaceable)
+        // The facts go with every settled set: Talkative's reaction is written from them (SessionConversation).
+        return Outcome(speech: speech, echo: lastEcho, spotterFacts: facts, spotterReplaceable: replaceable)
     }
 
     /// Heavier, or the same load for more reps, than last time's set for this exercise and role.

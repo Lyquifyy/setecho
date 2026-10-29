@@ -92,3 +92,26 @@ def test_quick_calls_ask_spark_for_low_effort(monkeypatch):
     monkeypatch.setattr(meta, "spark_json", fake)
     spotter.write_line(spotter.LineRequest(moment="restAfterSet", facts=facts()))
     assert seen["SpotterLine"] == {"effort": "low"}  # never a token cap: reasoning tokens count against it
+
+
+def test_a_reaction_is_asked_for_the_human_part_and_checked_the_same_way(monkeypatch):
+    seen = {}
+
+    def fake(system, user, name, schema, **kw):
+        seen["user"] = user
+        return {"text": "One more than last time at 70. That one was a grind."}, None
+
+    monkeypatch.setattr(meta, "spark_json", fake)
+    body = {
+        "moment": "reaction",
+        "facts": facts(lastTimeLoadLb=70, lastTimeReps=7).model_dump(),
+        "recent": ["8 reps, measured."],
+    }
+    resp = TestClient(app).post("/spotter/line", json=body)
+    assert resp.json() == {"text": "One more than last time at 70. That one was a grind.", "ok": True}
+    assert "Add one short reaction" in seen["user"] and "don't ask a question" in seen["user"]
+    # A reaction with a number the facts don't hold is dropped, like any line.
+    monkeypatch.setattr(
+        meta, "spark_json", lambda *a, **k: ({"text": "Two more than the 65 last week."}, None)
+    )
+    assert TestClient(app).post("/spotter/line", json=body).json() == {"text": "", "ok": False}

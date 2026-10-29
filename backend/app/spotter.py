@@ -18,7 +18,7 @@ from app.schemas import StrictModel, strict_schema
 
 router = APIRouter()
 
-Moment = Literal["restAfterSet", "exerciseStart", "sessionEnd"]
+Moment = Literal["restAfterSet", "exerciseStart", "sessionEnd", "reaction"]
 MAX_WORDS = 30
 
 _ADVICE = re.compile(
@@ -153,10 +153,20 @@ def validate(text: str, facts: SpotterFacts, recent: list[str]) -> str | None:
     return None
 
 
+# Talkative spotter (Oct 29): the facts were just said by the app; Spark adds the human part.
+REACTION = (
+    "The app has just said this set's count, load and what's next out loud. Add one short reaction, at "
+    "most 20 words, the way a friend spotting him would: how it compares with last time (more or fewer reps, "
+    "the same weight or heavier), a PR, a streak, or how hard it looked by the measure. Don't repeat the "
+    "count unless you compare it, don't say what's next, and don't ask a question."
+)
+
+
 def write_line(req: LineRequest) -> LineResponse:
     facts = req.facts.model_dump(exclude_none=True)
+    moment = f"{req.moment}. {REACTION}" if req.moment == "reaction" else req.moment
     user = (
-        f"Moment: {req.moment}\n"
+        f"Moment: {moment}\n"
         f"Facts: {facts}\n"
         f"Lines you said recently: {req.recent[-5:] or '(none)'}\n"
         f"Style: {', '.join(req.styleHints) or 'casual'}"
