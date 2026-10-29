@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// "Last time 145 × 9" under a lift that has a top set (HANDOFF.md §7, The logbook line): from the
-/// app's log when it has the lift, else typed from his paper logbook. Without either, "Add last
-/// time" opens a small form; the entry is the line Setecho says before the top set.
+/// app's log when it has the lift, else the newer of his paper logbook and his imported Liftoff or
+/// Garmin sets. Without any, "Add last time" opens a small form; the entry is the line Setecho says
+/// before the top set.
 struct LastTimeRow: View {
     @Environment(Store.self) private var store
     let exercise: PlannedExercise
@@ -16,17 +17,13 @@ struct LastTimeRow: View {
 
     private var role: SetRole? { exercise.sets.first?.role }
     private var key: String { SessionEngine.loadKey(exercise.id, role) }
-    private var fromLog: Bool {
-        store.sessions.contains { $0.workingSets.contains { $0.exerciseId == exercise.id && $0.role == role && $0.loadLb > 0 } }
-    }
-
     var body: some View {
         HStack(spacing: Theme.Space.s) {
             if let last = store.lastSets[key] {
                 Text("Last time \(Format.number(last.loadLb)) × \(last.reps)").font(.subheadline).monospacedDigit().secondaryText()
-                SourceChip(source: fromLog ? "Training log" : "Logbook")
+                SourceChip(source: last.source ?? "Logbook")
                 Spacer()
-                if !fromLog { LinkButton(title: "Edit", chevron: .none) { editing = true } }
+                if last.source != "Training log" { LinkButton(title: "Edit", chevron: .none) { editing = true } }
             } else {
                 LinkButton(title: "Add last time", chevron: .none) { editing = true }
                 Spacer()

@@ -38,6 +38,9 @@ struct SpotterLineResponse: Codable, Equatable {
 struct LastSet: Equatable {
     var loadLb: Double
     var reps: Int
+    /// Where it came from, for the chip beside it: "Training log", "Logbook", "Liftoff", "Garmin".
+    var source: String? = nil
+    var date: Date? = nil
 }
 
 extension APIClient {

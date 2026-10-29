@@ -15,6 +15,8 @@ final class AppRouter {
     var showConnections = false
     /// More → "Import WhatsApp chat": the coach chat's history (HANDOFF.md §9).
     var showChatImport = false
+    /// More → "Import Liftoff and Garmin": the sets logged before Setecho (HANDOFF.md §9).
+    var showHistoryImport = false
     /// The reply the Coach reply screen shows.
     var openReply: CoachReply?
     /// "Hey Siri, start my Setecho check-in" (HANDOFF.md §7, Check-in morning).

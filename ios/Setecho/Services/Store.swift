@@ -23,6 +23,8 @@ final class Store {
     private(set) var logbook: [LogbookEntry] = []
     /// Past check-ins and the coach's replies, read from a WhatsApp export (HANDOFF.md §9).
     private(set) var chatHistory = ChatHistory()
+    /// The sets he logged before Setecho, from Liftoff and Garmin (HANDOFF.md §9, Bring your history).
+    private(set) var history = TrainingHistory()
     private(set) var loadError: String?
 
     let root: URL
@@ -92,17 +94,23 @@ final class Store {
         write(logbook, "logbook.json")
     }
 
-    /// Last time's set for each exercise and role ("exerciseId|role"): his paper logbook, beneath
-    /// the app's log, so any set logged in the app wins. The starting load on a sheet that gives
-    /// none, and the logbook line (HANDOFF.md §7).
+    /// Last time's set for each exercise and role ("exerciseId|role"): his paper logbook and his
+    /// imported Liftoff and Garmin sets, the newer winning, beneath the app's log, so any set logged
+    /// in the app wins. The starting load on a sheet that gives none, and the logbook line (HANDOFF.md §7).
     var lastSets: [String: LastSet] {
+        var earlier: [(key: String, set: LastSet)] = logbook.map {
+            (SessionEngine.loadKey($0.exerciseId, $0.role), LastSet(loadLb: $0.loadLb, reps: $0.reps, source: "Logbook", date: $0.date))
+        }
+        let exercises = currentProgram.map { $0.cycleDays.flatMap(\.exercises) + $0.addOns.flatMap(\.exercises) } ?? []
+        earlier += history.lastSets(for: exercises, steps: Settings.shared.loadSteps).map { ($0.key, $0.value) }
         var sets: [String: LastSet] = [:]
-        for entry in logbook.sorted(by: { $0.date < $1.date }) {
-            sets["\(entry.exerciseId)|\(entry.role?.rawValue ?? "")"] = LastSet(loadLb: entry.loadLb, reps: entry.reps)
+        for entry in earlier.sorted(by: { ($0.set.date ?? .distantPast) < ($1.set.date ?? .distantPast) }) {
+            sets[entry.key] = entry.set
         }
         for session in sessions.sorted(by: { $0.startedAt < $1.startedAt }) {
             for set in session.workingSets where set.loadLb > 0 {
-                sets["\(set.exerciseId)|\(set.role?.rawValue ?? "")"] = LastSet(loadLb: set.loadLb, reps: set.reps)
+                sets["\(set.exerciseId)|\(set.role?.rawValue ?? "")"] = LastSet(loadLb: set.loadLb, reps: set.reps,
+                                                                                source: "Training log", date: session.startedAt)
             }
         }
         return sets
@@ -372,6 +380,35 @@ final class Store {
         return (checkIns.count, messages.count)
     }
 
+    // MARK: Liftoff and Garmin history (HANDOFF.md §9, Bring your history)
+
+    /// Keep an import: its sessions replace any with the same id, and every name he confirmed is
+    /// remembered (a plan exercise id, or nil for its own name) so the next import asks only new ones.
+    func mergeHistory(_ sessions: [ImportedSession], matches: [String: String?], liftoffUnit: WeightUnit, now: Date = .now) {
+        var next = history
+        let incoming = Set(sessions.map(\.id))
+        next.sessions = (next.sessions.filter { !incoming.contains($0.id) } + sessions).sorted { $0.startedAt < $1.startedAt }
+        for (name, exerciseId) in matches {
+            if let exerciseId {
+                next.matches[name] = exerciseId
+                next.ownNames.remove(name)
+            } else {
+                next.matches[name] = nil
+                next.ownNames.insert(name)
+            }
+        }
+        next.liftoffUnit = liftoffUnit
+        next.lastImportAt = now
+        history = next
+        write(history, "history.json")
+    }
+
+    /// "Start over": the imported sessions and the remembered matches go.
+    func clearHistory() {
+        history = TrainingHistory()
+        write(history, "history.json")
+    }
+
     /// "Start over": the imported history and its files go, so a fresh export can be read again.
     func clearChatHistory() {
         try? FileManager.default.removeItem(at: mediaDirectory.appendingPathComponent(ChatImport.mediaFolder))
@@ -404,6 +441,7 @@ final class Store {
         calibration = read("calibration.json") ?? Effort.Calibration()
         logbook = read("logbook.json") ?? []
         chatHistory = read("whatsapp.json") ?? ChatHistory()
+        history = read("history.json") ?? TrainingHistory()
         try? FileManager.default.createDirectory(at: cuesDirectory, withIntermediateDirectories: true)
         // Migration: the first launch after plans arrived seeds version 1 from what the phone already has.
         if plans.isEmpty, let program {

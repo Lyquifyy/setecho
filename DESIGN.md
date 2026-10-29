@@ -95,7 +95,7 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 
 ## Screens
 
-Tabs: **Today / History / Check-in.** The More menu has two sections: from your coach (Import program and form, Add coach reply, Import WhatsApp chat; Connections when built) and Settings.
+Tabs: **Today / History / Check-in.** The More menu has two sections: from your coach (Import program and form, Add coach reply, Import WhatsApp chat, Import Liftoff and Garmin; Connections when built) and Settings.
 
 ### Settings (More menu)
 - **Cards, in order:** You (first name, show date) · Training (training days, cardio protocol, what you can load) · Check-in (morning reminder, 7-day average weight) · Sessions ("Coach's voice in sessions" on, "Next-set suggestions" on, "Machine-taken help" on (stretch), AirPods mic) · Voice (the voice picker, Personal Voice) · Voice tone (speed, pitch, warmth, clarity, "Play sample") · Developer.
@@ -242,6 +242,13 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 - **Purpose:** bring in the prep so far, once: past check-ins and the coach's replies, from WhatsApp's Export Chat zip.
 - **Steps:** how to export, what's kept, the last import with "Start over" → "Which one is you?" (sender rows with message counts) → what was found (check-ins, replies, photos, already imported, left out) → Imported.
 - **Footer:** "Choose the export" / "Continue" / "Import" / "Done".
+
+### Import Liftoff and Garmin (More menu)
+- **Purpose:** the sets he logged before Setecho, once, so Last time is right from the first session.
+- **Steps:** how to export, what's kept, the last import with "Start over" → reading (`LoadingCard`) → review → Imported.
+- **Review:** Found (sessions per source, the dates, what was left out) · "Liftoff weights are in pounds?" · Same day in both (only when there is one) · one card per plan day: each lift, its "Last time 225 × 9 · Oct 26" with a `SourceChip` and "Heaviest of …" in secondary, and each name matched to it with "Change" (a menu of his lifts by day, and "Keep under its own name") · Kept under their own name.
+- **Footer:** "Choose the files" / "Confirm and import" / "Done".
+- **Elsewhere:** History → Sessions gets "Before Setecho" (one row per imported session with its source chip, opening read-only), and `LastTimeRow`'s chip names Liftoff or Garmin.
 
 ### Photo viewer (full-screen)
 - **Purpose:** see a check-in photo at full size and put it beside another week's. Viewing only: the files stay exactly as taken, nothing is cropped, aligned or changed.

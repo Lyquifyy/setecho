@@ -7,6 +7,9 @@ struct HistoryView: View {
     @State private var openCheckIn: CheckInDraft?
     /// A check-in from the WhatsApp import, open read-only.
     @State private var openPast: PastCheckIn?
+    /// A session from the Liftoff and Garmin import, open read-only.
+    @State private var openImported: ImportedSession?
+    @State private var showAllImported = false
     /// A week's photo open full screen, from the Photos tab.
     @State private var viewing: PhotoViewing?
 
@@ -47,6 +50,9 @@ struct HistoryView: View {
         .sheet(item: $openPast) { checkIn in
             PastCheckInView(checkIn: checkIn).environment(store)
         }
+        .sheet(item: $openImported) { session in
+            ImportedSessionView(session: session).environment(store)
+        }
         .fullScreenCover(item: $viewing) { viewing in
             PhotoViewer(viewing: viewing).environment(store)
         }
@@ -77,6 +83,21 @@ struct HistoryView: View {
                 }
             }
         }
+        let imported = store.history.sessions.sorted { $0.startedAt > $1.startedAt }
+        if !imported.isEmpty {
+            SectionCard("Before Setecho", accessory: {
+                Text("\(imported.count) sessions").font(.subheadline).monospacedDigit().secondaryText()
+            }) {
+                ForEach(Array(imported.prefix(showAllImported ? imported.count : 5).enumerated()), id: \.element.id) { index, session in
+                    if index > 0 { CardDivider() }
+                    ImportedSessionRow(session: session) { openImported = session }
+                }
+                if imported.count > 5 {
+                    CardDivider()
+                    LinkButton(title: showAllImported ? "Show fewer" : "Show all \(imported.count)", chevron: .none) { showAllImported.toggle() }
+                }
+            }
+        }
         let lifts = Self.logbookLifts(store.currentProgram)
         if !lifts.isEmpty {
             SectionCard("Last time", accessory: {
@@ -85,7 +106,7 @@ struct HistoryView: View {
                 }
                 .buttonStyle(.setechoTonal)
             }) {
-                Text("Each lift's last top set, from the log or your paper logbook. Said before the top set.").font(.footnote).secondaryText()
+                Text("Each lift's last top set, from the log, your paper logbook or Liftoff and Garmin. Said before the top set.").font(.footnote).secondaryText()
                 if showLastTime {
                     ForEach(lifts) { exercise in
                         CardDivider()
