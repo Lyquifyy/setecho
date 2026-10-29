@@ -9,6 +9,7 @@ struct DeveloperView: View {
     @State private var exportFile: FileExport?
     @State private var exportError: String?
     @State private var rehearsingSession = false
+    @State private var mixingProbe = AudioMixingProbe()
     /// Closes the whole Settings sheet from here; "‹ Settings" goes back one screen.
     var onClose: (() -> Void)?
 
@@ -42,6 +43,16 @@ struct DeveloperView: View {
                     .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
                 Text("Noise suppression and gain control on the session mic, with your music ducked as little as iOS allows. Each utterance in the session data says whether it was on: keep whichever hears more.")
                     .font(.footnote).secondaryText()
+                CardDivider()
+                LinkButton(title: mixingProbe.running ? "Testing…" : "Test music with each mic setting") {
+                    Task { await mixingProbe.run() }
+                }
+                .disabled(mixingProbe.running)
+                Text("Play music on your AirPods first. Over about 20 seconds it lowers and restores the music under three mic settings; it should dip and come back each time, and never stop.")
+                    .font(.footnote).secondaryText()
+                ForEach(mixingProbe.summary, id: \.self) { line in
+                    Text(line).font(.footnote).foregroundStyle(line.contains("ok · music playing") ? Theme.textSecondary : Theme.navy)
+                }
             }
 
             SectionCard("Filming") {

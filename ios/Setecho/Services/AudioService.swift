@@ -68,6 +68,7 @@ final class AudioService {
             Task { @MainActor in
                 guard let self else { return }
                 self.updateInput()
+                self.logAudio("route change", lowered: self.isSpeaking, error: nil)
                 guard AirPodsMic.shared.isActive, AirPodsMic.shared.check(self.session) else { return }
                 self.configure()
             }
@@ -99,8 +100,10 @@ final class AudioService {
             }
             updateInput()
             lastError = nil
+            logAudio("configure", lowered: holdsDucking, error: nil)
         } catch {
-            lastError = "Audio session: \(error.localizedDescription)"
+            logAudio("configure", lowered: holdsDucking, error: error)
+            lastError = "Audio couldn't start"
         }
     }
 
@@ -261,25 +264,11 @@ final class AudioService {
 
     private func speakNow(_ text: String) async {
         isSpeaking = true
-        if !holdsDucking {
-            do {
-                try AirPodsMic.shared.apply(to: session, ducking: true)
-                try session.setActive(true)
-            } catch {
-                lastError = "Duck: \(error.localizedDescription)"
-            }
-        }
+        lowerMusic(true)
         let voice = Self.preferredVoice()
         let tone = Self.currentTone
         await output.speak(SpokenText.utterance(text, voice: voice, tone: tone), tone: tone)
-        if !holdsDucking {
-            do {
-                try AirPodsMic.shared.apply(to: session, ducking: false)
-                try session.setActive(true)
-            } catch {
-                lastError = "Restore: \(error.localizedDescription)"
-            }
-        }
+        lowerMusic(false)
         isSpeaking = false
         micOpenedAt = .now
     }
@@ -372,14 +361,7 @@ final class AudioService {
             isSpeaking = false
             micOpenedAt = .now
         }
-        if !holdsDucking {
-            do {
-                try AirPodsMic.shared.apply(to: session, ducking: true)
-                try session.setActive(true)
-            } catch {
-                lastError = "Duck: \(error.localizedDescription)"
-            }
-        }
+        lowerMusic(true)
         if let player = try? AVAudioPlayer(contentsOf: url) {
             cuePlayer = player
             player.play()
@@ -388,14 +370,58 @@ final class AudioService {
         } else {
             lastError = "Couldn't play \(url.lastPathComponent)"
         }
-        if !holdsDucking {
-            do {
-                try AirPodsMic.shared.apply(to: session, ducking: false)
-                try session.setActive(true)
-            } catch {
-                lastError = "Restore: \(error.localizedDescription)"
+        lowerMusic(false)
+    }
+
+    // MARK: His music
+
+    /// Every audio-session step, for the session's debug JSON (never on screen).
+    var onAudioEvent: ((SessionDebug.AudioEvent) -> Void)?
+    /// Lowering the music per line failed twice this run: lines now play over it at full volume, and
+    /// the configuration is never changed per line again (his music must never stop).
+    private(set) var perLineDuckingOff = false
+    private var musicFailures = 0
+
+    /// Lower his music for a line, or bring it back. It can't fail the session: the session stays
+    /// active and mixable throughout. Lowering is an activation with `.duckOthers` (mixable);
+    /// bringing it back only changes the options on the active session, with no second activation
+    /// (that reactivation is what threw "can't interrupt others" at the gym, Oct 28). A failure is
+    /// logged, the mixable configuration put back, and after two the per-line lowering stops.
+    func lowerMusic(_ lowered: Bool) {
+        guard !holdsDucking, !perLineDuckingOff else { return }
+        do {
+            try AirPodsMic.shared.apply(to: session, ducking: lowered)
+            if lowered { try session.setActive(true) }
+            logAudio(lowered ? "lower" : "restore", lowered: lowered, error: nil)
+        } catch {
+            logAudio(lowered ? "lower" : "restore", lowered: lowered, error: error)
+            musicFailures += 1
+            try? AirPodsMic.shared.apply(to: session, ducking: false)
+            if musicFailures >= 2 {
+                perLineDuckingOff = true
+                logAudio("per-line lowering off after \(musicFailures) failures", lowered: false, error: nil)
             }
         }
+    }
+
+    func logAudio(_ step: String, lowered: Bool, error: Error?) {
+        let route = session.currentRoute
+        let event = SessionDebug.AudioEvent(
+            at: .now, step: step,
+            requested: AirPodsMic.describe(AirPodsMic.shared.options(ducking: lowered)),
+            applied: AirPodsMic.describe(session.categoryOptions),
+            route: (route.inputs.map(\.portName) + ["→"] + route.outputs.map(\.portName)).joined(separator: " "),
+            otherAudioPlaying: session.isOtherAudioPlaying,
+            error: error.map(Self.describe))
+        onAudioEvent?(event)
+    }
+
+    /// "!int (560557684): …": an OSStatus as its four characters, so a log reads like Apple's docs.
+    nonisolated static func describe(_ error: Error) -> String {
+        let code = (error as NSError).code
+        let bytes = [24, 16, 8, 0].map { UInt8((UInt32(truncatingIfNeeded: code) >> $0) & 0xFF) }
+        let fourCC = bytes.allSatisfy { (32...126).contains($0) } ? String(decoding: bytes, as: UTF8.self) : nil
+        return [fourCC, "\(code)", (error as NSError).localizedDescription].compactMap { $0 }.joined(separator: " · ")
     }
 
     func stopSpeaking() {
@@ -407,24 +433,11 @@ final class AudioService {
     func duck() async {
         while isSpeaking { try? await Task.sleep(for: .milliseconds(20)) }
         isSpeaking = true
-        guard !holdsDucking else { return }
-        do {
-            try AirPodsMic.shared.apply(to: session, ducking: true)
-            try session.setActive(true)
-        } catch {
-            lastError = "Duck: \(error.localizedDescription)"
-        }
+        lowerMusic(true)
     }
 
     func restore() async {
-        if !holdsDucking {
-            do {
-                try AirPodsMic.shared.apply(to: session, ducking: false)
-                try session.setActive(true)
-            } catch {
-                lastError = "Restore: \(error.localizedDescription)"
-            }
-        }
+        lowerMusic(false)
         isSpeaking = false
         micOpenedAt = .now
     }

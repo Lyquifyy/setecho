@@ -156,6 +156,12 @@ final class SessionCoordinator {
             recorder.slate()
             Task { try? await Task.sleep(for: .milliseconds(300)); showSlate = false }
         }
+        // Every audio-session step goes to the debug JSON: the options asked for and applied, the route,
+        // whether his music was playing, any error by its code. Nothing raw reaches the screen.
+        audio.onAudioEvent = { [weak self] event in
+            guard let self else { return }
+            SessionDebug.append(event, sessionId: self.engine.session.id, in: self.store.mediaDirectory)
+        }
         audio.configure()
         audio.detectorConfig = { VoiceDetector.Config.session(sampleRate: $0) }
         audio.allowsBargeIn = true

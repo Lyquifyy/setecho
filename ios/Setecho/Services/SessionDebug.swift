@@ -51,6 +51,28 @@ enum SessionDebug {
         var bargedIn: Bool?
     }
 
+    /// One audio-session step (lowering or restoring the music, a configure, a route change): the
+    /// options asked for and the options iOS actually applied, the route, whether other audio
+    /// (his music) was playing, and the error by its four-character code. Never on screen.
+    struct AudioEvent: Codable, Equatable {
+        var at: Date
+        var step: String
+        var requested: [String]
+        var applied: [String]
+        var route: String
+        var otherAudioPlaying: Bool
+        var error: String?
+    }
+
+    static func audioFile(sessionId: UUID) -> String { "audio-\(sessionId.uuidString.prefix(8)).json" }
+
+    static func append(_ event: AudioEvent, sessionId: UUID, in directory: URL) {
+        let url = directory.appendingPathComponent(audioFile(sessionId: sessionId))
+        var all = (try? Data(contentsOf: url)).flatMap { try? JSONCoding.decoder.decode([AudioEvent].self, from: $0) } ?? []
+        all.append(event)
+        if let data = try? JSONCoding.encoder.encode(all) { try? data.write(to: url) }
+    }
+
     static func detectorFile(sessionId: UUID) -> String { "wrist-\(sessionId.uuidString.prefix(8)).json" }
     static func utterancesFile(sessionId: UUID) -> String { "utterances-\(sessionId.uuidString.prefix(8)).json" }
 
@@ -86,6 +108,7 @@ enum SessionDebug {
             "detector": object(try? Data(contentsOf: directory.appendingPathComponent(detectorFile(sessionId: session.id)))),
             "counts": object(try? Data(contentsOf: directory.appendingPathComponent(countsFile(sessionId: session.id)))),
             "utterances": object(try? Data(contentsOf: directory.appendingPathComponent(utterancesFile(sessionId: session.id)))),
+            "audio": object(try? Data(contentsOf: directory.appendingPathComponent(audioFile(sessionId: session.id)))),
         ]
         let data = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
         let date = session.startedAt.formatted(.iso8601.year().month().day())

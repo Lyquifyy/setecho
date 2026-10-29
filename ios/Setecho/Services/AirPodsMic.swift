@@ -21,12 +21,14 @@ final class AirPodsMic {
 
     var isActive: Bool { Settings.shared.useAirPodsMic && !unavailable }
 
-    /// The category options for every activation: ducking while Setecho speaks, mixing otherwise.
+    /// The category options for every activation: mixing always, ducking too while Setecho speaks.
     /// `.defaultToSpeaker`: with nothing plugged in, .playAndRecord plays through the earpiece, which
     /// made every check-in line thin and quiet (Oct 28) while "Play sample" used the loudspeaker.
     /// AirPods and other headphones still take the output when connected.
     func options(ducking: Bool) -> AVAudioSession.CategoryOptions {
-        var options: AVAudioSession.CategoryOptions = ducking ? [.duckOthers, .allowBluetoothA2DP] : [.mixWithOthers, .allowBluetoothA2DP]
+        // Mixable in every configuration, so his music never stops: ducking adds to mixing, never
+        // replaces it (Oct 28 gym test: a restore failed with "can't interrupt others", '!int').
+        var options: AVAudioSession.CategoryOptions = ducking ? [.mixWithOthers, .duckOthers, .allowBluetoothA2DP] : [.mixWithOthers, .allowBluetoothA2DP]
         options.insert(.defaultToSpeaker)
         if isActive { options.formUnion([.allowBluetoothHFP, .bluetoothHighQualityRecording]) }
         return options
@@ -76,5 +78,15 @@ final class AirPodsMic {
         let dji = session.availableInputs?.contains { $0.portType == .usbAudio } == true
         notice = "AirPods mic unavailable, using the \(dji ? "DJI" : "iPhone") mic"
         state = "fell back · \(reason)"
+    }
+
+    /// Option names for the debug record: "mixWithOthers, duckOthers, allowBluetoothHFP, …".
+    nonisolated static func describe(_ options: AVAudioSession.CategoryOptions) -> [String] {
+        let names: [(AVAudioSession.CategoryOptions, String)] = [
+            (.mixWithOthers, "mixWithOthers"), (.duckOthers, "duckOthers"), (.interruptSpokenAudioAndMixWithOthers, "interruptSpokenAudio"),
+            (.allowBluetoothHFP, "allowBluetoothHFP"), (.allowBluetoothA2DP, "allowBluetoothA2DP"), (.allowAirPlay, "allowAirPlay"),
+            (.defaultToSpeaker, "defaultToSpeaker"), (.bluetoothHighQualityRecording, "bluetoothHighQualityRecording"),
+        ]
+        return names.filter { options.contains($0.0) }.map(\.1)
     }
 }
