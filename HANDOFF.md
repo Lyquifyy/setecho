@@ -38,7 +38,7 @@ Setecho:
 
 ## 2. What exists today
 
-Built on Oct 26 (commits up to `7596d21`). **None of it has been used in a real gym session yet.**
+Built on Oct 26 (commits up to `25faa60`). **None of it has been used in a real gym session yet.**
 
 | Area | State |
 |---|---|
@@ -968,7 +968,7 @@ Three problems from the busy gym block Friday's Day 5 test and the demo, so they
 - [ ] **§3, the human:** a session on the tripod with the front camera ("Camera faces you" on) to see the picture, the brackets and the replay; then decide whether "Camera faces you" becomes the default (after SAM front against back).
 - [ ] **His debug JSON:** every point where the plan moved without his word, each as a test.
 - [ ] **Gym test, AirPods mic plus music:** Developer → Hearing → "Test music with each mic setting" with music playing (send the lines it shows); then a whole session on the AirPods mic with music: no errors, the music never stops or stays down, every line heard. The session JSON's `audio` list says what iOS applied at each step.
-- [x] **A Fly deploy** for the new intents (`goTo`, `addSet`, `endExercise`, `whereAmI`) and the front-camera crop. *In v33 (Oct 28, 7:40 PM CT). **v34, Thu Oct 29 8:07 AM CT, from `90449c4`**, adds the check-in tape/glucose fix (eedc8f0); smoke-tested over `fly ssh`: `/health` ok, "that was 8" in rest → reps 8 by the rules. Every test after 8:07 AM Oct 29 runs on the current backend. The ElevenLabs secrets are already unset. **v35, Oct 29 8:32 AM CT, from `3797b7e`**, adds Withings direct (the WhatsApp import is phone-only); its routes answer "not configured" until `WITHINGS_CLIENT_ID` and `WITHINGS_CLIENT_SECRET` are set. **v36, Oct 29 10:10 AM CT, from `1fffc04`**, adds Bring your history (`/import/history`, `/import/history/match`); smoke-tested with the made-up fixtures: the import reads 4 sessions, and the match puts "Close Grip Barbell Bench Press" on a Smith close-grip and leaves "Cable Lateral Raise" off a dumbbell raise. TestFlight build 202610291010 carries the phone side.*
+- [x] **A Fly deploy** for the new intents (`goTo`, `addSet`, `endExercise`, `whereAmI`) and the front-camera crop. *In v33 (Oct 28, 7:40 PM CT). **v34, Thu Oct 29 8:07 AM CT, from `cacb72a`**, adds the check-in tape/glucose fix (fe0ee00); smoke-tested over `fly ssh`: `/health` ok, "that was 8" in rest → reps 8 by the rules. Every test after 8:07 AM Oct 29 runs on the current backend. The ElevenLabs secrets are already unset. **v35, Oct 29 8:32 AM CT, from `172c6d2`**, adds Withings direct (the WhatsApp import is phone-only); its routes answer "not configured" until `WITHINGS_CLIENT_ID` and `WITHINGS_CLIENT_SECRET` are set. **v36, Oct 29 10:10 AM CT, from `3e725cf`**, adds Bring your history (`/import/history`, `/import/history/match`); smoke-tested with the made-up fixtures: the import reads 4 sessions, and the match puts "Close Grip Barbell Bench Press" on a Smith close-grip and leaves "Cable Lateral Raise" off a dumbbell raise. TestFlight build 202610291010 carries the phone side.*
 
 ### What's left (Oct 28)
 Everything ticked below is built; "untested" still applies to every phone flow until it has run in the gym or at home.
@@ -1023,7 +1023,7 @@ Report after each numbered block: what passed, what didn't, the measured latenci
 **Mon Nov 2:** the main shoot, no code changes. **Tue Nov 3:** fixes only for pickups. **Wed Nov 4:** README final, `design/` purged from history with the human's go-ahead, repo public, submitted by 6 PM CT.
 
 ### Gates still open
-- [ ] **G1 organizers.** The human confirms in writing that the app isn't a "sports analyzer or coach": it counts reps from phone video and applies the coach's own rules to suggest the next set's weight, for a human coach. The next-set suggestions and the machine-taken swaps and reorders are asked about by name.
+- [x] **G1 organizers.** *Cleared Oct 29 (the human): it's fine as built; the only bar is that it's actually useful and solves a problem.* The human confirms in writing that the app isn't a "sports analyzer or coach": it counts reps from phone video and applies the coach's own rules to suggest the next set's weight, for a human coach. The next-set suggestions and the machine-taken swaps and reorders are asked about by name.
 - [ ] **G2 audio, G3 Apple Health, G6 share.** The human runs the probes from TestFlight (More → Probes). G6 also covers exporting one of the coach's voice notes out of WhatsApp.
 - [ ] **G5, extended.** Run `import_probe` on two other coaches' check-in forms the human brings, and `reply_probe` on two of his real past replies.
 - [ ] **G7 SAM reps.** `scripts/sam_reps_probe.py <mov> --equipment barbell` (built in P1) downscales the clip to 720p at 15 fps, calls SAM with "weight plate", runs `reps.py`, and prints the count, the rep times and the seconds from upload to count. Raw output goes to `backend/private/`; `--fixture` saves only the per-frame centroid series. **Pass:** the count matches the human's count of a real set of 8, one plate is tracked on every frame, and it takes under 60 s.
@@ -1190,7 +1190,7 @@ In the order above. Specs:
   - **Now, in its own commit:** add `design/` to `.gitignore`, drop the `!design/**` exceptions, and run `git rm -r --cached design`. The files stay on disk for reference.
   - **The README and docs must not link anything under `design/`.** The repo goes public. If the README needs an image, use a screenshot of the real app taken after kickoff, kept in `docs/`.
   - **Why:** it holds working files and references, not product code, and only work from after the kickoff cutoff (12:24 PM ET, Oct 26) belongs in the submitted repo.
-  - **History:** the folder is already in history from `6fc246f`. In P9, before the first push and only with the human's go-ahead, purge it with `git filter-repo --invert-paths --path design/`, which keeps commit dates.
+  - **History:** purged Oct 29, before the first push, with `git filter-repo --invert-paths --path design/` (commit dates kept, every hash from Oct 26 on rewritten; the hashes cited in these docs were remapped). **No design file may ever be in this repo's history or any remote, private or public:** check `git log --all --name-only | grep ^design/` is empty before any push.
   - **The app's logo, wordmark and icon** in `ios/Setecho/Assets.xcassets` stay.
 - Photos never go to Meta (the framing check runs on the device); set clips go only through `/sets/count` (downscaled, no audio), and the coach's voice notes only through `/coach/reply`. Filming-mode exports stay on the phone and are never uploaded or committed. All Standard tier: gyms have bystanders. Cut cue clips of the coach's voice stay on the phone, under `media/cues/`. Withings tokens live in the Keychain, never on the backend or in the repo. Speech is synthesized on the phone; no text or audio goes to a voice service.
 

@@ -99,7 +99,7 @@ def test_add_on_rules_match_only_the_sessions_names():
     assert voice.classify_by_rules("add abs") is None  # no add-ons in the context, no add-on rule
 
 
-# HANDOFF.md §7, The between-set conversation: each row was a misfire on 651b877.
+# HANDOFF.md §7, The between-set conversation: each row was a misfire on 633ee30.
 @pytest.mark.parametrize(
     ("transcript", "state", "intent", "number"),
     [
