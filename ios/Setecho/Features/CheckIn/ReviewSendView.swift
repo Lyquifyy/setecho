@@ -26,6 +26,8 @@ struct ReviewSendView: View {
     @State private var videoFiles: [UUID: String] = [:]
     @State private var showPicker = false
     @State private var exporting = false
+    /// What is happening to the videos right now: "Cropping Incline DB press to the reps, 1 of 2".
+    @State private var exportStatus: String?
     @State private var exportTask: Task<Void, Never>?
     @State private var photosFirst = false
     @State private var settings = Settings.shared
@@ -120,7 +122,7 @@ struct ReviewSendView: View {
                 SectionCard("Rehearsal") {
                     Toggle("Send to my own chat, not his", isOn: Bindable(settings).rehearsalMode)
                         .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
-                    Text("Each share opens your own WhatsApp chat\(settings.ownWhatsAppNumber.isEmpty ? " once your number is in Settings → Developer" : ""). Nothing reaches your coach.")
+                    Text("Each step opens the share sheet: pick WhatsApp, then your own chat. Nothing reaches your coach.")
                         .font(.footnote).secondaryText()
                 }
             }
@@ -195,6 +197,16 @@ struct ReviewSendView: View {
                     CardDivider()
                     VideoPickRow(pick: pick) { showPicker = true }
                 }
+                if let exportStatus {
+                    CardDivider()
+                    LoadingRow(title: exportStatus, detail: "On the phone, before it goes to WhatsApp. Sending waits for this.")
+                } else if !picks.isEmpty, picks.allSatisfy({ videoFiles[$0.setId] != nil }) {
+                    CardDivider()
+                    HStack(spacing: Theme.Space.xs) {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.cobalt)
+                        Text("Ready to send. WhatsApp uploads them when you share.").font(.footnote).secondaryText()
+                    }
+                }
             }
             if !adjustments.isEmpty || !deviations.isEmpty {
                 SectionCard("In his notes") {
@@ -245,14 +257,13 @@ struct ReviewSendView: View {
                 }
             }
         } footer: {
-            Button(exporting && isVideoStep ? "Preparing the videos…" : sendStep == 0 ? "Send to WhatsApp" : "Next: \(stepName)") {
+            // Every step goes through the share sheet, the plan message too (Oct 28: whatsapp://send
+            // with the text in the URL cut the supplements off; the share sheet carries the whole message).
+            Button(exporting && isVideoStep ? (exportStatus ?? "Preparing the videos…") : sendStep == 0 ? "Send to WhatsApp" : "Next: \(stepName)") {
                 includeText = true
                 banner = nil
                 if isVideoStep {
                     Task { await prepareVideos(); showShare = true }
-                } else if settings.rehearsalMode, !settings.ownWhatsAppNumber.isEmpty, isPlanStep, let planMessage {
-                    // Rehearsal: a text-only step goes straight to the athlete's own chat.
-                    openOwnChat(with: planMessage)
                 } else {
                     showShare = true
                 }
@@ -271,10 +282,11 @@ struct ReviewSendView: View {
                 .disabled(text == nil || photoURLs.isEmpty)
             }
             if stepCount > 1, sendStep < stepCount {
-                Text("Step \(sendStep + 1) of \(stepCount): \(stepName). One WhatsApp message each, in his order.")
+                Text("Step \(sendStep + 1) of \(stepCount): \(stepName). The share sheet opens; pick WhatsApp and the chat, then Send. One message each, in his order.")
                     .font(.footnote).secondaryText()
             }
         }
+        .keepsScreenAwake()
         .sheet(item: $editing, onDismiss: { Task { await render() } }) { field in
             FieldEditSheet(field: field, coordinator: coordinator)
         }
@@ -291,7 +303,7 @@ struct ReviewSendView: View {
                     guard completed else { return }
                     sendStep += 1
                     coordinator.markSent()
-                    banner = "Sent. The check-in is saved under History."
+                    banner = "Handed to WhatsApp; it uploads the videos from there. The check-in is saved under History."
                 }
             } else if let body = isPlanStep ? planMessage : checkInMessage {
                 ShareSheet(image: nil, text: includeText ? body : nil, files: isPlanStep || photosFirst == false && !includeText ? [] : photoURLs) { completed in
@@ -310,9 +322,9 @@ struct ReviewSendView: View {
                     sendStep += 1
                     if sendStep >= stepCount {
                         coordinator.markSent()
-                        banner = "Sent. The check-in is saved under History."
+                        banner = "Handed to WhatsApp. The check-in is saved under History."
                     } else {
-                        banner = "Next: \(stepName)."
+                        banner = "Handed to WhatsApp. Next: \(stepName)."
                     }
                 }
             }
@@ -326,18 +338,6 @@ struct ReviewSendView: View {
         .onChange(of: picks) { _, new in
             coordinator.setVideoPicks(new)
             Task { await prepareVideos() }
-        }
-    }
-
-    /// whatsapp://send to the athlete's own number: nothing can reach the coach from here.
-    private func openOwnChat(with text: String) {
-        let digits = settings.ownWhatsAppNumber.filter(\.isNumber)
-        guard let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "whatsapp://send?phone=\(digits)&text=\(encoded)") else { return }
-        UIApplication.shared.open(url) { opened in
-            guard opened else { return }
-            sendStep += 1
-            banner = sendStep >= stepCount ? "Rehearsal sent to your own chat." : "Rehearsal: next, \(stepName). Pick your own chat in the share sheet."
         }
     }
 
@@ -368,12 +368,14 @@ struct ReviewSendView: View {
     private func exportVideos() async {
         exporting = true
         defer { exporting = false }
-        for pick in picks where videoFiles[pick.setId] == nil {
+        defer { exportStatus = nil }
+        for (index, pick) in picks.enumerated() where videoFiles[pick.setId] == nil {
             if let source = pick.sourceFile {
                 videoFiles[pick.setId] = source
                 continue
             }
             guard let set = periodSessions.flatMap(\.sets).first(where: { $0.id == pick.setId }), let file = set.clipFile else { continue }
+            exportStatus = "Cropping \(pick.caption) to just the reps, \(index + 1) of \(picks.count)"
             let url = store.mediaDirectory.appendingPathComponent(file)
             if let name = try? await VideoCropper.export(clip: url, pick: pick, into: store.mediaDirectory) { videoFiles[pick.setId] = name }
         }
@@ -417,7 +419,7 @@ private struct VideoPickerSheet: View {
             SectionCard("From your camera roll") {
                 Text("Goes out exactly as you trimmed it. It counts as one of the two.").font(.footnote).secondaryText()
                 PhotosPicker(selection: $rollItem, matching: .videos) {
-                    Text(importing ? "Importing…" : "Choose a video").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.cobalt)
+                    Text(importing ? "Copying from your camera roll…" : "Choose a video").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.cobalt)
                         .frame(minHeight: 44)
                 }
                 .disabled(importing)

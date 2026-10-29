@@ -43,13 +43,11 @@ struct CheckInMorningView: View {
         }
         .overlay { if model.showSlate { Color.white.ignoresSafeArea() } } // the filming slate
         .task { await model.start() }
-        // Hands-free means the screen must not lock mid-conversation.
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        // Hands-free means the screen must not lock mid-conversation, photos and review included.
+        .keepsScreenAwake()
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in model.enterBackground() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in Task { await model.enterForeground() } }
         .fullScreenCover(isPresented: $model.showPhotos, onDismiss: {
-            UIApplication.shared.isIdleTimerDisabled = true
             Task { await model.photosFinished() }
         }) {
             PhotoSessionView(store: store).environment(store)

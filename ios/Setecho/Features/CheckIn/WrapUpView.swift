@@ -39,8 +39,7 @@ struct WrapUpView: View {
             }
         }
         .task { await model.start() }
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .keepsScreenAwake()
         .fullScreenCover(isPresented: $showReview) {
             NavigationStack { ReviewSendView(coordinator: coordinator) }.environment(store)
         }

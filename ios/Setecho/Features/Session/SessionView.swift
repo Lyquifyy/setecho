@@ -40,8 +40,7 @@ struct SessionView: View {
         }
         .task { await coordinator.start() }
         // A tripod rest is 3–4 minutes: the screen must not lock and stop the camera, and the countdown stays in view.
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .keepsScreenAwake()
         .onChange(of: engine.state) { _, state in
             if state == .ended {
                 Task {
