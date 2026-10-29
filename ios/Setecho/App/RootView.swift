@@ -28,6 +28,9 @@ struct RootView: View {
         .sheet(isPresented: $router.showAddReply) {
             AddCoachReplyView().environment(store)
         }
+        .sheet(isPresented: $router.showConnections) {
+            ConnectionsView().environment(store)
+        }
         .sheet(item: $router.openReply) { reply in
             CoachReplyView(reply: reply).environment(store)
         }
@@ -44,12 +47,15 @@ struct RootView: View {
         .task {
             startMorningIfDue()
             await ShareInbox.drain(into: store)
+            await WithingsService.shared.refreshIfDue()
         }
         .onOpenURL { url in WatchService.shared.handle(url: url) }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             store.refreshCycle()
             startMorningIfDue()
             Task { await ShareInbox.drain(into: store) }
+            // Withings direct: at most one fetch every 10 minutes, so this is cheap to call.
+            Task { await WithingsService.shared.refreshIfDue() }
         }
     }
 }

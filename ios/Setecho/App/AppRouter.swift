@@ -12,6 +12,7 @@ final class AppRouter {
     var showImport = false
     var showSettings = false
     var showAddReply = false
+    var showConnections = false
     /// The reply the Coach reply screen shows.
     var openReply: CoachReply?
     /// "Hey Siri, start my Setecho check-in" (HANDOFF.md §7, Check-in morning).
