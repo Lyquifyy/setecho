@@ -111,17 +111,10 @@ final class FilmingRecorder {
     }
 
     /// A take as one zip in the temporary folder, for AirDrop (Oct 28: a folder would not go after
-    /// the fact). The system makes the zip through the file coordinator's upload reading.
+    /// the fact, and the system's upload zip came out empty).
     static func zipped(_ take: URL) throws -> URL {
         let dest = FileManager.default.temporaryDirectory.appendingPathComponent(take.lastPathComponent + ".zip")
-        try? FileManager.default.removeItem(at: dest)
-        var coordinationError: NSError?
-        var copyError: Error?
-        NSFileCoordinator().coordinate(readingItemAt: take, options: .forUploading, error: &coordinationError) { zipURL in
-            do { try FileManager.default.copyItem(at: zipURL, to: dest) } catch { copyError = error }
-        }
-        if let coordinationError { throw coordinationError }
-        if let copyError { throw copyError }
+        try ZipWriter.zip(folder: take, to: dest)
         return dest
     }
 

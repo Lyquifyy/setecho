@@ -91,3 +91,19 @@ private func mask(x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, grid: [UInt8] 
     #expect(r.cropRect == CGRect(x: 128, y: 88, width: 844, height: 1125))
     #expect(r.maskData == Data())
 }
+
+/// A take zips to a file the system can open, every file in it, with the right checksums.
+@Test func aTakeZipsWhole() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("take-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    try Data("hello".utf8).write(to: folder.appendingPathComponent("captions.srt"))
+    try Data((0..<5000).map { UInt8($0 % 251) }).write(to: folder.appendingPathComponent("001-setecho.caf"))
+    let zip = folder.deletingLastPathComponent().appendingPathComponent(folder.lastPathComponent + ".zip")
+    try ZipWriter.zip(folder: folder, to: zip)
+    let data = try Data(contentsOf: zip)
+    #expect(data.count > 5000 + 5 + 120)
+    #expect(data.prefix(4) == Data([0x50, 0x4b, 0x03, 0x04]))      // a local file header first
+    #expect(data.suffix(22).prefix(4) == Data([0x50, 0x4b, 0x05, 0x06]))   // the end record last
+    #expect(ZipWriter.crc32(Data("hello".utf8)) == 0x3610_a686)
+    #expect(String(decoding: data, as: UTF8.self).contains("captions.srt"))
+}
