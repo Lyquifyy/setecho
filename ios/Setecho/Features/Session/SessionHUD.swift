@@ -86,6 +86,16 @@ struct SessionHUDModel: Equatable {
     var next: String?
     var nextAsk: String?
     var summary: Summary?
+    /// The camera is filming him (the front camera, facing the bench). Off for a morning of holds.
+    var camera = true
+    /// His lock-on box in the camera's frame, normalized, top-left origin (`BodyTracker`).
+    var lockBox: CGRect? = CGRect(x: 0.08, y: 0.3, width: 0.9, height: 0.62)
+}
+
+/// The live camera, injected by the session (the front camera's preview layer, mirrored for him);
+/// previews show a placeholder, and the screenshots a sample frame.
+extension EnvironmentValues {
+    @Entry var sessionCameraFeed: AnyView? = nil
 }
 
 extension SessionHUDModel.Phase {
@@ -125,13 +135,18 @@ struct SessionHUD: View {
                 }
             }
             LiftsStrip(exercises: model.progress)
-            StateLine(phase: model.phase)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, Theme.Space.xxs)
-            main
-                .frame(maxHeight: .infinity, alignment: .top)
-                .id(model.phase.name + (model.pocket ? "-pocket" : ""))
-                .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+            if showsCamera {
+                cameraLayout
+                    .frame(maxHeight: .infinity, alignment: .top)
+            } else {
+                StateLine(phase: model.phase)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, Theme.Space.xxs)
+                main
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .id(model.phase.name + (model.pocket ? "-pocket" : ""))
+                    .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+            }
             if !model.pocket, model.voice != .idle(hints: []) {
                 VoiceCard(voice: model.voice)
             }
@@ -142,6 +157,31 @@ struct SessionHUD: View {
         .padding(.bottom, Theme.Space.xs)
         .background(Theme.page.ignoresSafeArea())
         .animation(.smooth(duration: 0.45), value: model.phase)
+    }
+
+    /// He sees himself on the bench: the camera card is the screen's centre whenever it's filming
+    /// him (in a pocket, or for a morning of holds, the cards carry it alone).
+    private var showsCamera: Bool {
+        guard model.camera, !model.pocket else { return false }
+        switch model.phase {
+        case .ready, .armed, .recording, .rest: return true
+        case .hold, .done: return false
+        }
+    }
+
+    @ViewBuilder private var cameraLayout: some View {
+        switch model.phase {
+        case .rest(let remaining, let total):
+            VStack(spacing: Theme.Space.s) {
+                CameraCard(model: model)
+                RestNextCard(model: model, remaining: remaining, total: total)
+            }
+        default:
+            VStack(spacing: Theme.Space.s) {
+                ThisSetCard(model: model)
+                CameraCard(model: model)
+            }
+        }
     }
 
     @ViewBuilder private var main: some View {
@@ -339,6 +379,207 @@ struct StateLine: View {
         case .hold: Image(systemName: "stopwatch").font(.system(size: 24, weight: .semibold)).foregroundStyle(Theme.navy)
         case .done: Image(systemName: "checkmark.circle.fill").font(.system(size: 26, weight: .semibold)).foregroundStyle(Theme.cobalt)
         }
+    }
+}
+
+// MARK: The camera
+
+/// The set up now, compact above the camera: the exercise, the set as the yellow tag, last time,
+/// and the target at hands-free scale.
+private struct ThisSetCard: View {
+    var model: SessionHUDModel
+    var body: some View {
+        HUDCard(title: nil) {
+            Text(model.exercise).font(.system(size: 28, weight: .bold)).foregroundStyle(Theme.navy).lineLimit(1).minimumScaleFactor(0.7)
+            SetTag(model: model)
+            TargetText(load: model.load, reps: model.reps, size: 76)
+            if let last = model.lastTime {
+                Text(last).font(.system(size: 20)).foregroundStyle(Theme.textSecondary).lineLimit(1)
+            }
+        }
+    }
+}
+
+/// His live image in the Filming board's camera card: the state as the dark pill top-left (the
+/// red dot while recording, yellow while armed), yellow corner brackets on him once the camera has
+/// him, and what to do at the foot of the frame. During rest it plays back the set he just did,
+/// with its measured count.
+private struct CameraCard: View {
+    var model: SessionHUDModel
+    @Environment(\.sessionCameraFeed) private var feed
+
+    var body: some View {
+        // The feed fills whatever room the cards leave; it never sizes the card itself.
+        Color.clear
+            .frame(maxWidth: .infinity, minHeight: 160, maxHeight: .infinity)
+            .overlay {
+                if let feed {
+                    feed
+                } else {
+                    ZStack {
+                        Theme.cameraFill
+                        Image(systemName: "figure.strengthtraining.traditional").font(.system(size: 64)).foregroundStyle(.white.opacity(0.4))
+                    }
+                }
+            }
+            .overlay {
+                GeometryReader { proxy in
+                    if brackets, let box = model.lockBox {
+                        LockBrackets()
+                            .frame(width: box.width * proxy.size.width, height: box.height * proxy.size.height)
+                            .offset(x: box.minX * proxy.size.width, y: box.minY * proxy.size.height)
+                    }
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                VStack(alignment: .leading) {
+                    pill
+                    Spacer(minLength: 0)
+                    foot
+                }
+                .padding(Theme.Space.s)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+            .layoutPriority(-1)
+            .accessibilityElement(children: .combine)
+    }
+
+    private var brackets: Bool {
+        switch model.phase {
+        case .armed, .recording: true
+        default: false
+        }
+    }
+
+    @ViewBuilder private var pill: some View {
+        switch model.phase {
+        case .ready:
+            CameraPill { Circle().strokeBorder(.white, lineWidth: 2.5).frame(width: 16, height: 16); Text("Ready") }
+        case .armed:
+            CameraPill(fill: Theme.yellow, ink: Theme.navy) {
+                Circle().fill(Theme.navy).frame(width: 12, height: 12); Text("Armed · lift when ready")
+            }
+        case .recording(let elapsed):
+            CameraPill { Circle().fill(Theme.recording).frame(width: 16, height: 16); Text("Recording · \(Format.duration(TimeInterval(elapsed)))") }
+        case .rest:
+            CameraPill { Image(systemName: "play.fill"); Text("Your last set") }
+        default:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder private var foot: some View {
+        switch model.phase {
+        case .ready:
+            CameraCaption {
+                HStack(spacing: 8) {
+                    Text("Say")
+                    HUDTag(text: "go")
+                    Text("when you lift.")
+                }
+                .font(.system(size: 26, weight: .bold))
+            }
+        case .armed:
+            CameraCaption {
+                Label("Watching you. Only your movement starts it.", systemImage: "eye")
+                    .font(.system(size: 19, weight: .semibold))
+            }
+        case .recording:
+            CameraCaption { Text("Counting when you rack it.").font(.system(size: 19, weight: .semibold)) }
+        case .rest:
+            if !model.result.isEmpty { ResultSticker(facts: model.result) }
+        default:
+            EmptyView()
+        }
+    }
+}
+
+/// The dark pill on the camera, as in the Filming board ("● Recording · 00:18").
+private struct CameraPill<Content: View>: View {
+    var fill: Color = Theme.cameraFill.opacity(0.78)
+    var ink: Color = .white
+    @ViewBuilder var content: Content
+    var body: some View {
+        HStack(spacing: 8) { content }
+            .font(.system(size: 20, weight: .semibold).monospacedDigit())
+            .foregroundStyle(ink)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(fill, in: Capsule())
+    }
+}
+
+/// A line at the foot of the frame, on the same dark scrim as the pill.
+private struct CameraCaption<Content: View>: View {
+    @ViewBuilder var content: Content
+    var body: some View {
+        content
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Theme.cameraFill.opacity(0.78), in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+    }
+}
+
+/// The measured result on the replay: a white sticker like the Results card's first row.
+private struct ResultSticker: View {
+    var facts: [SessionHUDModel.Fact]
+    var body: some View {
+        ResultRow(facts: facts)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+    }
+}
+
+/// Yellow corner brackets on him: the camera has locked on, and only he starts the set.
+private struct LockBrackets: View {
+    var body: some View {
+        Canvas { context, size in
+            let l: CGFloat = min(size.width, size.height) * 0.16
+            var path = Path()
+            for (x, y, dx, dy) in [(0.0, 0.0, 1.0, 1.0), (size.width, 0, -1, 1), (0, size.height, 1, -1), (size.width, size.height, -1, -1)] {
+                path.move(to: CGPoint(x: x, y: y + dy * l))
+                path.addLine(to: CGPoint(x: x, y: y))
+                path.addLine(to: CGPoint(x: x + dx * l, y: y))
+            }
+            context.stroke(path, with: .color(Theme.yellow), style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+        }
+        .accessibilityLabel("Locked on you")
+    }
+}
+
+/// Rest under the replay: the countdown, then the next set as the yellow tag.
+private struct RestNextCard: View {
+    var model: SessionHUDModel
+    var remaining: Int
+    var total: Int
+    var body: some View {
+        let over = remaining <= 0
+        let fullness = over || total <= 0 ? 0 : Double(remaining) / Double(total)
+        HUDCard(title: nil) {
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
+                Text(over ? "+" + Format.duration(TimeInterval(-remaining)) : Format.duration(TimeInterval(remaining)))
+                    .font(.drainingClock(88, fullness: fullness))
+                    .foregroundStyle(over ? Theme.textSecondary : Theme.navy)
+                    .lineLimit(1)
+                    .contentTransition(.numericText(countsDown: true))
+                Text(over ? "over" : "of " + Format.duration(TimeInterval(total)) + " rest")
+                    .font(.hudLabel).foregroundStyle(Theme.textSecondary)
+            }
+            if let next = model.next {
+                CardDivider()
+                HStack(spacing: Theme.Space.s) {
+                    Text("Next").font(.hudLabel.weight(.semibold)).foregroundStyle(Theme.textSecondary)
+                    HUDTag(text: next)
+                }
+                if let ask = model.nextAsk {
+                    Text(ask).font(.system(size: 19)).foregroundStyle(Theme.navy)
+                }
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -656,7 +897,7 @@ extension SessionHUDModel {
     static let hold = SessionHUDModel(
         phase: .hold(remaining: 14, total: 20, index: 2, count: 4),
         progress: [.init(name: "Vacuums", dots: [.done, .current, .upcoming, .upcoming])], micLabel: "Phone mic", micOnHim: false,
-        exercise: "Stomach vacuums", setLabel: "hold 2 of 4", reps: "20 s", voice: .idle(hints: ["done", "hold on"]))
+        exercise: "Stomach vacuums", setLabel: "hold 2 of 4", reps: "20 s", voice: .idle(hints: ["done", "hold on"]), camera: false)
 
     static let pocket: SessionHUDModel = {
         var m = rest
