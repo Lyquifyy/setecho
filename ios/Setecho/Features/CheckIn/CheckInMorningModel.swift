@@ -92,16 +92,23 @@ struct CheckInMorningFlow: Equatable {
     }
 
     /// The values filled from Apple Health and the log that he has not heard (Oct 28: steps went out
-    /// without a word). Short ones only; the weight has its own step, and a long text is on the screen.
+    /// without a word; nutrition consistency went out at 86% when he'd hit every day). Every data
+    /// field is read back once: not the weight (its own step), not what he already said or
+    /// confirmed this morning, and not the coach's own lines (the cardio protocol, the weeks to show,
+    /// last check-in's weight), which are his to read, not to judge.
     func readBackFields(draft: CheckInDraft?) -> [(field: FieldSpec, answer: FieldAnswer)] {
         template.orderedFields.compactMap { field in
             guard field.source.type != .voice, field.source.type != .photo, field.id != weightField?.id,
+                  !Self.notReadBack.contains(field.source.key),
                   let answer = draft?.answers.first(where: { $0.fieldId == field.id }),
-                  answer.state == .filled, !answer.text.isEmpty, answer.text.count <= 40
+                  answer.state == .filled, !answer.text.isEmpty, answer.text.count <= 140,
+                  !answer.provenance.contains(where: { $0.source.hasPrefix("You said") })
             else { return nil }
             return (field, answer)
         }
     }
+
+    private static let notReadBack: Set<DataKey?> = [.cardioProtocol, .weeksToShow, .lastCheckInWeight]
 
     /// One data field read back, like the questions (Oct 28: all of them in one line was too much).
     /// The first opens the read-back: "Quick check on your data. Average daily steps came in at 9.4k. Sound right?"
@@ -262,7 +269,7 @@ final class CheckInMorningModel {
     static let glucoseAfterWeightLine = "And your fasted glucose?"
     static let photosLine = "Time for photos. Set up the tripod, and tell me when you're ready."
     static let photosDoneLine = "Photos are in."
-    static let doneLine = "That's everything. Want me to read it back, or are you ready to send?"
+    static let doneLine = "Want me to read it all back, or are you ready to send?"
 
     /// The coach's questions and the fixed lines, rendered once and kept by a hash of the line and voice.
     private func prerender() {
@@ -418,8 +425,40 @@ final class CheckInMorningModel {
                 return
             }
             isDone = true
-            await ask(Self.doneLine, after: ack)
+            append(.note("\(coordinator.readyCount) of \(coordinator.fieldCount) ready"))
+            await ask(Self.doneLine, after: [ack, morningSummary()].compactMap { $0 }.joined(separator: " "))
         }
+    }
+
+    /// The summary before sending: what he gave this morning, in his order, as one line. Numbers
+    /// and dates are read; free text is counted ("and 2 notes"). "That's everything. This morning you
+    /// gave me weight 180.8, glucose 91, steps 10,000, energy levels 7/10, and 2 notes. The rest came
+    /// from Apple Health and your log."
+    func morningSummary() -> String {
+        guard let template = coordinator.template, let draft = coordinator.draft else { return "That's everything." }
+        var parts: [String] = []
+        var notes = 0
+        for field in template.orderedFields {
+            guard let a = draft.answers.first(where: { $0.fieldId == field.id }), a.state != .missing, !a.text.isEmpty,
+                  a.state == .confirmed || a.provenance.contains(where: { $0.source.hasPrefix("You said") })
+            else { continue }
+            if field.kind == .text || field.kind == .photo || a.text.count > 24 {
+                notes += 1
+                continue
+            }
+            parts.append("\(Self.summaryName(field)) \(a.text)")
+        }
+        if notes > 0 { parts.append(notes == 1 ? "and a note" : "and \(notes) notes") }
+        guard !parts.isEmpty else { return "That's everything." }
+        let gave = parts.count == 1 ? parts[0] : parts.dropLast().joined(separator: ", ") + ", " + parts.last!
+        return "That's everything. This morning you gave me \(gave). The rest came from Apple Health and your log."
+    }
+
+    /// The field's name as the summary says it: "weight", "waist", "energy levels".
+    nonisolated static func summaryName(_ field: FieldSpec) -> String {
+        if field.source.key == .currentWeight { return "weight" }
+        if field.kind == .measurement { return WrapUpModel.shortName(field.label) }
+        return WrapUpModel.spokenLabel(field)
     }
 
     private var currentGroup: [FieldSpec]? {

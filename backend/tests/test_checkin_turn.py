@@ -323,3 +323,27 @@ def test_spark_sees_the_offer(monkeypatch):
     r = checkin_turn.read_turn("yeah that number's what the scale said", context(step="weight", asked=WEIGHT,
                                                                                   offered=OFFER))  # fmt: skip
     assert r.intent == "keep" and f"Offered for a yes or a no: {OFFER}" in seen["user"]
+
+
+def test_a_number_with_thousands_commas_is_one_number():
+    steps = field("average_daily_steps")
+    # "10,000 steps" to a read-back of the steps: code reads it, and it is the number ten thousand.
+    assert checkin_turn.spoken_numbers("10,000 steps") >= {10000.0}
+    assert checkin_turn.spoken_numbers("no, make it 10,000") >= {10000.0}
+    r = checkin_turn.fast_turn(
+        "10,000 steps", context(step="review", asked=steps, offered="Average daily steps: 9,400")
+    )
+    assert r is not None and r.fastPath and r.answers[0].fieldId == steps and r.answers[0].text == "10000"
+    r = checkin_turn.fast_turn(
+        "no, it was 10,000", context(step="review", asked=steps, offered="Average daily steps: 9,400")
+    )
+    assert r is not None and r.answers[0].text == "10000"
+    # Spark's answer with the same number passes the validator, commas or not.
+    r = checkin_turn.validate_turn(
+        out(
+            "correction", [{"fieldId": steps, "text": "10,000", "number": 10000}], reply="Changed to 10,000."
+        ),
+        "no, it was 10,000 steps",
+        context(step="review", asked=steps, offered="Average daily steps: 9,400"),
+    )
+    assert r.intent == "correction" and r.answers[0].text == "10,000"

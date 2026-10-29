@@ -134,8 +134,15 @@ def schema_for(field_ids: list[str]) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def plain_numbers(text: str) -> str:
+    """Thousands commas out: "10,000 steps" is one number, not ten and nothing (Oct 28: a corrected
+    step count came back unclear every time)."""
+    return re.sub(r"(?<=\d),(?=\d{3}(?!\d))", "", text)
+
+
 def spoken_numbers(transcript: str) -> set[float]:
     """Every number the athlete said: digits, and number words in each spoken chunk."""
+    transcript = plain_numbers(transcript)
     found: set[float] = set()
     for m in re.finditer(r"\d+(?:\.\d+)?", transcript):
         found.add(float(m.group()))
@@ -157,7 +164,7 @@ def _number_is_spoken(value: float, said: set[float]) -> bool:
 
 
 def _text_numbers(text: str) -> list[float]:
-    return [float(m.group()) for m in re.finditer(r"\d+(?:\.\d+)?", text.replace("/10", ""))]
+    return [float(m.group()) for m in re.finditer(r"\d+(?:\.\d+)?", plain_numbers(text).replace("/10", ""))]
 
 
 def validate_turn(out: TurnOut, transcript: str, context: TurnContext) -> TurnResponse:
@@ -329,7 +336,7 @@ def conversation_turn(transcript: str, context: TurnContext) -> TurnResponse | N
 
 _FILLER = re.compile(
     r"\b(uh|um|it'?s|it was|was|about|like|around|roughly|pounds?|lbs?|lb|out of ten|out of 10|inches|inch|in|and a|"
-    r"and|a|an|the|so|yeah|ok|okay|that'?s|i'?m at|i was|weight|glucose|is|at)\b",
+    r"and|a|an|the|so|yeah|ok|okay|that'?s|i'?m at|i was|weight|glucose|steps?|a day|per day|is|at|no|nope|nah|it|should be|make it)\b",
     re.IGNORECASE,
 )
 _NUMBER_WORDS = (
@@ -350,6 +357,7 @@ def fast_turn(transcript: str, context: TurnContext) -> TurnResponse | None:
     asked: code parses it and replies from a template. Everything else goes to Spark."""
     fields = {f.id: f for f in context.template.fields}
     asked = fields.get(context.askedFieldId or "")
+    transcript = plain_numbers(transcript)
     if asked is None or not _only_numbers(transcript):
         return None
     when = f"You said · {checkin._mdy(context.askedOn)}" if context.askedOn else "You said"

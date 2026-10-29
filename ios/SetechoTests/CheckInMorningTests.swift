@@ -364,3 +364,40 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     await m.apply(turn(.repeat_, "say that again"))
     #expect(!m.question.hasPrefix("And ") && !m.question.hasPrefix("Now, "))
 }
+
+/// Every data field is read back once, never one he already said or confirmed, never the coach's
+/// own lines; and the morning ends on a summary of what he gave before the send.
+@Test @MainActor func theReadBackSkipsWhatHeAlreadyChangedAndTheMorningEndsOnASummary() async throws {
+    let store = makeStore()
+    let template = try template()
+    store.saveTemplate(template)
+    let flow = CheckInMorningFlow(template: template)
+    func f(_ key: DataKey) throws -> FieldSpec { try #require(template.fields.first { $0.source.key == key }) }
+    let fromData = { (id: String, text: String) in
+        FieldAnswer(fieldId: id, text: text, state: .filled, provenance: [Provenance(source: "MacroFactor via Apple Health", detail: text)])
+    }
+    var answers = template.fields.map { answer($0.id, "x") }
+    func set(_ a: FieldAnswer) { answers[answers.firstIndex { $0.fieldId == a.fieldId }!] = a }
+    // Nutrition consistency is long and came from data: read back. Steps he corrected this morning: not again.
+    set(fromData(try f(.nutritionConsistency).id, "86%, 6 of 7 days within targets (off on 10/24/26)"))
+    set(answer(try f(.avgDailySteps).id, "10000"))
+    set(fromData(try f(.cardioProtocol).id, "25 minutes fasted LISS"))
+    set(fromData(try f(.weeksToShow).id, "12"))
+    set(fromData(try f(.trainingConsistency).id, "100%, 5 of 5 sessions"))
+    let draft = currentDraft(answers: answers)
+    let ids = flow.readBackFields(draft: draft).map(\.field.id)
+    #expect(ids == [try f(.nutritionConsistency).id, try f(.trainingConsistency).id])
+    // The summary names what he gave, with the free text counted.
+    store.upsert(photoSet: PhotoSet(id: UUID(), takenAt: .now, poses: [], collageFile: "c.jpg"))
+    set(answer(try f(.currentWeight).id, "180.8"))
+    set(answer(try #require(flow.glucoseField).id, "91"))
+    set(answer(try #require(template.fields.first { $0.id.contains("energy") }).id, "7/10"))
+    store.upsert(checkIn: currentDraft(answers: answers))
+    let coordinator = CheckInCoordinator(store: store)
+    let m = CheckInMorningModel(coordinator: coordinator, store: store, speak: { _ in })
+    let summary = m.morningSummary()
+    #expect(summary.hasPrefix("That's everything. This morning you gave me "))
+    #expect(summary.contains("weight 180.8, ") && summary.contains("energy levels 7/10") && summary.contains("average daily steps 10000"))
+    #expect(summary.contains("glucose 91") && summary.hasSuffix(" notes. The rest came from Apple Health and your log."))
+    #expect(!summary.contains("cardio") && !summary.contains("weeks"))   // the coach's own lines are never read
+}
