@@ -13,6 +13,8 @@ final class AppRouter {
     var showSettings = false
     var showAddReply = false
     var showConnections = false
+    /// More → "Import WhatsApp chat": the coach chat's history (HANDOFF.md §9).
+    var showChatImport = false
     /// The reply the Coach reply screen shows.
     var openReply: CoachReply?
     /// "Hey Siri, start my Setecho check-in" (HANDOFF.md §7, Check-in morning).

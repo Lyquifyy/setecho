@@ -21,11 +21,13 @@ final class Store {
     private(set) var calibration = Effort.Calibration()
     /// Last time's top sets from his paper logbook, for lifts not yet logged in the app.
     private(set) var logbook: [LogbookEntry] = []
+    /// Past check-ins and the coach's replies, read from a WhatsApp export (HANDOFF.md §9).
+    private(set) var chatHistory = ChatHistory()
     private(set) var loadError: String?
 
     let root: URL
 
-    static func defaultRoot() -> URL {
+    nonisolated static func defaultRoot() -> URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return support.appendingPathComponent("Setecho", isDirectory: true)
     }
@@ -335,6 +337,48 @@ final class Store {
         write(checkIns, "checkIns.json")
     }
 
+    // MARK: WhatsApp history (HANDOFF.md §9, WhatsApp history import)
+
+    /// Add what's new in an export: a check-in or reply already imported is skipped, and every
+    /// message read is remembered (timestamp + sender + text). `copy` writes one of the export's
+    /// files to the given place in the media folder, and only the kept items' files are copied.
+    @discardableResult
+    func mergeChat(_ result: ChatImport.Result, athlete: String, coach: String, template: CheckInTemplate,
+                   now: Date = .now, copy: (_ file: String, _ to: URL) throws -> Void) throws -> (checkIns: Int, coachMessages: Int) {
+        var history = chatHistory
+        let seen = history.seen.union(history.checkIns.map(\.id)).union(history.coachMessages.map(\.id))
+        var checkIns = result.checkIns.filter { !seen.contains($0.id) }
+        var messages = result.coachMessages.filter { !seen.contains($0.id) }
+        // A file the export doesn't hold (shared without media, or damaged) drops out of its item.
+        var missing = Set<String>()
+        for file in checkIns.flatMap(\.photoFiles) + messages.compactMap(\.audioFile) {
+            let url = mediaDirectory.appendingPathComponent(file)
+            guard !FileManager.default.fileExists(atPath: url.path) else { continue }
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            do { try copy((file as NSString).lastPathComponent, url) } catch { missing.insert(file) }
+        }
+        for i in checkIns.indices { checkIns[i].photoFiles.removeAll(where: missing.contains) }
+        for i in messages.indices where messages[i].audioFile.map(missing.contains) == true { messages[i].audioFile = nil }
+        messages.removeAll { $0.text.isEmpty && $0.audioFile == nil }
+        history.athleteName = athlete
+        history.coachName = coach
+        history.checkIns = (history.checkIns + checkIns).sorted { $0.sentAt < $1.sentAt }
+        history.coachMessages = (history.coachMessages + messages).sorted { $0.at < $1.at }
+        history.seen.formUnion(result.keys)
+        history.styleExamples = ChatImport.styleExamples(history.checkIns, template: template)
+        history.lastImportAt = now
+        chatHistory = history
+        write(chatHistory, "whatsapp.json")
+        return (checkIns.count, messages.count)
+    }
+
+    /// "Start over": the imported history and its files go, so a fresh export can be read again.
+    func clearChatHistory() {
+        try? FileManager.default.removeItem(at: mediaDirectory.appendingPathComponent(ChatImport.mediaFolder))
+        chatHistory = ChatHistory()
+        write(chatHistory, "whatsapp.json")
+    }
+
     // MARK: Derived
 
     var lastPhotoSet: PhotoSet? { photoSets.max { $0.takenAt < $1.takenAt } }
@@ -359,6 +403,7 @@ final class Store {
         macroFactorReminders = read("reminders.json") ?? []
         calibration = read("calibration.json") ?? Effort.Calibration()
         logbook = read("logbook.json") ?? []
+        chatHistory = read("whatsapp.json") ?? ChatHistory()
         try? FileManager.default.createDirectory(at: cuesDirectory, withIntermediateDirectories: true)
         // Migration: the first launch after plans arrived seeds version 1 from what the phone already has.
         if plans.isEmpty, let program {

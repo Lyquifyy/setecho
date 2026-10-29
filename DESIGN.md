@@ -95,7 +95,7 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 
 ## Screens
 
-Tabs: **Today / History / Check-in.** The More menu has two sections: from your coach (Import program and form, Add coach reply; Connections when built) and Settings.
+Tabs: **Today / History / Check-in.** The More menu has two sections: from your coach (Import program and form, Add coach reply, Import WhatsApp chat; Connections when built) and Settings.
 
 ### Settings (More menu)
 - **Cards, in order:** You (first name, show date) · Training (training days, cardio protocol, what you can load) · Check-in (morning reminder, 7-day average weight) · Sessions ("Coach's voice in sessions" on, "Next-set suggestions" on, "Machine-taken help" on (stretch), AirPods mic) · Voice (the voice picker, Personal Voice) · Voice tone (speed, pitch, warmth, clarity, "Play sample") · Developer.
@@ -234,9 +234,14 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 ### History (tab)
 - **Tabs** (`SegmentTabs`): Sessions (this week, previous sessions, last time) · Check-ins · Photos · Plan. One kind of history at a time.
 - **Sessions** keep the board's grouped-card layout. Each session is one line (date, day, sets) that opens to every set's clip and its count's `SourceChip`.
-- **Sent check-ins** reopen read-only.
+- **Sent check-ins** reopen read-only. Above them, **Trends**: weight, the tape and fasted glucose across every check-in, one line each, with the change since the first. Below them, **From WhatsApp**: the check-ins imported from the coach chat, each opening read-only with its photos.
 - **Photos** show each week's four photos as a timeline. Tapping one opens the Photo viewer on that pose; "Compare" opens the latest week beside the one before it.
-- **Plan changes** list each applied coach reply with its changes. The latest one has "Revert", which restores the previous plan.
+- **Plan changes** list each applied coach reply with its changes. The latest one has "Revert", which restores the previous plan. Under them, **Coach replies from WhatsApp**: his messages after each imported check-in, word for word, never applied.
+
+### Import WhatsApp chat (More menu)
+- **Purpose:** bring in the prep so far, once: past check-ins and the coach's replies, from WhatsApp's Export Chat zip.
+- **Steps:** how to export, what's kept, the last import with "Start over" → "Which one is you?" (sender rows with message counts) → what was found (check-ins, replies, photos, already imported, left out) → Imported.
+- **Footer:** "Choose the export" / "Continue" / "Import" / "Done".
 
 ### Photo viewer (full-screen)
 - **Purpose:** see a check-in photo at full size and put it beside another week's. Viewing only: the files stay exactly as taken, nothing is cropped, aligned or changed.

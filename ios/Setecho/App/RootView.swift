@@ -31,6 +31,9 @@ struct RootView: View {
         .sheet(isPresented: $router.showConnections) {
             ConnectionsView().environment(store)
         }
+        .sheet(isPresented: $router.showChatImport) {
+            ChatImportView().environment(store)
+        }
         .sheet(item: $router.openReply) { reply in
             CoachReplyView(reply: reply).environment(store)
         }

@@ -5,6 +5,8 @@ import UIKit
 struct HistoryView: View {
     @Environment(Store.self) private var store
     @State private var openCheckIn: CheckInDraft?
+    /// A check-in from the WhatsApp import, open read-only.
+    @State private var openPast: PastCheckIn?
     /// A week's photo open full screen, from the Photos tab.
     @State private var viewing: PhotoViewing?
 
@@ -41,6 +43,9 @@ struct HistoryView: View {
         }
         .sheet(item: $openCheckIn) { draft in
             SentCheckInView(draft: draft).environment(store)
+        }
+        .sheet(item: $openPast) { checkIn in
+            PastCheckInView(checkIn: checkIn).environment(store)
         }
         .fullScreenCover(item: $viewing) { viewing in
             PhotoViewer(viewing: viewing).environment(store)
@@ -92,7 +97,19 @@ struct HistoryView: View {
         }
     }
 
-    private func checkInsSection(_ sent: [CheckInDraft]) -> some View {
+    @ViewBuilder private func checkInsSection(_ sent: [CheckInDraft]) -> some View {
+        // Weight, the tape and glucose across every check-in: the imported ones and those sent from here.
+        if let template = store.currentTemplate {
+            let trends = HistoryTrends.series(template: template, past: store.chatHistory.checkIns, sent: sent)
+            if !trends.isEmpty {
+                SectionCard("Trends") {
+                    ForEach(Array(trends.enumerated()), id: \.element.id) { index, series in
+                        if index > 0 { CardDivider() }
+                        TrendRow(series: series)
+                    }
+                }
+            }
+        }
         SectionCard("Sent check-ins") {
             if sent.isEmpty {
                 Text("Sent check-ins reopen here, read-only.").font(.subheadline).secondaryText()
@@ -104,6 +121,17 @@ struct HistoryView: View {
                         Spacer()
                         Button("Open", systemImage: "doc.text") { openCheckIn = draft }.buttonStyle(.setechoTonal)
                     }
+                }
+            }
+        }
+        let past = store.chatHistory.checkIns.sorted { $0.sentAt > $1.sentAt }
+        if !past.isEmpty {
+            SectionCard("From WhatsApp", accessory: {
+                Text("\(past.count) check-ins").font(.subheadline).monospacedDigit().secondaryText()
+            }) {
+                ForEach(Array(past.enumerated()), id: \.element.id) { index, checkIn in
+                    if index > 0 { CardDivider() }
+                    PastCheckInRow(checkIn: checkIn) { openPast = checkIn }
                 }
             }
         }
@@ -132,7 +160,7 @@ struct HistoryView: View {
         }
     }
 
-    private var planSection: some View {
+    @ViewBuilder private var planSection: some View {
         SectionCard("Plan changes") {
             let applied = store.appliedReplies
             if applied.isEmpty {
@@ -155,6 +183,9 @@ struct HistoryView: View {
                     }
                 }
             }
+        }
+        if !store.chatHistory.coachMessages.isEmpty {
+            CoachTimelineCard()
         }
     }
 

@@ -36,6 +36,7 @@ struct BrandHeader: View {
                     AppRouter.shared.showImport = true
                 }
                 Button("Add coach reply", systemImage: "text.bubble") { AppRouter.shared.showAddReply = true }
+                Button("Import WhatsApp chat", systemImage: "bubble.left.and.text.bubble.right") { AppRouter.shared.showChatImport = true }
                 Button("Connections", systemImage: "link") { AppRouter.shared.showConnections = true }
             }
             Section {
