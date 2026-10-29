@@ -173,9 +173,24 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
                 }
             }
+
+            // Which build is on the phone, so a test can be matched to its TestFlight upload.
+            Text(Self.buildLine)
+                .font(.footnote.monospacedDigit())
+                .foregroundStyle(Theme.textSecondary)
+                .frame(maxWidth: .infinity)
+                .textSelection(.enabled)
         }
         .sheet(isPresented: $showGuide) { VoiceGuideView() }
         .sheet(isPresented: $showIntro) { SessionIntroView() }
+    }
+
+    /// "Setecho 1.0 · build 202610290738"
+    static var buildLine: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "Setecho \(version) · build \(build)"
     }
 
     /// One part of the current voice's tone, saved per voice as it moves.
