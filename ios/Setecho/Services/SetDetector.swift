@@ -108,6 +108,10 @@ final class SetDetector: NSObject {
     func start() {
         guard !isRunning else { return }
         captureSession.beginConfiguration()
+        // The camera never records sound, and AudioService owns the audio session. Left on, the
+        // capture session sets the session up itself, interrupting other audio by default (Apple's
+        // header): starting a session stopped his music while "Check the mic" kept it (Oct 29).
+        captureSession.automaticallyConfiguresApplicationAudioSession = false
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: front ? .front : .back),
               let input = try? AVCaptureDeviceInput(device: device), captureSession.canAddInput(input)
         else {

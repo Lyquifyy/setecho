@@ -45,6 +45,8 @@ final class PhotoCapture: NSObject {
 
     private func configure() -> Bool {
         captureSession.beginConfiguration()
+        // No sound in a photo: the camera leaves the app's audio session, and his music, alone.
+        captureSession.automaticallyConfiguresApplicationAudioSession = false
         captureSession.sessionPreset = .photo
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
               let input = try? AVCaptureDeviceInput(device: device), captureSession.canAddInput(input)
