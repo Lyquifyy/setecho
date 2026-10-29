@@ -39,7 +39,11 @@ final class AirPodsMic {
     }
 
     /// The category for the current policy. A refusal of the AirPods option is itself a fallback.
+    /// Already set is left alone: on the AirPods' high-quality link a repeated category sets the link
+    /// up again, which pauses his music (Oct 29).
     func apply(to session: AVAudioSession, ducking: Bool) throws {
+        let wanted = options(ducking: ducking)
+        if session.category == .playAndRecord, session.mode == .default, session.categoryOptions == wanted { return }
         do {
             try session.setCategory(.playAndRecord, mode: .default, options: options(ducking: ducking))
         } catch where isActive {
@@ -56,6 +60,17 @@ final class AirPodsMic {
         if let usb = inputs.first(where: { $0.portType == .usbAudio }) { return usb }
         guard isActive else { return nil }
         return inputs.first { $0.bluetoothMicrophoneExtension?.highQualityRecording.isSupported == true }
+    }
+
+    /// Prefer this input, unless it already is: a repeated preference re-routes like a new one.
+    func prefer(_ port: AVAudioSessionPortDescription?, in session: AVAudioSession) {
+        guard session.preferredInput?.uid != port?.uid else { return }
+        try? session.setPreferredInput(port)
+    }
+
+    /// The AirPods are the mic at high quality right now.
+    func isRecordingHighQuality(_ session: AVAudioSession) -> Bool {
+        session.currentRoute.inputs.first?.bluetoothMicrophoneExtension?.highQualityRecording.isEnabled == true
     }
 
     /// After an activation or a route change: says which mic is listening and why. Returns true only

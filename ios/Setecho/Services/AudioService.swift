@@ -67,11 +67,12 @@ final class AudioService {
 
     init() {
         // AirPods dropping to call quality, or the output vanishing, mid-run: check and fall back.
-        routeObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
+        routeObserver = NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
+            let reason = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt).flatMap(AVAudioSession.RouteChangeReason.init(rawValue:))
             Task { @MainActor in
                 guard let self else { return }
                 self.updateInput()
-                self.logAudio("route change", lowered: self.isSpeaking, error: nil)
+                self.logAudio("route change · \(reason.map(Self.describe) ?? "unknown")", lowered: self.isSpeaking, error: nil)
                 guard AirPodsMic.shared.isActive, AirPodsMic.shared.check(self.session) else { return }
                 self.configure()
             }
@@ -98,14 +99,14 @@ final class AudioService {
             try AirPodsMic.shared.apply(to: session, ducking: holdsDucking)
             // A plugged-in external mic (the DJI receiver) wins, then AirPods at high quality. A
             // preference that won't take never stops the run: iOS's own choice is never HFP.
-            try? session.setPreferredInput(AirPodsMic.shared.preferredInput(in: session))
+            AirPodsMic.shared.prefer(AirPodsMic.shared.preferredInput(in: session), in: session)
             // The session's haptics (armed, set ended, rest's up) are muted by iOS while recording unless allowed.
             try? session.setAllowHapticsAndSystemSoundsDuringRecording(true)
             try session.setActive(true)
             if AirPodsMic.shared.check(session) {
                 // Back to A2DP output and the DJI or iPhone mic, then on with the run.
                 try AirPodsMic.shared.apply(to: session, ducking: holdsDucking)
-                try? session.setPreferredInput(AirPodsMic.shared.preferredInput(in: session))
+                AirPodsMic.shared.prefer(AirPodsMic.shared.preferredInput(in: session), in: session)
                 try session.setActive(true)
             }
             updateInput()
@@ -404,22 +405,34 @@ final class AudioService {
     /// the configuration is never changed per line again (his music must never stop).
     private(set) var perLineDuckingOff = false
     private var musicFailures = 0
+    /// A line lowered his music and it hasn't been brought back yet.
+    private var musicLowered = false
 
     /// Lower his music for a line, or bring it back. It can't fail the session: the session stays
     /// active and mixable throughout. Lowering is an activation with `.duckOthers` (mixable);
     /// bringing it back only changes the options on the active session, with no second activation
     /// (that reactivation is what threw "can't interrupt others" at the gym, Oct 28). A failure is
     /// logged, the mixable configuration put back, and after two the per-line lowering stops.
+    /// With the AirPods recording at high quality, nothing is lowered: the AirPods are on a call-style
+    /// link (BluetoothHFP at full bandwidth), every category change sets it up again, and his music
+    /// app pauses as if the headphones were unplugged (Oct 29). Lines play over his music instead.
     func lowerMusic(_ lowered: Bool) {
-        guard !holdsDucking, !perLineDuckingOff else { return }
+        guard !holdsDucking else { return }
+        if lowered, !perLineDuckingOff, AirPodsMic.shared.isRecordingHighQuality(session) {
+            perLineDuckingOff = true
+            logAudio("per-line lowering off: the AirPods mic is at high quality", lowered: false, error: nil)
+        }
+        if lowered ? perLineDuckingOff : !musicLowered { return }
         do {
             try AirPodsMic.shared.apply(to: session, ducking: lowered)
             if lowered { try session.setActive(true) }
+            musicLowered = lowered
             logAudio(lowered ? "lower" : "restore", lowered: lowered, error: nil)
         } catch {
             logAudio(lowered ? "lower" : "restore", lowered: lowered, error: error)
             musicFailures += 1
             try? AirPodsMic.shared.apply(to: session, ducking: false)
+            musicLowered = false
             if musicFailures >= 2 {
                 perLineDuckingOff = true
                 logAudio("per-line lowering off after \(musicFailures) failures", lowered: false, error: nil)
@@ -437,6 +450,20 @@ final class AudioService {
             otherAudioPlaying: session.isOtherAudioPlaying,
             error: error.map(Self.describe))
         onAudioEvent?(event)
+    }
+
+    /// A route change's reason in Apple's words, for the debug JSON.
+    nonisolated static func describe(_ reason: AVAudioSession.RouteChangeReason) -> String {
+        switch reason {
+        case .newDeviceAvailable: "new device available"
+        case .oldDeviceUnavailable: "old device unavailable"
+        case .categoryChange: "category change"
+        case .override: "override"
+        case .wakeFromSleep: "wake from sleep"
+        case .noSuitableRouteForCategory: "no suitable route"
+        case .routeConfigurationChange: "route configuration change"
+        default: "reason \(reason.rawValue)"
+        }
     }
 
     /// "!int (560557684): …": an OSStatus as its four characters, so a log reads like Apple's docs.
