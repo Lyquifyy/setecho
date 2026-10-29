@@ -76,7 +76,7 @@ private let liftoffSameDay = session("liftoff:2026-10-05 17:00:00", .liftoff, at
 @Test func lastTimeIsTheLatestTopSetAcrossEveryMatchedName() throws {
     var history = TrainingHistory()
     history.sessions = [liftoffSep, garminOct]
-    history.matches = ["Close Grip Bench Press": smith.id, "Close Grip Barbell Bench Press": smith.id, "Cable Fly": fly.id]
+    history.matches = ["Close Grip Bench Press": [smith.id], "Close Grip Barbell Bench Press": [smith.id], "Cable Fly": [fly.id]]
     let last = try #require(TrainingHistory.lastTop(names: history.names(for: smith.id), in: history.sessions))
     #expect(last.session.id == garminOct.id && last.set.loadLb == 225 && last.set.reps == 9)
 
@@ -109,8 +109,8 @@ private let liftoffSameDay = session("liftoff:2026-10-05 17:00:00", .liftoff, at
     let store = Store(root: root)
     store.saveProgram(Program(name: "P", weeks: [ProgramWeek(number: 1, days: [ProgramDay(id: "d1", name: "Day 1", exercises: [smith])])],
                               importedAt: .now, flags: []))
-    store.mergeHistory([liftoffSep, garminOct], matches: ["Close Grip Bench Press": smith.id, "Close Grip Barbell Bench Press": smith.id,
-                                                          "Cable Fly": nil], liftoffUnit: .lb)
+    store.mergeHistory([liftoffSep, garminOct], matches: ["Close Grip Bench Press": [smith.id], "Close Grip Barbell Bench Press": [smith.id],
+                                                          "Cable Fly": []], liftoffUnit: .lb)
     #expect(store.lastSets["d1_smith_close_grip|top"]?.loadLb == 225)
     #expect(store.lastSets["d1_smith_close_grip|top"]?.source == "Garmin")
 
@@ -123,15 +123,49 @@ private let liftoffSameDay = session("liftoff:2026-10-05 17:00:00", .liftoff, at
     // Remembered: the matches, the name kept as its own, and the sessions, after a relaunch.
     let reopened = Store(root: root)
     #expect(reopened.history.sessions.map(\.id) == [liftoffSep.id, garminOct.id])
-    #expect(reopened.history.matches["Close Grip Barbell Bench Press"] == smith.id && reopened.history.ownNames == ["Cable Fly"])
+    #expect(reopened.history.matches["Close Grip Barbell Bench Press"] == [smith.id] && reopened.history.ownNames == ["Cable Fly"])
 
     // A newer export of the same session replaces it; a name matched later leaves the own-name list.
     var corrected = garminOct
     corrected.exercises[0].sets[0].reps = 10
-    reopened.mergeHistory([corrected], matches: ["Cable Fly": smith.id], liftoffUnit: .kg)
+    reopened.mergeHistory([corrected], matches: ["Cable Fly": [smith.id]], liftoffUnit: .kg)
     #expect(reopened.history.sessions.count == 2 && reopened.history.sessions[1].exercises[0].sets[0].reps == 10)
     #expect(reopened.history.ownNames.isEmpty && reopened.history.liftoffUnit == .kg)
 
     reopened.clearHistory()
     #expect(reopened.history == TrainingHistory())
+}
+
+@Test func oneNameCanBeTheSameLiftOnTwoDays() {
+    let day1 = planned("d1_laterals", "Seated DB Laterals", .dumbbell, roles: [nil, nil])
+    let day5 = planned("d5_laterals", "Seated DB Lateral Raises", .dumbbell, roles: [nil, nil])
+    var history = TrainingHistory()
+    history.sessions = [session("garmin:2", .garmin, at(10, 5), [ImportedExercise(name: "Dumbbell Lateral Raise", note: nil, sets: [set(0, 25, 15, .top)])])]
+    history.matches = ["Dumbbell Lateral Raise": [day1.id, day5.id]]
+    let sets = history.lastSets(for: [day1, day5])
+    #expect(sets["d1_laterals|"]?.loadLb == 25 && sets["d5_laterals|"]?.loadLb == 25)
+}
+
+@Test func matchesFromTheOct29BuildsStillDecode() throws {
+    let old = try JSONCoding.decoder.decode(TrainingHistory.self, from: Data(#"{"matches": {"Squat": "d2_squats"}}"#.utf8))
+    #expect(old.matches == ["Squat": ["d2_squats"]])
+    let oldAnswer = try JSONCoding.decoder.decode(HistoryMatch.self, from: Data(#"{"name": "Squat", "exerciseId": "d2_squats"}"#.utf8))
+    let newAnswer = try JSONCoding.decoder.decode(HistoryMatch.self, from: Data(#"{"name": "Squat", "exerciseIds": ["a", "b"], "exerciseId": "a"}"#.utf8))
+    #expect(oldAnswer.exerciseIds == ["d2_squats"] && newAnswer.exerciseIds == ["a", "b"])
+}
+
+@Test func aRestPauseSetAfterTheTopSetReadsTheLighterSet() {
+    let press = planned("d5_chest_press", "Machine Chest Press", .machine, roles: [.top, .restPause])
+    let restPauseOnly = planned("d5_shoulder_press", "Machine Shoulder Press", .machine, roles: [.restPause])
+    var history = TrainingHistory()
+    history.sessions = [session("liftoff:1", .liftoff, at(10, 23), [
+        ImportedExercise(name: "Chest Press", note: nil, sets: [set(0, 195, 8, .top), set(1, 175, 19, .backOff)]),
+        ImportedExercise(name: "Machine Shoulder Press", note: nil, sets: [set(0, 100, 28, .top)]),
+    ])]
+    history.matches = ["Chest Press": [press.id], "Machine Shoulder Press": [restPauseOnly.id]]
+    let sets = history.lastSets(for: [press, restPauseOnly])
+    #expect(sets["d5_chest_press|top"]?.loadLb == 195 && sets["d5_chest_press|restPause"]?.loadLb == 175)
+    #expect(sets["d5_chest_press|backOff"] == nil)
+    // A rest-pause set on its own is the first set: its top set.
+    #expect(sets["d5_shoulder_press|restPause"]?.loadLb == 100)
 }

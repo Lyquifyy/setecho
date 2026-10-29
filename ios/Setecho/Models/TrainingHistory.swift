@@ -6,8 +6,9 @@ import Foundation
 /// measured; a set logged in the app wins over them.
 struct TrainingHistory: Codable, Equatable {
     var sessions: [ImportedSession] = []
-    /// Every name he confirmed that is one of his plan's exercises: name → exercise id.
-    var matches: [String: String] = [:]
+    /// Every name he confirmed that is one of his plan's exercises: name → exercise ids. One name can be
+    /// several plan exercises: the same lift on two days ("Seated DB Laterals", "Seated DB Lateral Raises").
+    var matches: [String: [String]] = [:]
     /// Names he confirmed as none of them: kept as history under their own name.
     var ownNames: Set<String> = []
     /// "Liftoff weights are in pounds?", asked once.
@@ -19,7 +20,12 @@ struct TrainingHistory: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         sessions = try c.decodeIfPresent([ImportedSession].self, forKey: .sessions) ?? []
-        matches = try c.decodeIfPresent([String: String].self, forKey: .matches) ?? [:]
+        // Oct 29 builds kept one id per name.
+        if let many = try? c.decodeIfPresent([String: [String]].self, forKey: .matches) {
+            matches = many
+        } else {
+            matches = (try c.decodeIfPresent([String: String].self, forKey: .matches) ?? [:]).mapValues { [$0] }
+        }
         ownNames = try c.decodeIfPresent(Set<String>.self, forKey: .ownNames) ?? []
         liftoffUnit = try c.decodeIfPresent(WeightUnit.self, forKey: .liftoffUnit) ?? .lb
         lastImportAt = try c.decodeIfPresent(Date.self, forKey: .lastImportAt)
@@ -93,10 +99,31 @@ struct LeftOutSets: Codable, Equatable {
     var reason: Reason
 }
 
-/// One name's answer from `/import/history/match`.
+/// One name's answer from `/import/history/match`: every plan exercise it is, or none.
 struct HistoryMatch: Codable, Equatable {
     var name: String
-    var exerciseId: String?
+    var exerciseIds: [String]
+
+    init(name: String, exerciseIds: [String]) {
+        self.name = name
+        self.exerciseIds = exerciseIds
+    }
+
+    /// The backend before Oct 29 evening answered one `exerciseId`.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        name = try c.decode(String.self, forKey: .name)
+        exerciseIds = try c.decodeIfPresent([String].self, forKey: .exerciseIds)
+            ?? (try c.decodeIfPresent(String.self, forKey: .exerciseId)).map { [$0] } ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Keys.self)
+        try c.encode(name, forKey: .name)
+        try c.encode(exerciseIds, forKey: .exerciseIds)
+    }
+
+    private enum Keys: String, CodingKey { case name, exerciseIds, exerciseId }
 }
 
 extension TrainingHistory {
@@ -134,7 +161,7 @@ extension TrainingHistory {
 
     /// The names matched to one plan exercise.
     func names(for exerciseId: String) -> Set<String> {
-        Set(matches.filter { $0.value == exerciseId }.keys)
+        Set(matches.filter { $0.value.contains(exerciseId) }.keys)
     }
 
     /// Last time per "exerciseId|role" from the imported sessions, for every plan exercise with a
@@ -150,8 +177,12 @@ extension TrainingHistory {
             let firstRole = exercise.sets.first?.role
             let top = LastSet(loadLb: last.set.loadLb, reps: reps, source: source, date: last.session.startedAt)
             out["\(exercise.id)|\(firstRole?.rawValue ?? "")"] = top
-            if exercise.sets.contains(where: { $0.role == .backOff }), let backOff = last.exercise.firstBackOff, let r = backOff.reps {
-                out["\(exercise.id)|\(SetRole.backOff.rawValue)"] = LastSet(loadLb: backOff.loadLb, reps: r, source: source, date: last.session.startedAt)
+            // The lighter set after the top set is his planned back-off, or his rest-pause set ("1 top set.
+            // 1 rest pause set."): neither source marks rest-pause, so it reads as a back-off there.
+            if let backOff = last.exercise.firstBackOff, let r = backOff.reps {
+                for role in Set(exercise.sets.dropFirst().compactMap(\.role)) where role == .backOff || role == .restPause {
+                    out["\(exercise.id)|\(role.rawValue)"] = LastSet(loadLb: backOff.loadLb, reps: r, source: source, date: last.session.startedAt)
+                }
             }
         }
         return out

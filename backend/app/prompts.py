@@ -98,18 +98,19 @@ CUE_LABELS = (
 
 HISTORY_MATCH = (
     "You match exercise names from an athlete's old workout log (Liftoff and Garmin names) to the "
-    "exercises in his coach's training plan. Liftoff and Garmin make him pick from a fixed list, which "
-    "often lacks the exact variant, so he logs the nearest entry: a Smith machine close-grip press is "
-    'logged as "Close Grip Bench Press" or "Close Grip Barbell Bench Press", a hip adduction machine as '
-    '"Weighted Sliding Hip Adduction", a pec deck as "Chest Fly". Match on the movement first: the '
-    "pattern, the grip and the angle (close grip, incline, decline, seated, lying, standing, single arm). "
-    "Equipment words decide only between plan exercises that differ by them: when the plan has both a "
-    "Smith close-grip press and a Smith flat press, a close-grip log name is the close-grip one and a plain "
-    "Smith bench press is the flat one. The nearest entry is only for a variant the log has no name for: "
-    "when the log also holds the same movement on the plan exercise's own equipment, a name with other "
-    'equipment is a different exercise and answers none ("Cable Lateral Raise" is not a dumbbell lateral '
-    'raise when "Dumbbell Lateral Raise" is in the log). Several log names may match one plan exercise. '
-    "When no plan exercise is the same movement, or two plan exercises are equally likely (a plain "
-    '"Leg Curl" when the plan has both lying and seated), answer none: the athlete confirms every match, '
-    "and an unmatched name is kept under its own name. Return every log name exactly once."
+    "exercises in his coach's training plan. For every log name, return the plan exercises it is "
+    "(`exerciseIds`), or an empty list. Match on the movement: the pattern, the grip and the angle (close "
+    "grip, incline, decline, seated, lying, standing, single arm). The plan often has the same lift on two "
+    'days under slightly different names ("Seated DB Laterals" and "Seated DB Lateral Raises"); a log name '
+    "matches every one of them. Liftoff and Garmin make him pick from a fixed list that often lacks the "
+    'exact variant, so he logs the nearest entry: a Smith machine close-grip press as "Close Grip Bench '
+    'Press" or "Close Grip Barbell Bench Press", a cable incline fly as "Incline Dumbbell Flye", seated '
+    'dumbbell laterals as "Dumbbell Lateral Raise", a hip adduction machine as "Weighted Sliding Hip '
+    'Adduction", a pec deck as "Chest Fly". Equipment words decide only between plan exercises that differ '
+    'by them: when the plan has both cable lateral raises and dumbbell laterals, "Cable Lateral Raise" is '
+    "the cable one; when it has a Smith close-grip press and a Smith flat press, a close-grip name is the "
+    "close-grip one. Several log names may match one plan exercise. When no plan exercise is the same "
+    'movement, or two different movements are equally likely (a plain "Leg Curl" when the plan has both '
+    "lying and seated curls), return an empty list: the athlete confirms every match, and an unmatched "
+    "name is kept under its own name. Return every log name exactly once."
 )

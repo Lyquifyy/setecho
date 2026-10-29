@@ -177,7 +177,8 @@ def test_endpoint_refuses_other_files():
 
 PLAN = [
     {"id": "d1-smith-close-grip", "name": "Smith close-grip bench"},
-    {"id": "d1-pressdown", "name": "Rope pressdown"},
+    {"id": "d1-laterals", "name": "Seated DB Laterals"},
+    {"id": "d5-laterals", "name": "Seated DB Lateral Raises"},
     {"id": "d2-lying-curl", "name": "Lying leg curl"},
 ]
 
@@ -190,12 +191,19 @@ def test_match_sends_names_only_and_validates(monkeypatch):
         return (
             {
                 "matches": [
-                    {"name": "Close Grip Bench Press", "exerciseId": "d1-smith-close-grip"},
-                    {"name": "Triceps Pressdown", "exerciseId": "d1-pressdown"},
-                    {"name": "Triceps Pressdown", "exerciseId": "d2-lying-curl"},  # a second answer: ignored
-                    {"name": "Barbell Back Squat", "exerciseId": "none"},
-                    {"name": "Made Up", "exerciseId": "d1-pressdown"},  # not his name: dropped
-                    {"name": "Weighted Leg Curl", "exerciseId": "invented-id"},  # not his plan: unmatched
+                    {"name": "Close Grip Bench Press", "exerciseIds": ["d1-smith-close-grip"]},
+                    # The same lift on two days: both, a repeat dropped.
+                    {
+                        "name": "Dumbbell Lateral Raise",
+                        "exerciseIds": ["d1-laterals", "d5-laterals", "d1-laterals"],
+                    },
+                    {
+                        "name": "Dumbbell Lateral Raise",
+                        "exerciseIds": ["d2-lying-curl"],
+                    },  # a second answer: ignored
+                    {"name": "Barbell Back Squat", "exerciseIds": []},
+                    {"name": "Made Up", "exerciseIds": ["d1-laterals"]},  # not his name: dropped
+                    {"name": "Weighted Leg Curl", "exerciseIds": ["invented-id"]},  # not his plan: unmatched
                 ]
             },
             None,
@@ -204,7 +212,7 @@ def test_match_sends_names_only_and_validates(monkeypatch):
     monkeypatch.setattr(meta, "spark_json", fake)
     names = [
         "Close Grip Bench Press",
-        "Triceps Pressdown",
+        "Dumbbell Lateral Raise",
         "Barbell Back Squat",
         "Weighted Leg Curl",
         "Plank",
@@ -212,17 +220,30 @@ def test_match_sends_names_only_and_validates(monkeypatch):
     resp = TestClient(app).post("/import/history/match", json={"names": names, "exercises": PLAN})
     assert resp.status_code == 200, resp.text
     assert resp.json()["matches"] == [
-        {"name": "Close Grip Bench Press", "exerciseId": "d1-smith-close-grip"},
-        {"name": "Triceps Pressdown", "exerciseId": "d1-pressdown"},
-        {"name": "Barbell Back Squat", "exerciseId": None},
-        {"name": "Weighted Leg Curl", "exerciseId": None},
-        {"name": "Plank", "exerciseId": None},
+        {
+            "name": "Close Grip Bench Press",
+            "exerciseIds": ["d1-smith-close-grip"],
+            "exerciseId": "d1-smith-close-grip",
+        },
+        {
+            "name": "Dumbbell Lateral Raise",
+            "exerciseIds": ["d1-laterals", "d5-laterals"],
+            "exerciseId": "d1-laterals",
+        },
+        {"name": "Barbell Back Squat", "exerciseIds": [], "exerciseId": None},
+        {"name": "Weighted Leg Curl", "exerciseIds": [], "exerciseId": None},
+        {"name": "Plank", "exerciseIds": [], "exerciseId": None},
     ]
     # Names and plan exercises only: no weights, reps, dates or notes.
     assert "Squeeze" not in seen["user"] and "225" not in seen["user"]
     items = seen["schema"]["properties"]["matches"]["items"]["properties"]
     assert items["name"]["enum"] == names
-    assert items["exerciseId"]["enum"] == ["d1-smith-close-grip", "d1-pressdown", "d2-lying-curl", "none"]
+    assert items["exerciseIds"]["items"]["enum"] == [
+        "d1-smith-close-grip",
+        "d1-laterals",
+        "d5-laterals",
+        "d2-lying-curl",
+    ]
 
 
 def test_match_without_names_or_plan_never_calls_spark(monkeypatch):
@@ -232,7 +253,7 @@ def test_match_without_names_or_plan_never_calls_spark(monkeypatch):
         "matches": []
     }
     assert client.post("/import/history/match", json={"names": ["Plank"], "exercises": []}).json() == {
-        "matches": [{"name": "Plank", "exerciseId": None}]
+        "matches": [{"name": "Plank", "exerciseIds": [], "exerciseId": None}]
     }
 
 
@@ -240,4 +261,4 @@ def test_match_schema_is_strict():
     schema = history.match_schema(["A"], ["x"])
     assert json.dumps(schema)  # serializable
     item = schema["properties"]["matches"]["items"]
-    assert item["additionalProperties"] is False and set(item["required"]) == {"name", "exerciseId"}
+    assert item["additionalProperties"] is False and set(item["required"]) == {"name", "exerciseIds"}

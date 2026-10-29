@@ -22,8 +22,8 @@ final class HistoryImportModel {
     private(set) var matchError: String?
     private(set) var result: HistoryImportResult?
     private(set) var unit: WeightUnit
-    /// Name → plan exercise id, or nil to keep it under its own name. Remembered answers, then Spark's.
-    var proposed: [String: String?] = [:]
+    /// Name → the plan exercises it is (empty: kept under its own name). Remembered answers, then Spark's.
+    var proposed: [String: [String]] = [:]
     /// A day in both Liftoff and Garmin → the one he keeps.
     var choices: [String: HistorySource] = [:]
     private(set) var added: Int?
@@ -57,8 +57,15 @@ final class HistoryImportModel {
     var hasLiftoff: Bool { sessions.contains { $0.source == .liftoff } }
     var alreadyImported: Int { sessions.filter { s in store.history.sessions.contains { $0.id == s.id } }.count }
 
-    func names(for exerciseId: String) -> [String] { names.filter { (proposed[$0] ?? nil) == exerciseId } }
-    var ownNames: [String] { names.filter { (proposed[$0] ?? nil) == nil } }
+    func names(for exerciseId: String) -> [String] { names.filter { proposed[$0]?.contains(exerciseId) == true } }
+    var ownNames: [String] { names.filter { proposed[$0]?.isEmpty ?? true } }
+
+    /// "Change": a plan lift on or off for this name; a name can be the same lift on two days.
+    func toggle(_ name: String, _ exerciseId: String) {
+        var ids = proposed[name] ?? []
+        if let i = ids.firstIndex(of: exerciseId) { ids.remove(at: i) } else { ids.append(exerciseId) }
+        proposed[name] = ids
+    }
 
     func exercise(_ id: String) -> PlannedExercise? { planDays.lazy.flatMap(\.exercises).first { $0.id == id } }
 
@@ -103,9 +110,9 @@ final class HistoryImportModel {
 
     /// "Try again" after a failed match: only the names still unmatched go.
     func retryMatch() async {
-        let answered = proposed.filter { $0.value != nil }
+        let answered = proposed.filter { !$0.value.isEmpty }
         await match()
-        for (name, id) in answered { proposed[name] = id }  // his own picks stay
+        for (name, ids) in answered { proposed[name] = ids }  // his own picks stay
     }
 
     /// Remembered answers first; only names he hasn't confirmed go to Spark.
@@ -113,27 +120,26 @@ final class HistoryImportModel {
         matchError = nil
         let history = store.history
         let ids = Set(planDays.flatMap(\.exercises).map(\.id))
-        var proposed: [String: String?] = [:]
+        var proposed: [String: [String]] = [:]
         for name in names where history.isConfirmed(name) {
-            let id = history.matches[name]
-            proposed[name] = id.flatMap { ids.contains($0) ? $0 : nil }
+            proposed[name] = (history.matches[name] ?? []).filter(ids.contains)
         }
         let new = names.filter { proposed[$0] == nil }
         if !new.isEmpty, !planDays.isEmpty {
             do {
                 for m in try await api.matchHistory(names: new, exercises: planDays.flatMap(\.exercises)) {
-                    proposed[m.name] = .some(m.exerciseId.flatMap { ids.contains($0) ? $0 : nil })
+                    proposed[m.name] = m.exerciseIds.filter(ids.contains)
                 }
             } catch {
                 matchError = error.userMessage
             }
         }
-        for name in names where proposed[name] == nil { proposed[name] = .some(nil) }
+        for name in names where proposed[name] == nil { proposed[name] = [] }
         self.proposed = proposed
     }
 
     func commit() {
-        let answers = Dictionary(uniqueKeysWithValues: names.map { ($0, proposed[$0] ?? nil) })
+        let answers = Dictionary(uniqueKeysWithValues: names.map { ($0, proposed[$0] ?? []) })
         store.mergeHistory(kept, matches: answers, liftoffUnit: unit)
         added = kept.count
         step = .done
@@ -343,11 +349,12 @@ struct HistoryImportView: View {
                 ForEach(model.planDays) { day in
                     Section(day.name) {
                         ForEach(day.exercises) { exercise in
-                            Button(exercise.name) { model.proposed[name] = .some(exercise.id) }
+                            Toggle(exercise.name, isOn: Binding(get: { model.proposed[name]?.contains(exercise.id) == true },
+                                                                 set: { _ in model.toggle(name, exercise.id) }))
                         }
                     }
                 }
-                Button("Keep under its own name") { model.proposed[name] = .some(nil) }
+                Button("Keep under its own name") { model.proposed[name] = [] }
             } label: {
                 Text(action).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.cobalt).frame(minHeight: 44)
             }

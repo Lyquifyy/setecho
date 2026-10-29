@@ -383,14 +383,14 @@ final class Store {
     // MARK: Liftoff and Garmin history (HANDOFF.md §9, Bring your history)
 
     /// Keep an import: its sessions replace any with the same id, and every name he confirmed is
-    /// remembered (a plan exercise id, or nil for its own name) so the next import asks only new ones.
-    func mergeHistory(_ sessions: [ImportedSession], matches: [String: String?], liftoffUnit: WeightUnit, now: Date = .now) {
+    /// remembered (the plan exercises it is, or none for its own name) so the next import asks only new ones.
+    func mergeHistory(_ sessions: [ImportedSession], matches: [String: [String]], liftoffUnit: WeightUnit, now: Date = .now) {
         var next = history
         let incoming = Set(sessions.map(\.id))
         next.sessions = (next.sessions.filter { !incoming.contains($0.id) } + sessions).sorted { $0.startedAt < $1.startedAt }
-        for (name, exerciseId) in matches {
-            if let exerciseId {
-                next.matches[name] = exerciseId
+        for (name, exerciseIds) in matches {
+            if !exerciseIds.isEmpty {
+                next.matches[name] = exerciseIds
                 next.ownNames.remove(name)
             } else {
                 next.matches[name] = nil

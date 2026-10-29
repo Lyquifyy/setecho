@@ -371,6 +371,10 @@ class MatchRequest(StrictModel):
 
 class Match(StrictModel):
     name: str
+    #: Every plan exercise this name is: the same lift on two days ("Seated DB Laterals", "Seated DB
+    #: Lateral Raises") takes both. Empty: kept under its own name.
+    exerciseIds: list[str]
+    #: The first of them, for builds before exerciseIds (TestFlight 202610291115 and earlier).
     exerciseId: str | None
 
 
@@ -378,11 +382,8 @@ class MatchResponse(StrictModel):
     matches: list[Match]
 
 
-NONE = "none"
-
-
 def match_schema(names: list[str], ids: list[str]) -> dict:
-    """Per request, so the model can only answer with his names and his plan's ids (or none)."""
+    """Per request, so the model can only answer with his names and his plan's ids."""
     return {
         "type": "object",
         "additionalProperties": False,
@@ -393,10 +394,10 @@ def match_schema(names: list[str], ids: list[str]) -> dict:
                 "items": {
                     "type": "object",
                     "additionalProperties": False,
-                    "required": ["name", "exerciseId"],
+                    "required": ["name", "exerciseIds"],
                     "properties": {
                         "name": {"type": "string", "enum": names},
-                        "exerciseId": {"type": "string", "enum": [*ids, NONE]},
+                        "exerciseIds": {"type": "array", "items": {"type": "string", "enum": ids}},
                     },
                 },
             }
@@ -404,16 +405,22 @@ def match_schema(names: list[str], ids: list[str]) -> dict:
     }
 
 
+def _match(name: str, ids: list[str]) -> Match:
+    return Match(name=name, exerciseIds=ids, exerciseId=ids[0] if ids else None)
+
+
 def validate_matches(raw: dict, names: list[str], ids: set[str]) -> MatchResponse:
-    """Every name once, in his order; a name the model skipped or matched to nothing real is unmatched."""
-    picked: dict[str, str | None] = {}
+    """Every name once, in his order; ids outside his plan are dropped, so a name the model skipped or
+    matched to nothing real is unmatched."""
+    picked: dict[str, list[str]] = {}
     for m in raw.get("matches", []) if isinstance(raw, dict) else []:
         if not isinstance(m, dict):
             continue
-        name, ex = m.get("name"), m.get("exerciseId")
+        name, got = m.get("name"), m.get("exerciseIds")
         if name in names and name not in picked:
-            picked[name] = ex if ex in ids else None
-    return MatchResponse(matches=[Match(name=n, exerciseId=picked.get(n)) for n in names])
+            got = got if isinstance(got, list) else []
+            picked[name] = list(dict.fromkeys(x for x in got if isinstance(x, str) and x in ids))
+    return MatchResponse(matches=[_match(n, picked.get(n, [])) for n in names])
 
 
 def match_names(req: MatchRequest) -> MatchResponse:
@@ -422,7 +429,7 @@ def match_names(req: MatchRequest) -> MatchResponse:
     if not names:
         return MatchResponse(matches=[])
     if not exercises:
-        return MatchResponse(matches=[Match(name=n, exerciseId=None) for n in names])
+        return MatchResponse(matches=[_match(n, []) for n in names])
     plan = "\n".join(f"- {e.id}: {e.name}" for e in exercises)
     log = "\n".join(f"- {n}" for n in names)
     user = f"Plan exercises (id: name):\n{plan}\n\nNames from his workout log:\n{log}"
