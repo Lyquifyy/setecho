@@ -1,0 +1,968 @@
+{
+  "name": "Synthetic cycle sheet",
+  "weeks": [
+    {
+      "number": 1,
+      "days": [
+        {
+          "id": "w1_day_1",
+          "name": "Day 1",
+          "exercises": [
+            {
+              "name": "Stationary Bike",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": 300,
+                  "totalReps": null,
+                  "role": null
+                }
+              ],
+              "equipment": "machine",
+              "restSeconds": 180,
+              "notes": null,
+              "alternates": [],
+              "id": "w1_day_1_stationary_bike",
+              "restMinSeconds": 90
+            },
+            {
+              "name": "Incline DB Press",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 6,
+                  "repsMax": 8,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": "top"
+                },
+                {
+                  "reps": null,
+                  "repsMin": 6,
+                  "repsMax": 8,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": "backOff"
+                }
+              ],
+              "equipment": "dumbbell",
+              "restSeconds": 180,
+              "notes": "1 top set. 1 back down set",
+              "alternates": [],
+              "id": "w1_day_1_incline_db_press",
+              "restMinSeconds": 90
+            },
+            {
+              "name": "Flat Machine Press",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": "top"
+                },
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": 20,
+                  "role": "restPause"
+                }
+              ],
+              "equipment": "machine",
+              "restSeconds": 180,
+              "notes": "1 top set. 1 rest pause (20)",
+              "alternates": [],
+              "id": "w1_day_1_flat_machine_press",
+              "restMinSeconds": 90
+            },
+            {
+              "name": "Pec Deck",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": 20,
+                  "role": "restPause"
+                }
+              ],
+              "equipment": "machine",
+              "restSeconds": 180,
+              "notes": "20 total reps (rest pause set)",
+              "alternates": [],
+              "id": "w1_day_1_pec_deck",
+              "restMinSeconds": 90
+            },
+            {
+              "name": "Lateral Raise",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 12,
+                  "repsMax": 15,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 12,
+                  "repsMax": 15,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 12,
+                  "repsMax": 15,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                }
+              ],
+              "equipment": "dumbbell",
+              "restSeconds": 180,
+              "notes": null,
+              "alternates": [],
+              "id": "w1_day_1_lateral_raise",
+              "restMinSeconds": 90
+            }
+          ],
+          "kind": "training",
+          "cardio": null
+        },
+        {
+          "id": "w1_day_2",
+          "name": "Day 2",
+          "exercises": [
+            {
+              "name": "Hack Squat",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 6,
+                  "repsMax": 8,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": "top"
+                },
+                {
+                  "reps": null,
+                  "repsMin": 6,
+                  "repsMax": 8,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": "backOff"
+                }
+              ],
+              "equipment": "machine",
+              "restSeconds": 180,
+              "notes": "1 top set. 1 back down set",
+              "alternates": [
+                {
+                  "name": "Leg Press",
+                  "quote": "Hack Squat or Leg Press",
+                  "source": "Sheet"
+                }
+              ],
+              "id": "w1_day_2_hack_squat",
+              "restMinSeconds": 90
+            },
+            {
+              "name": "Lying Leg Curl",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 10,
+                  "repsMax": 12,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 10,
+                  "repsMax": 12,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                }
+              ],
+              "equipment": "machine",
+              "restSeconds": 180,
+              "notes": null,
+              "alternates": [],
+              "id": "w1_day_2_lying_leg_curl",
+              "restMinSeconds": 90
+            },
+            {
+              "name": "Walking Lunge",
+              "sets": [
+                {
+                  "reps": 12,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                },
+                {
+                  "reps": 12,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                }
+              ],
+              "equipment": "dumbbell",
+              "restSeconds": 180,
+              "notes": "12 each",
+              "alternates": [],
+              "id": "w1_day_2_walking_lunge",
+              "restMinSeconds": 90
+            },
+            {
+              "name": "Standing Calf Raise",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 10,
+                  "repsMax": 12,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 10,
+                  "repsMax": 12,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 10,
+                  "repsMax": 12,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                }
+              ],
+              "equipment": "machine",
+              "restSeconds": 180,
+              "notes": null,
+              "alternates": [],
+              "id": "w1_day_2_standing_calf_raise",
+              "restMinSeconds": 90
+            }
+          ],
+          "kind": "training",
+          "cardio": null
+        },
+        {
+          "id": "w1_day_3",
+          "name": "Day 3",
+          "exercises": [
+            {
+              "name": "Lat Pulldown",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": "top"
+                },
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": "backOff"
+                }
+              ],
+              "equipment": "cable",
+              "restSeconds": 180,
+              "notes": "1 top set. 1 back down set",
+              "alternates": [],
+              "id": "w1_day_3_lat_pulldown",
+              "restMinSeconds": 90
+            },
+            {
+              "name": "Chest Supported Row",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 10,
+                  "repsMax": 12,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 10,
+                  "repsMax": 12,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                }
+              ],
+              "equipment": "machine",
+              "restSeconds": 180,
+              "notes": null,
+              "alternates": [],
+              "id": "w1_day_3_chest_supported_row",
+              "restMinSeconds": 90
+            },
+            {
+              "name": "Face Pull",
+              "sets": [
+                {
+                  "reps": 15,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                },
+                {
+                  "reps": 15,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                },
+                {
+                  "reps": 15,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                }
+              ],
+              "equipment": "cable",
+              "restSeconds": 180,
+              "notes": null,
+              "alternates": [],
+              "id": "w1_day_3_face_pull",
+              "restMinSeconds": 90
+            },
+            {
+              "name": "Barbell Curl",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": "top"
+                },
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": "backOff"
+                }
+              ],
+              "equipment": "barbell",
+              "restSeconds": 180,
+              "notes": "1 top set. 1 work down set",
+              "alternates": [],
+              "id": "w1_day_3_barbell_curl",
+              "restMinSeconds": 90
+            }
+          ],
+          "kind": "training",
+          "cardio": null
+        },
+        {
+          "id": "w1_rest",
+          "name": "Rest",
+          "exercises": [],
+          "kind": "rest",
+          "cardio": "25 minutes of fasted LISS"
+        },
+        {
+          "id": "w1_day_5",
+          "name": "Day 5",
+          "exercises": [
+            {
+              "name": "Smith Machine Bench",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 6,
+                  "repsMax": 8,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": "top"
+                },
+                {
+                  "reps": null,
+                  "repsMin": 6,
+                  "repsMax": 8,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": "backOff"
+                }
+              ],
+              "equipment": "machine",
+              "restSeconds": 180,
+              "notes": "1 top set. 1 back down set",
+              "alternates": [],
+              "id": "w1_day_5_smith_machine_bench",
+              "restMinSeconds": 90
+            },
+            {
+              "name": "Shoulder Press Machine",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 8,
+                  "repsMax": 10,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                }
+              ],
+              "equipment": "machine",
+              "restSeconds": 180,
+              "notes": null,
+              "alternates": [],
+              "id": "w1_day_5_shoulder_press_machine",
+              "restMinSeconds": 90
+            },
+            {
+              "name": "Cable Fly",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": 20,
+                  "role": "restPause"
+                }
+              ],
+              "equipment": "cable",
+              "restSeconds": 180,
+              "notes": "20 total reps (rest pause set)",
+              "alternates": [],
+              "id": "w1_day_5_cable_fly",
+              "restMinSeconds": 90
+            },
+            {
+              "name": "Rope Pushdown",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 12,
+                  "repsMax": 15,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 12,
+                  "repsMax": 15,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 12,
+                  "repsMax": 15,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                }
+              ],
+              "equipment": "cable",
+              "restSeconds": 180,
+              "notes": null,
+              "alternates": [],
+              "id": "w1_day_5_rope_pushdown",
+              "restMinSeconds": 90
+            }
+          ],
+          "kind": "training",
+          "cardio": null
+        },
+        {
+          "id": "w1_day_6",
+          "name": "Day 6",
+          "exercises": [
+            {
+              "name": "Romanian Deadlift",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 6,
+                  "repsMax": 8,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": "top"
+                },
+                {
+                  "reps": null,
+                  "repsMin": 6,
+                  "repsMax": 8,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": "backOff"
+                }
+              ],
+              "equipment": "barbell",
+              "restSeconds": 180,
+              "notes": "1 top set. 1 back down set",
+              "alternates": [],
+              "id": "w1_day_6_romanian_deadlift",
+              "restMinSeconds": 90
+            },
+            {
+              "name": "Leg Extension",
+              "sets": [
+                {
+                  "reps": null,
+                  "repsMin": 12,
+                  "repsMax": 15,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                },
+                {
+                  "reps": null,
+                  "repsMin": 12,
+                  "repsMax": 15,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                }
+              ],
+              "equipment": "machine",
+              "restSeconds": 180,
+              "notes": null,
+              "alternates": [],
+              "id": "w1_day_6_leg_extension",
+              "restMinSeconds": 90
+            },
+            {
+              "name": "Seated Calf Raise",
+              "sets": [
+                {
+                  "reps": 12,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                },
+                {
+                  "reps": 12,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                },
+                {
+                  "reps": 12,
+                  "repsMin": null,
+                  "repsMax": null,
+                  "loadLb": null,
+                  "rpe": null,
+                  "rir": null,
+                  "seconds": null,
+                  "totalReps": null,
+                  "role": null
+                }
+              ],
+              "equipment": "machine",
+              "restSeconds": 180,
+              "notes": null,
+              "alternates": [],
+              "id": "w1_day_6_seated_calf_raise",
+              "restMinSeconds": 90
+            }
+          ],
+          "kind": "training",
+          "cardio": null
+        },
+        {
+          "id": "w1_rest_2",
+          "name": "Rest 2",
+          "exercises": [],
+          "kind": "rest",
+          "cardio": "25 minutes of fasted LISS"
+        }
+      ]
+    }
+  ],
+  "addOns": [
+    {
+      "id": "addon_stomach_vacuums",
+      "name": "Stomach Vacuums",
+      "exercises": [
+        {
+          "name": "Stomach Vacuums",
+          "sets": [
+            {
+              "reps": null,
+              "repsMin": null,
+              "repsMax": null,
+              "loadLb": null,
+              "rpe": null,
+              "rir": null,
+              "seconds": 20,
+              "totalReps": null,
+              "role": null
+            },
+            {
+              "reps": null,
+              "repsMin": null,
+              "repsMax": null,
+              "loadLb": null,
+              "rpe": null,
+              "rir": null,
+              "seconds": 20,
+              "totalReps": null,
+              "role": null
+            },
+            {
+              "reps": null,
+              "repsMin": null,
+              "repsMax": null,
+              "loadLb": null,
+              "rpe": null,
+              "rir": null,
+              "seconds": 20,
+              "totalReps": null,
+              "role": null
+            },
+            {
+              "reps": null,
+              "repsMin": null,
+              "repsMax": null,
+              "loadLb": null,
+              "rpe": null,
+              "rir": null,
+              "seconds": 20,
+              "totalReps": null,
+              "role": null
+            }
+          ],
+          "equipment": "bodyweight",
+          "restSeconds": null,
+          "notes": null,
+          "alternates": [],
+          "id": "addon_stomach_vacuums_stomach_vacuums",
+          "restMinSeconds": null
+        }
+      ],
+      "perWeek": 4,
+      "timing": "onWaking",
+      "quote": "Complete these 4x per week upon waking:"
+    },
+    {
+      "id": "addon_abs",
+      "name": "Abs",
+      "exercises": [
+        {
+          "name": "Hanging/Lying Leg Raises",
+          "sets": [
+            {
+              "reps": 12,
+              "repsMin": null,
+              "repsMax": null,
+              "loadLb": null,
+              "rpe": null,
+              "rir": null,
+              "seconds": null,
+              "totalReps": null,
+              "role": null
+            },
+            {
+              "reps": 12,
+              "repsMin": null,
+              "repsMax": null,
+              "loadLb": null,
+              "rpe": null,
+              "rir": null,
+              "seconds": null,
+              "totalReps": null,
+              "role": null
+            },
+            {
+              "reps": 12,
+              "repsMin": null,
+              "repsMax": null,
+              "loadLb": null,
+              "rpe": null,
+              "rir": null,
+              "seconds": null,
+              "totalReps": null,
+              "role": null
+            }
+          ],
+          "equipment": "bodyweight",
+          "restSeconds": null,
+          "notes": null,
+          "alternates": [
+            {
+              "name": "Lying Leg Raises",
+              "quote": "Hanging/Lying Leg Raises",
+              "source": "Sheet"
+            }
+          ],
+          "id": "addon_abs_hanging_lying_leg_raises",
+          "restMinSeconds": null
+        },
+        {
+          "name": "Cable Crunch",
+          "sets": [
+            {
+              "reps": 15,
+              "repsMin": null,
+              "repsMax": null,
+              "loadLb": null,
+              "rpe": null,
+              "rir": null,
+              "seconds": null,
+              "totalReps": null,
+              "role": null
+            },
+            {
+              "reps": 15,
+              "repsMin": null,
+              "repsMax": null,
+              "loadLb": null,
+              "rpe": null,
+              "rir": null,
+              "seconds": null,
+              "totalReps": null,
+              "role": null
+            },
+            {
+              "reps": 15,
+              "repsMin": null,
+              "repsMax": null,
+              "loadLb": null,
+              "rpe": null,
+              "rir": null,
+              "seconds": null,
+              "totalReps": null,
+              "role": null
+            }
+          ],
+          "equipment": "cable",
+          "restSeconds": null,
+          "notes": null,
+          "alternates": [],
+          "id": "addon_abs_cable_crunch",
+          "restMinSeconds": null
+        },
+        {
+          "name": "Plank",
+          "sets": [
+            {
+              "reps": null,
+              "repsMin": null,
+              "repsMax": null,
+              "loadLb": null,
+              "rpe": null,
+              "rir": null,
+              "seconds": 60,
+              "totalReps": null,
+              "role": null
+            },
+            {
+              "reps": null,
+              "repsMin": null,
+              "repsMax": null,
+              "loadLb": null,
+              "rpe": null,
+              "rir": null,
+              "seconds": 60,
+              "totalReps": null,
+              "role": null
+            },
+            {
+              "reps": null,
+              "repsMin": null,
+              "repsMax": null,
+              "loadLb": null,
+              "rpe": null,
+              "rir": null,
+              "seconds": 60,
+              "totalReps": null,
+              "role": null
+            }
+          ],
+          "equipment": "bodyweight",
+          "restSeconds": null,
+          "notes": "60 sec each",
+          "alternates": [],
+          "id": "addon_abs_plank",
+          "restMinSeconds": null
+        }
+      ],
+      "perWeek": 2,
+      "timing": "withSession",
+      "quote": "Complete this 2x per week:"
+    }
+  ],
+  "rules": [],
+  "importedAt": "2026-10-26T14:00:00Z",
+  "flags": []
+}
