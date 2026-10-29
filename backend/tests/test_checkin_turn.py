@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app import audio, checkin, checkin_turn, meta
+from app import audio, checkin, checkin_api, checkin_turn, meta
 from app.main import app
 from app.schemas import CheckInTemplateOut, to_template
 
@@ -347,3 +347,27 @@ def test_a_number_with_thousands_commas_is_one_number():
         context(step="review", asked=steps, offered="Average daily steps: 9,400"),
     )
     assert r.intent == "correction" and r.answers[0].text == "10,000"
+
+
+def test_glucose_filed_as_a_measurement_is_a_number_not_inches():
+    from app.schemas import FieldSource
+
+    glucose = checkin.FieldSpec(
+        id="fasted_blood_glucose", label="Fasted blood glucose", prompt=None, kind="measurement",
+        source=FieldSource(type="voice", key=None), order=20,
+    )  # fmt: skip
+    template = TEMPLATE.model_copy(
+        update={"fields": [f for f in TEMPLATE.fields if f.id != glucose.id] + [glucose]}
+    )
+    ctx = checkin_turn.TurnContext(
+        template=template, step="glucose", askedFieldId=glucose.id, pending=[], askedOn="2026-10-29"
+    )
+    r = checkin_turn.fast_turn("91", ctx)
+    assert r is not None and r.answers[0].text == "91"
+    r = checkin_turn.validate_turn(
+        out("answer", [{"fieldId": glucose.id, "text": "", "number": 91}]), "ninety one", ctx
+    )
+    assert r.answers[0].text == "91"
+    waist = checkin.FieldSpec(id="waist_measurement", label="Waist measurement", prompt="(inches)", kind="measurement",
+                              source=FieldSource(type="voice", key=None), order=17)  # fmt: skip
+    assert checkin_api.is_tape(waist) and not checkin_api.is_tape(glucose)

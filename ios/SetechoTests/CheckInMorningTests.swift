@@ -388,16 +388,40 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     let ids = flow.readBackFields(draft: draft).map(\.field.id)
     #expect(ids == [try f(.nutritionConsistency).id, try f(.trainingConsistency).id])
     // The summary names what he gave, with the free text counted.
-    store.upsert(photoSet: PhotoSet(id: UUID(), takenAt: .now, poses: [], collageFile: "c.jpg"))
+    let photos = PhotoSet(id: UUID(), takenAt: .now, poses: [], collageFile: "c.jpg")
+    store.upsert(photoSet: photos)
     set(answer(try f(.currentWeight).id, "180.8"))
     set(answer(try #require(flow.glucoseField).id, "91"))
     set(answer(try #require(template.fields.first { $0.id.contains("energy") }).id, "7/10"))
-    store.upsert(checkIn: currentDraft(answers: answers))
+    var withPhotos = currentDraft(answers: answers)
+    withPhotos.photoSetId = photos.id   // the photo session attached them this morning
+    store.upsert(checkIn: withPhotos)
     let coordinator = CheckInCoordinator(store: store)
     let m = CheckInMorningModel(coordinator: coordinator, store: store, speak: { _ in })
     let summary = m.morningSummary()
-    #expect(summary.hasPrefix("That's everything. This morning you gave me "))
-    #expect(summary.contains("weight 180.8, ") && summary.contains("energy levels 7/10") && summary.contains("average daily steps 10000"))
-    #expect(summary.contains("glucose 91") && summary.hasSuffix(" notes. The rest came from Apple Health and your log."))
-    #expect(!summary.contains("cardio") && !summary.contains("weeks"))   // the coach's own lines are never read
+    #expect(summary.hasPrefix("That's everything. ") && summary.contains(" ready: ") && summary.contains(" from you this morning, "))
+    #expect(summary.contains(" from Apple Health and your log, and your 4 photos."))
+    let sections = m.summarySections()
+    #expect(sections.map(\.title) == ["From you this morning", "From Apple Health and your log", "Photos"])
+    #expect(sections[0].rows.contains(SummaryRow(label: "Current body weight", value: "180.8")))
+    #expect(sections[0].rows.contains(SummaryRow(label: "Energy levels", value: "7/10")))
+    #expect(sections[1].rows.contains(SummaryRow(label: "Current cardio protocol", value: "25 minutes fasted LISS")))
+    #expect(!summary.contains("cardio") && !summary.contains("weeks"))   // the counts, not the values: the card has those
+}
+
+
+/// Glucose is a number even when the coach's form files it under measurements, and "I'm back"
+/// after a wait brings the question back.
+@Test func glucoseIsNeverInchesAndImBackResumes() {
+    let glucose = FieldSpec(id: "fasted_blood_glucose", label: "Fasted blood glucose", prompt: nil, kind: .measurement,
+                            source: FieldSource(type: .voice, key: nil), order: 20)
+    let waist = FieldSpec(id: "waist_measurement", label: "Waist measurement", prompt: "(inches)", kind: .measurement,
+                          source: FieldSource(type: .voice, key: nil), order: 17)
+    #expect(!glucose.isTape && waist.isTape)
+    for said in ["I'm back", "okay, ready", "let's go", "go ahead", "keep going", "where were we"] {
+        #expect(SpokenReply.isBack(said), Comment(rawValue: said))
+    }
+    for said in ["it was 91", "hang on", "yeah"] {
+        #expect(!SpokenReply.isBack(said), Comment(rawValue: said))
+    }
 }

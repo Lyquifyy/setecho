@@ -17,7 +17,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import Field
 
 from app import audio, checkin, importing, meta, voice
-from app.checkin_api import Measurements, _fmt_in
+from app.checkin_api import Measurements, _fmt_in, is_tape
 from app.schemas import CheckInTemplate, FieldSpec, StrictModel, strict_schema
 
 router = APIRouter()
@@ -234,9 +234,7 @@ def validate_turn(out: TurnOut, transcript: str, context: TurnContext) -> TurnRe
 def _answer(spec: FieldSpec, a: TurnAnswerOut, transcript: str, when: str) -> checkin.FieldAnswer:
     """The field's text in the athlete's own style, as /checkin/answer writes it."""
     text = a.text.strip()
-    tape = (
-        spec.kind == "measurement" and "weight" not in spec.label.lower()
-    )  # a body weight is never in inches
+    tape = is_tape(spec)  # a body weight or a glucose reading is never in inches
     if a.measurements is not None and tape:
         value = {
             "waist": a.measurements.waistIn,
@@ -368,12 +366,10 @@ def fast_turn(transcript: str, context: TurnContext) -> TurnResponse | None:
     ]
     numbers = [voice.parse_number(c) for c in chunks]
     numbers = [n for n in numbers if n is not None]
-    if asked.kind == "measurement" and "weight" not in asked.label.lower():
+    if is_tape(asked):
         # The three tape measurements as one question: waist, bicep, thigh, in the order asked.
         tape = [asked] + [
-            fields[i]
-            for i in context.pending
-            if i in fields and fields[i].kind == "measurement" and i != asked.id
+            fields[i] for i in context.pending if i in fields and is_tape(fields[i]) and i != asked.id
         ]
         tape = tape[: len(numbers)]
         if not numbers:

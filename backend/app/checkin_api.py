@@ -118,7 +118,7 @@ async def checkin_answer(
 
     spec = specs[0]
     text = spoken.text.strip()
-    if spec.kind == "measurement" and spoken.number is not None and "in" not in text:
+    if is_tape(spec) and spoken.number is not None and "in" not in text:
         text = f"{_fmt_in(spoken.number)} in"
     elif spec.kind == "scale10" and spoken.number is not None and "/10" not in text:
         text = f"{checkin._fmt(spoken.number)}/10" + (f", {text}" if text else "")
@@ -127,6 +127,17 @@ async def checkin_answer(
     for extra in specs[1:]:
         answers.append(checkin.FieldAnswer(fieldId=extra.id, text="", state="missing", provenance=[]))
     return AnswerResponse(transcript=transcript, answers=answers)
+
+
+def is_tape(spec: FieldSpec) -> bool:
+    """A measurement taken with a tape, in inches: not a body weight, and not a glucose reading a
+    coach's form files under measurements (Oct 28: glucose went out as "91 in")."""
+    label = spec.label.lower()
+    return (
+        spec.kind == "measurement"
+        and "weight" not in label
+        and not any(w in label for w in ("glucose", "blood", "sugar"))
+    )
 
 
 def _fmt_in(value: float) -> str:

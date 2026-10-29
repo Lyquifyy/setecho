@@ -87,6 +87,16 @@ struct FieldSource: Codable, Equatable {
     var needsConfirmation: Bool { type == .drafted }
 }
 
+extension FieldSpec {
+    /// A measurement taken with a tape, in inches: not a body weight, and not a glucose reading a
+    /// coach's form files under measurements (Oct 28: glucose went out as "91 in"). The same rule
+    /// as the backend's `is_tape`.
+    var isTape: Bool {
+        let lower = label.lowercased()
+        return kind == .measurement && !lower.contains("weight") && !["glucose", "blood", "sugar"].contains { lower.contains($0) }
+    }
+}
+
 extension CheckInTemplate {
     var orderedFields: [FieldSpec] { fields.sorted { $0.order < $1.order } }
     var voiceFieldCount: Int { fields.filter { $0.source.type == .voice }.count }

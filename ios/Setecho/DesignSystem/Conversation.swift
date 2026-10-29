@@ -18,6 +18,8 @@ struct ConversationEntry: Identifiable, Equatable {
         case answer(label: String, value: String, source: String)
         /// A quiet note in the flow: "Photos are in", "Weight asked again".
         case note
+        /// The summary before the send: what is going out, grouped by where it came from.
+        case summary([SummarySection])
     }
 
     let id: UUID
@@ -33,6 +35,7 @@ struct ConversationEntry: Identifiable, Equatable {
     static func setecho(_ text: String) -> ConversationEntry { .init(kind: .setecho, text: text) }
     static func athlete(_ text: String) -> ConversationEntry { .init(kind: .athlete, text: text) }
     static func note(_ text: String) -> ConversationEntry { .init(kind: .note, text: text) }
+    static func summary(_ sections: [SummarySection]) -> ConversationEntry { .init(kind: .summary(sections), text: "Summary") }
     static func answer(label: String, value: String, source: String) -> ConversationEntry {
         .init(kind: .answer(label: label, value: value, source: source), text: value)
     }
@@ -86,7 +89,53 @@ struct ConversationTranscript: View {
             AnswerCard(label: label, value: value, source: source)
         case .note:
             Text(entry.text).font(.hudLabel).secondaryText().frame(maxWidth: .infinity, alignment: .center)
+        case .summary(let sections):
+            SummaryCard(sections: sections)
         }
+    }
+}
+
+/// One group of the summary: "From you this morning", "From Apple Health and your log", "Photos".
+struct SummarySection: Equatable, Identifiable {
+    let title: String
+    let rows: [SummaryRow]
+    var id: String { title }
+}
+
+/// One line of the summary: the field and what is going out.
+struct SummaryRow: Equatable, Identifiable {
+    let label: String
+    let value: String
+    var id: String { label }
+}
+
+/// The summary before the send, as one card: each group under its own title, one line per field,
+/// the value as the coach will read it. Simple and in his order.
+struct SummaryCard: View {
+    let sections: [SummarySection]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.s) {
+            ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+                if index > 0 { Spacer().frame(height: Theme.Space.xxs) }
+                Text(section.title).font(.hudLabel.weight(.semibold)).foregroundStyle(Theme.navy)
+                CardDivider()
+                ForEach(Array(section.rows.enumerated()), id: \.element.id) { rowIndex, row in
+                    if rowIndex > 0 { CardDivider() }
+                    HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
+                        Text(row.label).font(.hudLabel).secondaryText().lineLimit(2)
+                        Spacer(minLength: Theme.Space.xs)
+                        Text(row.value).font(.hudLabel).monospacedDigit().foregroundStyle(Theme.navy)
+                            .multilineTextAlignment(.trailing).lineLimit(3)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
+        .padding(Theme.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
     }
 }
 
@@ -308,7 +357,7 @@ struct VoiceBar: View {
         case .speaking: "Setecho"
         case .listening: level > 0.25 ? "Hearing you" : "Your turn"
         case .thinking: "Hearing that…"
-        case .paused: "Take your time. Just talk when you're ready."
+        case .paused: "Take your time. Say \"I'm back\" when you're ready."
         case .idle: ""
         }
     }

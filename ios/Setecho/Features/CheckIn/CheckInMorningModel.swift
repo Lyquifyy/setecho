@@ -48,7 +48,7 @@ struct CheckInMorningFlow: Equatable {
             let state = byId[field.id]?.state ?? .missing
             let asks = field.source.type == .voice || state == .missing || state == .drafted
             guard asks, state == .missing || state == .drafted else { continue }
-            if field.kind == .measurement, field.source.type == .voice {
+            if field.isTape, field.source.type == .voice {
                 measurements.append(field)
             } else {
                 groups.append([field])
@@ -285,10 +285,12 @@ final class CheckInMorningModel {
         // The same question, if it becomes the first or the last of a run that resumed part way.
         lines += groups.map { CheckInMorningFlow.bridged(flow.prompt(for: $0, draft: draft), index: 0, count: 2) }
         lines += groups.map { CheckInMorningFlow.bridged(flow.prompt(for: $0, draft: draft), index: 1, count: 2) }
-        // The data read-back, each line as it will be said, so they play at once.
-        lines += flow.readBackFields(draft: draft).enumerated().map { index, item in
+        // The data read-back, each line as it will be said, so they play at once; the last one says so.
+        let readBacks = flow.readBackFields(draft: draft).enumerated().map { index, item in
             CheckInMorningFlow.readBackPrompt(item.field, item.answer, index: index, first: index == 0, fact: fact(for: item.field, now: item.answer.text))
         }
+        lines += readBacks
+        if let last = readBacks.last, readBacks.count > 1 { lines.append("Last one. " + last) }
         voice.prerender([intro] + lines)
     }
 
@@ -420,44 +422,72 @@ final class CheckInMorningModel {
                 dataReadBackStarted = true
                 // The same index as the pre-rendered line, so it plays from its file.
                 let index = flow.readBackFields(draft: draft).firstIndex { $0.field.id == id } ?? 0
-                await ask(CheckInMorningFlow.readBackPrompt(item.field, item.answer, index: index, first: first,
-                                                            fact: fact(for: item.field, now: item.answer.text)), after: ack)
+                var line = CheckInMorningFlow.readBackPrompt(item.field, item.answer, index: index, first: first,
+                                                             fact: fact(for: item.field, now: item.answer.text))
+                // The last read-back is the last check before the summary.
+                if dataQueue.count == 1, !first { line = "Last one. " + line }
+                await ask(line, after: ack)
                 return
             }
             isDone = true
-            append(.note("\(coordinator.readyCount) of \(coordinator.fieldCount) ready"))
+            append(.summary(summarySections()))
             await ask(Self.doneLine, after: [ack, morningSummary()].compactMap { $0 }.joined(separator: " "))
         }
     }
 
-    /// The summary before sending: what he gave this morning, in his order, as one line. Numbers
-    /// and dates are read; free text is counted ("and 2 notes"). "That's everything. This morning you
-    /// gave me weight 180.8, glucose 91, steps 10,000, energy levels 7/10, and 2 notes. The rest came
-    /// from Apple Health and your log."
-    func morningSummary() -> String {
-        guard let template = coordinator.template, let draft = coordinator.draft else { return "That's everything." }
-        var parts: [String] = []
-        var notes = 0
+    /// The summary on screen: what is going out, grouped by where it came from, in his order.
+    func summarySections() -> [SummarySection] {
+        guard let template = coordinator.template, let draft = coordinator.draft else { return [] }
+        var mine: [SummaryRow] = [], data: [SummaryRow] = [], open: [SummaryRow] = []
+        var photos: String?
         for field in template.orderedFields {
-            guard let a = draft.answers.first(where: { $0.fieldId == field.id }), a.state != .missing, !a.text.isEmpty,
-                  a.state == .confirmed || a.provenance.contains(where: { $0.source.hasPrefix("You said") })
-            else { continue }
-            if field.kind == .text || field.kind == .photo || a.text.count > 24 {
-                notes += 1
+            let a = draft.answers.first { $0.fieldId == field.id }
+            let label = WrapUpModel.shortLabel([field]).capitalizedFirst
+            if field.source.type == .photo {
+                photos = draft.photoSetId != nil ? "4 photos" : "Left for later"
                 continue
             }
-            parts.append("\(Self.summaryName(field)) \(a.text)")
+            guard let a, a.state != .missing, !a.text.isEmpty else {
+                open.append(SummaryRow(label: label, value: "Not yet"))
+                continue
+            }
+            if a.state == .confirmed || a.provenance.contains(where: { $0.source.hasPrefix("You said") }) {
+                mine.append(SummaryRow(label: label, value: a.text))
+            } else {
+                data.append(SummaryRow(label: label, value: a.text))
+            }
         }
-        if notes > 0 { parts.append(notes == 1 ? "and a note" : "and \(notes) notes") }
-        guard !parts.isEmpty else { return "That's everything." }
-        let gave = parts.count == 1 ? parts[0] : parts.dropLast().joined(separator: ", ") + ", " + parts.last!
-        return "That's everything. This morning you gave me \(gave). The rest came from Apple Health and your log."
+        var sections: [SummarySection] = []
+        if !mine.isEmpty { sections.append(SummarySection(title: "From you this morning", rows: mine)) }
+        if !data.isEmpty { sections.append(SummarySection(title: "From Apple Health and your log", rows: data)) }
+        if let photos { sections.append(SummarySection(title: "Photos", rows: [SummaryRow(label: "Check-in photos", value: photos)])) }
+        if !open.isEmpty { sections.append(SummarySection(title: "Still open", rows: open)) }
+        return sections
+    }
+
+    /// The summary out loud, simple: the counts, by where they came from. The detail is the card on
+    /// screen. "That's everything. 22 of 22 ready: 11 from you this morning, 10 from Apple Health and
+    /// your log, and your 4 photos."
+    func morningSummary() -> String {
+        let sections = summarySections()
+        func count(_ title: String) -> Int { sections.first { $0.title == title }?.rows.count ?? 0 }
+        var parts: [String] = []
+        let mine = count("From you this morning"), data = count("From Apple Health and your log"), open = count("Still open")
+        if mine > 0 { parts.append("\(mine) from you this morning") }
+        if data > 0 { parts.append("\(data) from Apple Health and your log") }
+        if let photos = sections.first(where: { $0.title == "Photos" })?.rows.first?.value {
+            parts.append(photos == "4 photos" ? "and your 4 photos" : "and the photos left for later")
+        }
+        let ready = "\(coordinator.readyCount) of \(coordinator.fieldCount) ready"
+        let tail = open > 0 ? " \(open) still open." : ""
+        guard !parts.isEmpty else { return "That's everything. \(ready)." + tail }
+        return "That's everything. \(ready): \(parts.joined(separator: ", ")).\(tail)"
     }
 
     /// The field's name as the summary says it: "weight", "waist", "energy levels".
     nonisolated static func summaryName(_ field: FieldSpec) -> String {
         if field.source.key == .currentWeight { return "weight" }
-        if field.kind == .measurement { return WrapUpModel.shortName(field.label) }
+        if field.isTape { return WrapUpModel.shortName(field.label) }
         return WrapUpModel.spokenLabel(field)
     }
 
@@ -479,10 +509,16 @@ final class CheckInMorningModel {
             return
         }
         let prompt = flow.prompt(for: group, draft: draft)
-        let remaining = groups.count - questionIndex
+        // "Last one" only when nothing follows: not another question, and no data still to read back.
+        let remaining = groups.count - questionIndex + pendingReadBacks
         let line = bridge ? CheckInMorningFlow.bridged(prompt, index: askedInRun, count: askedInRun + remaining) : prompt
         if bridge { askedInRun += 1 }
         await ask(line, after: ack)
+    }
+
+    /// The data fields still to read back in the review, before the summary.
+    private var pendingReadBacks: Int {
+        dataQueueBuilt ? dataQueue.count : flow.readBackFields(draft: draft).count
     }
 
     /// Ask a line and open the mic. With `after`, the acknowledgment and the question go out as one
@@ -665,6 +701,12 @@ final class CheckInMorningModel {
         // Anything but another wait ends the wait.
         let wasPaused = isPaused
         if said != .hold, response.intent != .pause { isPaused = false }
+        // Back from a wait: "I'm back", "ready", "okay, go ahead" picks the question up again (Oct 28:
+        // "ready" mid-questions only got "Go ahead", with no question to go ahead with).
+        if wasPaused, step == .questions || step == .review, response.answers.isEmpty, SpokenReply.isBack(response.transcript) {
+            if step == .questions { await askCurrentQuestion(after: "Okay.", bridge: false) } else { await resume(after: "Okay.") }
+            return
+        }
         // Back from a wait with nothing on offer: "okay", "alright" picks up the question again.
         if wasPaused, offer == nil, response.answers.isEmpty, SpokenReply.read(response.transcript, offered: true) == .keep {
             await resume()
@@ -827,6 +869,9 @@ final class CheckInMorningModel {
             isListening = false
         case .review:
             showReview = true
+        case .questions:
+            // "Ready" mid-questions: the question again, so there is something to go ahead with.
+            await askCurrentQuestion(after: "Okay.", bridge: false)
         default:
             await say("Go ahead.")
             isListening = true

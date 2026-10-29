@@ -24,6 +24,24 @@ final class CheckInCoordinator {
         self.api = api
         self.schedule = CheckInSchedule(plan: store.plan, lastSentAt: store.lastSentCheckIn?.sentAt)
         self.draft = Self.currentDraft(in: store, schedule: schedule)
+        normalizeGlucose()
+    }
+
+    /// A glucose reading filed under measurements went out as "91 in" (Oct 28): the inches come off
+    /// a glucose answer here, once, for a draft made before the fix.
+    private func normalizeGlucose() {
+        guard var current = draft, let template else { return }
+        var changed = false
+        for field in template.fields where field.label.lowercased().contains("glucose") {
+            if let i = current.answers.firstIndex(where: { $0.fieldId == field.id }), current.answers[i].text.hasSuffix(" in") {
+                current.answers[i].text = String(current.answers[i].text.dropLast(3))
+                changed = true
+            }
+        }
+        if changed {
+            draft = current
+            store.upsert(checkIn: current)
+        }
     }
 
     /// The form with the plan's carried blocks, so the coach's latest words go out each week.
@@ -55,7 +73,7 @@ final class CheckInCoordinator {
             let state = byId[field.id]?.state ?? .missing
             let asks = field.source.type == .voice || (state == .missing && field.source.type != .photo)
             guard asks, state == .missing || state == .drafted else { continue }
-            if field.kind == .measurement, field.source.type == .voice {
+            if field.isTape, field.source.type == .voice {
                 measurements.append(field)
             } else {
                 groups.append([field])

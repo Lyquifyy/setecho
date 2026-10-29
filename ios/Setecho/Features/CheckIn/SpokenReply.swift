@@ -14,6 +14,17 @@ enum SpokenReply: Equatable {
     /// Only thinking out loud: "um", "hmm, let me see". Nothing to answer and nothing to say.
     case thinking
 
+    /// Coming back from a wait: "I'm back", "ready", "okay, go ahead", "let's keep going". No
+    /// number in it, so a value said after a wait is still an answer.
+    static func isBack(_ transcript: String) -> Bool {
+        let text = transcript.lowercased().replacingOccurrences(of: "’", with: "'")
+        guard !text.contains(where: { $0.isNumber }) else { return false }
+        return matches(backPattern, text)
+    }
+
+    nonisolated(unsafe) private static let backPattern = pattern(
+        #"\b(i'?m back|back now|ready|let'?s go|go ahead|continue|carry on|keep going|where were we|next question|go on)\b"#)
+
     static func read(_ transcript: String, offered: Bool) -> SpokenReply? {
         let text = transcript.lowercased().replacingOccurrences(of: "’", with: "'")
             .replacing(/[^\w' ]/, with: " ")
