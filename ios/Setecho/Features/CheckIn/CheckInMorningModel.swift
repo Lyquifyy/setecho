@@ -276,7 +276,7 @@ final class CheckInMorningModel {
         var lines = [Self.scaleLine, Self.scaleReadingLine, Self.glucoseLine, Self.glucoseAfterWeightLine, Self.photosLine, Self.photosDoneLine,
                      Self.doneLine, "No rush. Tell me when you're ready.", "Okay.", "Nice.",
                      "Welcome back. Let's pick up where we left off.", "Sorry, can you say that again?", "Okay, we'll skip that one.",
-                     "Okay, we'll leave the photos for later.", "Got it.", "I'll add that to your notes.", "Okay, I'll leave that out.",
+                     "Okay, we'll leave the photos for later.", "Okay, from the top.", "Got it.", "I'll add that to your notes.", "Okay, I'll leave that out.",
                      "Take your time.", "What should it say?", "Go ahead."]
         let groups = questionGroups
         lines += groups.map { flow.prompt(for: $0, draft: draft) }
@@ -979,6 +979,29 @@ final class CheckInMorningModel {
         // Dismissed because the app left the front: the return to the front picks the step up.
         guard !isPaused else { return }
         await resume(after: ack)
+    }
+
+    /// "Start over": the spoken answers and today's photos go, the data stays, and the morning runs
+    /// again from the scale. The same reset Developer → Rehearse uses, from the finished screen.
+    func startOver() async {
+        audio.stopSpeaking()
+        coordinator.resetSpokenAnswers()
+        ignorePhotosToday = true
+        photosSkipped = false
+        isDone = false
+        dataQueue = []
+        dataQueueBuilt = false
+        dataReadBackStarted = false
+        askedInRun = 0
+        questionIndex = 0
+        offeredWeight = nil
+        pendingForCoach = nil
+        lastAnsweredStep = nil
+        transcript = []
+        echo = nil
+        audio.startListening()
+        prerender()
+        await resume(opening: true, after: "Okay, from the top.")
     }
 
     /// "Read it back": the answers, in his order.

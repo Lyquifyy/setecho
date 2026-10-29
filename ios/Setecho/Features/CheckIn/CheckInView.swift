@@ -140,6 +140,12 @@ struct CheckInView: View {
                 Button("Start 2-minute wrap-up", systemImage: "mic.fill") { showWrapUp = true }
                     .buttonStyle(.setechoTonalWide)
                     .disabled(coordinator.questions.isEmpty)
+                // Everything answered already: run the conversation again from the top. The spoken
+                // answers and today's photos start over; the data stays.
+                LinkButton(title: "Start over by voice", chevron: .none) {
+                    AppRouter.shared.morningFresh = true
+                    AppRouter.shared.showCheckInMorning = true
+                }
             }
         }
     }

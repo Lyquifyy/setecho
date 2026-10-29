@@ -28,7 +28,11 @@ struct CheckInMorningView: View {
         ) {
             if model.isDone {
                 Button("Open to send") { model.showReview = true }.buttonStyle(.setechoPrimary)
-                LinkButton(title: "Read it back", chevron: .none) { Task { await model.readBack() } }
+                HStack {
+                    LinkButton(title: "Read it back", chevron: .none) { Task { await model.readBack() } }
+                    Spacer()
+                    LinkButton(title: "Start over", chevron: .none) { Task { await model.startOver() } }
+                }
             } else {
                 HoldButton(title: "Hold to stop",
                            accessibilityHint: "Press and hold. Your answers are saved; reopening picks up where you left off.") {
