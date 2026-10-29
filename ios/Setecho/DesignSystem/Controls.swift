@@ -49,6 +49,8 @@ struct TonalButtonStyle: ButtonStyle {
             .labelStyle(.titleAndIcon)
             .foregroundStyle(Theme.cobalt)
             .lineLimit(1)
+            // Two wide ones share a row with an icon button (Today): shrink a little, never truncate.
+            .minimumScaleFactor(0.85)
             .padding(.horizontal, Theme.Space.s)
             .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: 44)
             .background(
@@ -100,6 +102,8 @@ struct LinkButton: View {
     let title: String
     var chevron: Chevron = .trailing
     var underline = false
+    /// At hands-free size (`.hudLabel`), for the links a hands-free screen offers once it's done.
+    var hud = false
     let action: () -> Void
 
     var body: some View {
@@ -113,7 +117,9 @@ struct LinkButton: View {
                     Image(systemName: "chevron.right").font(.footnote.weight(.semibold))
                 }
             }
-            .font(.subheadline.weight(.medium))
+            .font(hud ? .hudLabel.weight(.medium) : .subheadline.weight(.medium))
+            .lineLimit(1)
+            .minimumScaleFactor(hud ? 0.8 : 1)
             .foregroundStyle(Theme.cobalt)
             .frame(minHeight: 44)
             .contentShape(Rectangle())

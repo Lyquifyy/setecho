@@ -26,7 +26,7 @@ struct WrapUpView: View {
         ) {
             if model.isDone {
                 Button("Review and send") { showReview = true }.buttonStyle(.setechoPrimary)
-                LinkButton(title: "Done", chevron: .none) {
+                LinkButton(title: "Done", chevron: .none, hud: true) {
                     model.stop()
                     dismiss()
                 }

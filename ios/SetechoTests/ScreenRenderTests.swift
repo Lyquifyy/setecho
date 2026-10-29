@@ -280,11 +280,11 @@ enum MorningStates {
                 if done {
                     Button("Open to send") {}.buttonStyle(.setechoPrimary)
                     HStack {
-                        LinkButton(title: "Read it back", chevron: .none) {}
+                        LinkButton(title: "Read it back", chevron: .none, hud: true) {}
                         Spacer()
-                        LinkButton(title: "Start over", chevron: .none) {}
+                        LinkButton(title: "Start over", chevron: .none, hud: true) {}
                         Spacer()
-                        LinkButton(title: "Done for now", chevron: .none) {}
+                        LinkButton(title: "Done for now", chevron: .none, hud: true) {}
                     }
                 } else {
                     hold

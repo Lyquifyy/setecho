@@ -63,7 +63,8 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 - `.setechoTonal` / `.setechoTonalWide` (the in-card action: cobalt text on a cobalt-tint fill, with an icon; use it instead of a bare text link when a card offers something to do), `IconButton` (44 pt round tonal icon, always labeled)
 - `SegmentTabs` (tabs inside a screen; the selected tab is cobalt; a count badge goes yellow only when that count is waiting on the athlete), `TileCard` (a half-width card that is one tappable thing; two side by side), `MeterBar` (a thin cobalt progress bar), `DisclosureChevron`
 - `ExerciseDisclosureRow` (one exercise as a single line, "Bench press · 4 × 8", that opens to the sheet's details)
-- The spoken check-in (`Conversation.swift`): `ConversationTranscript` with `SetechoLine`, `AthleteLine` and `AnswerCard`; `AnimatedCheck` (the check that draws itself, also on a ready `FieldRow`); `StepTrack`; `VoiceBar` with `WaveformBars` and `ThinkingDots`; `HoldButton`
+- The spoken check-in (`Conversation.swift`): `ConversationTranscript` with `SetechoLine`, `AthleteLine` and `AnswerCard` (its `SourceChip` at `.hud` size); `AnimatedCheck` (the check that draws itself, also on a ready `FieldRow`); `StepTrack` (one segment per step, and one `.hudLabel` line naming the current one, "Photos · 3 of 5"); `VoiceBar` with `WaveformBars` and `ThinkingDots` (it names the voice while it speaks, "Setecho · Ava (Premium)"); `HoldButton`
+- `LinkButton(hud: true)` for the links a hands-free screen shows once it's done ("Read it back"); `ScreenScaffold(showsFooter:)` drops the footer bar when there's nothing to start, instead of a disabled primary button
 
 **Leaving a sheet or cover:**
 - **The first screen of every sheet or cover** gets the X: `ScreenScaffold(onClose: { dismiss() })` puts a `CloseButton` in the header's top-right, where the More menu sits on a tab. There's no "Back", "Cancel" or "Done" link at the top of the content.
@@ -75,7 +76,7 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 
 | Component | Use |
 |---|---|
-| `SourceChip(source:)` | Small cobalt-tint capsule naming where an answer came from: "Withings", "MacroFactor", "Garmin", "Training log", "You said · Wed", and for rep counts "Plan", "Watch", "Phone", "Measured". Tapping it shows the underlying values. |
+| `SourceChip(source:size:)` | Small cobalt-tint capsule (`.hud` at 22 pt on the hands-free screens) naming where an answer came from: "Withings", "MacroFactor", "Garmin", "Training log", "You said · Wed", and for rep counts "Plan", "Watch", "Phone", "Measured". Tapping it shows the underlying values. |
 | `FieldRow(field:)` | One check-in field: the coach's label, the answer, its `SourceChip`, and a state (filled, drafted → yellow "Confirm" `TargetTag`, missing → secondary "Ask in wrap-up"). |
 | `HUDState(state:)` | The hands-free state line, with an icon: Ready · Recording (red dot) · Saved · Rest 2:14 · Listening. |
 | `ListeningIndicator` | A cobalt-tint pulse shown whenever the mic is taking commands, so the athlete knows when they're heard. |
@@ -106,7 +107,8 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 - **Purpose:** the home base. What's planned today, and where the current check-in stands.
 - **Today's session card:** the coach's day, e.g. "Day 2", titled in the card, with "4 exercises · 9 sets". Each exercise is one `ExerciseDisclosureRow` ("Lat Pulldown · 2 × 8–10"), closed by default so the whole day fits on screen; tapping one opens the sheet's details (load, RPE, equipment, rest, his "or" options, notes, last time). Any add-on joining it sits below a `CardDivider` ("+ Abs · 1 of 2 this week"). A bottom row of tonal buttons: "Change day", "What to say" and an icon to open or close every exercise.
 - **Morning card,** on a day an on-waking add-on is due: "This morning: stomach vacuums · 4 × 20 s · 2 of 4 this week", with "Start".
-- **Rest day:** the session card becomes "Rest day" with his cardio line ("25 minutes of fasted LISS"). No Start button.
+- **Rest day:** the session card becomes "Rest day" with his cardio line ("25 minutes of fasted LISS"). No Start button, and no footer.
+- **First run** (nothing imported): the session card says to import his program, and the footer is "Import the program".
 - **Check-in and Photos tiles,** side by side (`TileCard`): Check-in shows "11 of 22 ready", a `MeterBar` and the due day, and opens the Check-in tab; on check-in morning it shows a yellow "Due today" tag and starts the check-in. Photos shows last taken and next due, and opens Photo session.
 - **Which day:** a seven-day cycle follows the day of the week (Day 1 on Monday); "Change day" overrides it for today.
 - **Loading:** while anything is being read (Import, the draft, Review and send), one `LoadingCard` with a short line, never a bare spinner.
@@ -175,7 +177,7 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 - **Start:** "Hey Siri, start my Setecho check-in", the check-in-day notification, or Today's "Start check-in".
 - **Layout, top to bottom** (`ConversationScreen`, shared with the wrap-up):
   - the lockup, and which check-in this is ("Thursday check-in", or "Practice run" on any other day)
-  - `StepTrack`: Weight · Glucose · Photos · Questions · Review, done steps in cobalt with a check, the current one on yellow
+  - `StepTrack`: Weight · Glucose · Photos · Questions · Review as five segments, done steps in cobalt, the current one on yellow, and one line under them naming the current step ("Photos · 3 of 5", then "All 5 done")
   - `ConversationTranscript`, sitting at the bottom of its space and growing upward: every line Setecho said (`SetechoLine`; the one being asked now in `.hudState`, earlier ones settled to `.hudLabel` secondary), the athlete's words as heard (`AthleteLine`, on the cobalt-tint bubble, right), and each answer the moment it is stored (`AnswerCard`: the check draws itself, the field, the value, its `SourceChip`)
   - `VoiceBar`: whose turn it is. A live waveform and "Your turn" / "Hearing you" while the mic is open, Setecho's own pulse while it speaks, a thinking beat while a turn is read, a quiet "Take your time" while he takes his
   - `HoldButton` "Hold to stop", which fills as it is held; once everything is answered, "Open to send" and "Read it back"

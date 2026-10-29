@@ -222,7 +222,7 @@ struct AnswerCard: View {
                     .font(.hudLabel.weight(.semibold))
                     .foregroundStyle(Theme.navy)
                     .fixedSize(horizontal: false, vertical: true)
-                SourceChip(source: source)
+                SourceChip(source: source, size: .hud)
             }
             Spacer(minLength: 0)
         }
@@ -278,7 +278,8 @@ struct CheckShape: Shape {
 // MARK: - The steps
 
 /// The steps of a flow as one track: done steps in cobalt, the current one on yellow (the one thing
-/// waiting on the athlete), the rest as hairlines. Titles sit beneath each segment.
+/// waiting on the athlete), the rest as hairlines. Beneath, one line at hands-free size names the
+/// step he's on ("Photos · 3 of 5"): five titles can't fit across the phone at 22 pt.
 struct StepTrack: View {
     struct Step: Identifiable, Equatable {
         let id: String
@@ -290,27 +291,29 @@ struct StepTrack: View {
     let current: Int
 
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Space.xs) {
-            ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
-                let state = index < current ? State.done : index == current ? .current : .pending
-                VStack(spacing: Theme.Space.xs) {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            HStack(spacing: Theme.Space.xs) {
+                ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
+                    let state = index < current ? State.done : index == current ? .current : .pending
                     Capsule()
                         .fill(state == .pending ? Theme.border : state == .done ? Theme.cobalt : Theme.yellow)
-                        .frame(height: 6)
-                    HStack(spacing: 3) {
-                        if state == .done {
-                            Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(Theme.cobalt)
-                        }
-                        Text(step.title)
-                            .font(.subheadline.weight(state == .current ? .semibold : .regular))
-                            .foregroundStyle(state == .pending ? Theme.textSecondary : Theme.navy)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
+                        .frame(height: 8)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("\(step.title), \(state == .done ? "done" : state == .current ? "now" : "to come")")
                 }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(step.title), \(state == .done ? "done" : state == .current ? "now" : "to come")")
             }
+            HStack(spacing: Theme.Space.xs) {
+                if current < steps.count {
+                    Text(steps[current].title).font(.hudLabel.weight(.semibold)).foregroundStyle(Theme.navy)
+                    Text("· \(current + 1) of \(steps.count)").font(.hudLabel).secondaryText()
+                } else {
+                    Image(systemName: "checkmark").font(.hudLabel.weight(.bold)).foregroundStyle(Theme.cobalt)
+                    Text("All \(steps.count) done").font(.hudLabel.weight(.semibold)).foregroundStyle(Theme.navy)
+                }
+            }
+            .lineLimit(1)
+            .contentTransition(.opacity)
+            .accessibilityHidden(true)
         }
         .animation(.snappy(duration: 0.45), value: current)
     }
@@ -341,6 +344,9 @@ struct VoiceBar: View {
     let phase: VoicePhase
     /// The mic level above the room, 0…1, for the waveform while listening.
     var level: Double = 0
+    /// Which voice is speaking ("Ava (Premium)"), named while it speaks, so a fallback to a lesser
+    /// voice is never a mystery.
+    var voiceName: String?
 
     var body: some View {
         HStack(spacing: Theme.Space.m) {
@@ -380,7 +386,7 @@ struct VoiceBar: View {
 
     private var label: String {
         switch phase {
-        case .speaking: "Setecho"
+        case .speaking: voiceName.map { "Setecho · \($0)" } ?? "Setecho"
         case .listening: level > 0.25 ? "Hearing you" : "Your turn"
         case .thinking: "Hearing that…"
         case .paused: "Take your time. Say \"I'm back\" when you're ready."
@@ -453,7 +459,7 @@ struct HoldButton: View {
                     .animation(pressing ? .linear(duration: duration) : .easeOut(duration: 0.2), value: pressing)
             }
             Text(title)
-                .font(.headline)
+                .font(.hudLabel.weight(.semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
         }

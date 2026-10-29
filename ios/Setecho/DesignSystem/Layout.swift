@@ -127,11 +127,14 @@ struct ScreenScaffold<Content: View, Footer: View>: View {
     private let footer: Footer
     private let hasFooter: Bool
 
-    init(onClose: (() -> Void)? = nil, @ViewBuilder content: () -> Content, @ViewBuilder footer: () -> Footer) {
+    /// `showsFooter: false` drops the footer bar for now (Today on a rest day has nothing to start),
+    /// rather than leaving a disabled primary button in it.
+    init(onClose: (() -> Void)? = nil, showsFooter: Bool = true, @ViewBuilder content: () -> Content,
+         @ViewBuilder footer: () -> Footer) {
         self.onClose = onClose
         self.content = content()
         self.footer = footer()
-        self.hasFooter = true
+        self.hasFooter = showsFooter
     }
 
     var body: some View {

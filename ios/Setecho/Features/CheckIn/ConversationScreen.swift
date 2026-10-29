@@ -39,7 +39,7 @@ struct ConversationScreen<Footer: View>: View {
             ConversationTranscript(entries: entries, onSummaryTap: onSummaryTap)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             if phase != .idle {
-                VoiceBar(phase: phase, level: level)
+                VoiceBar(phase: phase, level: level, voiceName: voiceName)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             if let notice, !notice.isEmpty {
@@ -48,9 +48,6 @@ struct ConversationScreen<Footer: View>: View {
                     .transition(.opacity)
             }
             footer
-            if let voiceName {
-                Text("Voice · \(voiceName)").font(.caption).secondaryText().accessibilityLabel("Voice: \(voiceName)")
-            }
         }
         .padding(Theme.gutter)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
