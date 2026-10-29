@@ -3,7 +3,8 @@ import Testing
 @testable import Setecho
 
 /// "Use AirPods mic" (HANDOFF.md §9, block 1): off keeps AirPods as A2DP output only; on asks for
-/// HFP plus high-quality recording, with A2DP kept for output.
+/// high-quality recording alone, with A2DP kept for output. Never HFP, on or off: with HFP allowed,
+/// iOS falls back to call quality and the switch off A2DP stopped his music (Oct 29).
 @Test @MainActor func theAirPodsSwitchDecidesTheSessionOptions() {
     let settings = Settings.shared
     let before = settings.useAirPodsMic
@@ -18,7 +19,8 @@ import Testing
     settings.useAirPodsMic = true
     AirPodsMic.shared.reset()
     let on = AirPodsMic.shared.options(ducking: true)
-    #expect(on.contains(.allowBluetoothHFP) && on.contains(.bluetoothHighQualityRecording) && on.contains(.allowBluetoothA2DP))
+    #expect(on.contains(.bluetoothHighQualityRecording) && on.contains(.allowBluetoothA2DP))
+    #expect(!on.contains(.allowBluetoothHFP))
     #expect(on.contains(.duckOthers))
     #expect(AirPodsMic.shared.isActive && AirPodsMic.shared.notice == nil)
 }

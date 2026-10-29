@@ -5,9 +5,10 @@ import Observation
 /// Developer → Hearing → "Test music with each mic setting" (Oct 28 gym test: with the AirPods mic on
 /// and music playing, restoring the music failed with '!int', "can't interrupt others"). With his
 /// music playing, it runs the session's lower-and-restore under three configurations, the mic open
-/// the whole time as in a session: the phone mic only, plus the AirPods mic (HFP), plus iOS 26's
-/// high-quality recording. Each step records the options iOS applied, whether his music was still
-/// playing, and any error, so the one that makes the session non-mixable is found on the device.
+/// the whole time as in a session: the phone mic only, iOS 26's high-quality recording alone (the
+/// app's AirPods setting), and the old call-quality HFP last, as it can stop his music (Oct 29). Each
+/// step records the options iOS applied, the mic that listened, whether his music was still playing,
+/// and any error, so the one that makes the session non-mixable is found on the device.
 @MainActor
 @Observable
 final class AudioMixingProbe {
@@ -17,6 +18,7 @@ final class AudioMixingProbe {
         var step: String
         var applied: [String]
         var musicPlaying: Bool
+        var mic: String
         var error: String?
     }
 
@@ -27,8 +29,8 @@ final class AudioMixingProbe {
 
     static let setups: [(String, AVAudioSession.CategoryOptions)] = [
         ("Phone mic only", [.mixWithOthers, .allowBluetoothA2DP, .defaultToSpeaker]),
-        ("AirPods mic", [.mixWithOthers, .allowBluetoothA2DP, .defaultToSpeaker, .allowBluetoothHFP]),
-        ("AirPods mic, high quality", [.mixWithOthers, .allowBluetoothA2DP, .defaultToSpeaker, .allowBluetoothHFP, .bluetoothHighQualityRecording]),
+        ("AirPods mic, high quality", [.mixWithOthers, .allowBluetoothA2DP, .defaultToSpeaker, .bluetoothHighQualityRecording]),
+        ("AirPods mic, call quality (old)", [.mixWithOthers, .allowBluetoothA2DP, .defaultToSpeaker, .allowBluetoothHFP, .bluetoothHighQualityRecording]),
     ]
 
     func run() async {
@@ -40,6 +42,9 @@ final class AudioMixingProbe {
             let engine = AVAudioEngine()
             await step(name, "set up and activate") {
                 try self.session.setCategory(.playAndRecord, mode: .default, options: base)
+                let highQuality = base.contains(.bluetoothHighQualityRecording)
+                    ? self.session.availableInputs?.first { $0.bluetoothMicrophoneExtension?.highQualityRecording.isSupported == true } : nil
+                try? self.session.setPreferredInput(highQuality)
                 try self.session.setActive(true)
             }
             // The mic open, as in a session: HFP and high-quality recording only engage while recording.
@@ -69,21 +74,25 @@ final class AudioMixingProbe {
             input.removeTap(onBus: 0)
             engine.stop()
         }
-        // Back to the app's own configuration.
+        // Back to the app's own configuration, and the input it would choose.
         try? AirPodsMic.shared.apply(to: session, ducking: false)
+        try? session.setPreferredInput(AirPodsMic.shared.preferredInput(in: session))
     }
 
     private func step(_ setup: String, _ name: String, _ action: () throws -> Void) async {
         var error: String?
         do { try action() } catch let e { error = AudioService.describe(e) }
+        let input = session.currentRoute.inputs.first
+        let highQuality = input?.bluetoothMicrophoneExtension?.highQualityRecording.isEnabled == true
         rows.append(Row(setup: setup, step: name, applied: AirPodsMic.describe(session.categoryOptions),
-                        musicPlaying: session.isOtherAudioPlaying, error: error))
+                        musicPlaying: session.isOtherAudioPlaying,
+                        mic: "\(input?.portName ?? "no mic")\(highQuality ? " · high quality" : "")", error: error))
     }
 
     /// One line per step for the Developer screen.
     var summary: [String] {
         rows.map { row in
-            "\(row.setup) · \(row.step): \(row.error ?? "ok") · music \(row.musicPlaying ? "playing" : "NOT playing")"
+            "\(row.setup) · \(row.step): \(row.error ?? "ok") · music \(row.musicPlaying ? "playing" : "NOT playing") · \(row.mic)"
         }
     }
 }

@@ -114,7 +114,7 @@ struct SettingsView: View {
                 Note("The front camera, so the screen faces you from the bench. Off: the back camera, as before.")
                 CardDivider()
                 SettingToggle("Use AirPods mic", isOn: $settings.useAirPodsMic)
-                Note(AirPodsMic.shared.notice ?? "On: AirPods listen as well as play, at full quality where iOS supports it, or Setecho switches back by itself. A plugged-in mic always wins. Off: the iPhone mic listens.")
+                Note(AirPodsMic.shared.notice ?? "On: AirPods that record at full quality (iOS 26 high-quality recording) listen as well as play, and your music keeps playing at full quality. AirPods that can't stay as headphones and the iPhone mic listens; Setecho never switches them to call quality. A plugged-in mic always wins. Off: the iPhone mic listens.")
                 CardDivider()
                 LinkButton(title: "How a session works") { showIntro = true }
                 LinkButton(title: "What you can say") { showGuide = true }

@@ -88,6 +88,8 @@ private struct ProbeRow<Destination: View>: View {
 private struct TurnTimingsCard: View {
     @State private var timings = TurnTimings.shared
     @State private var route = "—"
+    @State private var inputs = "—"
+    @State private var checking = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
@@ -118,16 +120,33 @@ private struct TurnTimingsCard: View {
             }
             CardDivider()
             LabeledRow("Audio route", route)
+            LabeledRow("Mics on offer", inputs)
             LabeledRow("AirPods mic", AirPodsMic.shared.state)
             if let notice = AirPodsMic.shared.notice { Text(notice).font(.footnote).secondaryText() }
+            Text("Check the mic sets up audio as a session does and listens for 2 seconds, so the route is the one a session would use.")
+                .font(.footnote).secondaryText()
             HStack {
-                LinkButton(title: "Refresh route", chevron: .none) { route = AudioService().routeDescription }
+                LinkButton(title: checking ? "Listening…" : "Check the mic", chevron: .none) { Task { await checkMic() } }
+                    .disabled(checking)
                 Spacer()
                 InputPickerButton { route = AudioService().routeDescription }
                     .frame(width: 120, height: 44)
             }
         }
         .onAppear { route = AudioService().routeDescription }
+    }
+
+    /// The session's own setup with the mic open: high-quality recording engages only while recording.
+    private func checkMic() async {
+        checking = true
+        let audio = AudioService()
+        audio.startListening()
+        try? await Task.sleep(for: .seconds(2))
+        route = audio.routeDescription
+        inputs = AirPodsMic.describeInputs(AVAudioSession.sharedInstance())
+        AirPodsMic.shared.check(AVAudioSession.sharedInstance())
+        audio.stopListening()
+        checking = false
     }
 
     /// "Ava (Premium)": the on-device voice every line uses.

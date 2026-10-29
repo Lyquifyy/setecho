@@ -3,20 +3,23 @@ import Foundation
 import Observation
 
 /// Where Setecho records from (HANDOFF.md §9, block 1). With "Use AirPods mic" on, the session asks
-/// for HFP plus iOS 26's Bluetooth high-quality recording, with A2DP kept for output. iOS falls back
-/// to call-quality HFP on its own when the AirPods can't do high quality; when that happens, or the
-/// output disappears, this switches back to the DJI receiver or the iPhone mic for the rest of the
-/// run and says so. Every session activation in the app takes its options from here.
+/// for iOS 26's Bluetooth high-quality recording on its own, never with `.allowBluetoothHFP`. Apple's
+/// header: the option alone "will be enabled if the route supports it, otherwise the option will be
+/// ignored"; combined with HFP, call-quality HFP is the fallback, and HFP ports win routing over A2DP
+/// on the same device. That HFP switch took the AirPods off A2DP and stopped his music when a session
+/// started (Oct 29). So the AirPods mic is full quality or not used at all: AirPods that can't record
+/// at high quality stay on A2DP output, the DJI receiver or the iPhone mic listens, and his music is
+/// never touched. Every session activation in the app takes its options and its input from here.
 @MainActor
 @Observable
 final class AirPodsMic {
     static let shared = AirPodsMic()
 
-    /// The AirPods mic was tried and failed this run: back to A2DP output only.
+    /// The AirPods dropped to call quality this run anyway: high-quality recording is off until reset.
     private(set) var unavailable = false
-    /// Shown on Check-in morning, Settings and Probes after a fallback.
+    /// Shown on Check-in morning, Settings and Probes when the AirPods aren't the mic.
     private(set) var notice: String?
-    /// What the last check found, for Probes: "AirPods · high quality", "off", …
+    /// What the last check found, for Probes: "AirPods Pro · high quality", "off", …
     private(set) var state = "off"
 
     var isActive: Bool { Settings.shared.useAirPodsMic && !unavailable }
@@ -30,40 +33,63 @@ final class AirPodsMic {
         // replaces it (Oct 28 gym test: a restore failed with "can't interrupt others", '!int').
         var options: AVAudioSession.CategoryOptions = ducking ? [.mixWithOthers, .duckOthers, .allowBluetoothA2DP] : [.mixWithOthers, .allowBluetoothA2DP]
         options.insert(.defaultToSpeaker)
-        if isActive { options.formUnion([.allowBluetoothHFP, .bluetoothHighQualityRecording]) }
+        // Never `.allowBluetoothHFP`: it makes call quality the fallback and pauses his music.
+        if isActive { options.insert(.bluetoothHighQualityRecording) }
         return options
     }
 
-    /// The category for the current policy. A refusal of the AirPods options is itself a fallback.
+    /// The category for the current policy. A refusal of the AirPods option is itself a fallback.
     func apply(to session: AVAudioSession, ducking: Bool) throws {
         do {
             try session.setCategory(.playAndRecord, mode: .default, options: options(ducking: ducking))
         } catch where isActive {
-            fallBack(session, reason: "options refused")
+            fallBack(reason: "option refused", notice: "AirPods mic unavailable, using the \(Self.fallbackMic(session)) mic")
             try session.setCategory(.playAndRecord, mode: .default, options: options(ducking: ducking))
         }
     }
 
-    /// After an activation or a route change: if the output dropped to call-quality HFP without high
-    /// quality, or there is no output at all, fall back. Returns true when it fell back.
+    /// The input to prefer: a plugged-in external mic (the DJI receiver) first, then AirPods that can
+    /// record at high quality; nil leaves it to iOS (the iPhone mic, with no HFP on offer). A choice
+    /// made in the input picker is replaced, so a call-quality pick never outlives the next start.
+    func preferredInput(in session: AVAudioSession) -> AVAudioSessionPortDescription? {
+        let inputs = session.availableInputs ?? []
+        if let usb = inputs.first(where: { $0.portType == .usbAudio }) { return usb }
+        guard isActive else { return nil }
+        return inputs.first { $0.bluetoothMicrophoneExtension?.highQualityRecording.isSupported == true }
+    }
+
+    /// After an activation or a route change: says which mic is listening and why. Returns true only
+    /// when the AirPods went to call quality anyway, which turns high-quality recording off for the
+    /// run; the caller then configures again.
     @discardableResult
     func check(_ session: AVAudioSession) -> Bool {
         let route = session.currentRoute
         let input = route.inputs.first
-        let highQuality = input?.bluetoothMicrophoneExtension?.highQualityRecording.isEnabled == true
         guard isActive else {
             state = Settings.shared.useAirPodsMic ? "unavailable this run" : "off"
             return false
         }
-        if route.outputs.isEmpty {
-            fallBack(session, reason: "no output")
-            return true
-        }
+        let highQuality = input?.bluetoothMicrophoneExtension?.highQualityRecording.isEnabled == true
         if route.outputs.contains(where: { $0.portType == .bluetoothHFP }), !highQuality {
-            fallBack(session, reason: "call quality only")
+            fallBack(reason: "call quality", notice: "AirPods mic unavailable, using the \(Self.fallbackMic(session)) mic")
             return true
         }
-        state = highQuality ? "\(input?.portName ?? "AirPods") · high quality" : "on · \(input?.portName ?? "no input")"
+        let mic = input?.portName ?? "no input"
+        if highQuality {
+            state = "\(mic) · high quality"
+            notice = nil
+        } else if input?.portType == .usbAudio {
+            state = "\(mic) · external mic first"
+            notice = nil
+        } else if let headphones = route.outputs.first(where: { [.bluetoothA2DP, .bluetoothLE].contains($0.portType) }) {
+            // High-quality recording only engages with the mic open: a check before then reads the
+            // iPhone mic, and the route change once it opens checks again.
+            state = "\(headphones.portName) can't record at high quality · \(mic)"
+            notice = "\(headphones.portName) can't record at full quality, so the \(Self.fallbackMic(session)) mic listens. Your music isn't touched."
+        } else {
+            state = "no AirPods · \(mic)"
+            notice = nil
+        }
         return false
     }
 
@@ -73,11 +99,25 @@ final class AirPodsMic {
         state = Settings.shared.useAirPodsMic ? "on" : "off"
     }
 
-    private func fallBack(_ session: AVAudioSession, reason: String) {
+    private func fallBack(reason: String, notice: String) {
         unavailable = true
-        let dji = session.availableInputs?.contains { $0.portType == .usbAudio } == true
-        notice = "AirPods mic unavailable, using the \(dji ? "DJI" : "iPhone") mic"
+        self.notice = notice
         state = "fell back · \(reason)"
+    }
+
+    private static func fallbackMic(_ session: AVAudioSession) -> String {
+        session.availableInputs?.contains { $0.portType == .usbAudio } == true ? "DJI" : "iPhone"
+    }
+
+    /// Every input iOS offers, for Probes: "iPhone Microphone · MicrophoneBuiltIn, AirPods Pro · BluetoothHFP · high quality supported".
+    static func describeInputs(_ session: AVAudioSession) -> String {
+        let inputs = session.availableInputs ?? []
+        guard !inputs.isEmpty else { return "—" }
+        return inputs.map { port in
+            let hq = port.bluetoothMicrophoneExtension?.highQualityRecording
+            let note = hq.map { $0.isEnabled ? " · high quality on" : $0.isSupported ? " · high quality supported" : " · no high quality" } ?? ""
+            return "\(port.portName) · \(port.portType.rawValue)\(note)"
+        }.joined(separator: ", ")
     }
 
     /// Option names for the debug record: "mixWithOthers, duckOthers, allowBluetoothHFP, …".

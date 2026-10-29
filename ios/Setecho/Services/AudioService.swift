@@ -85,17 +85,16 @@ final class AudioService {
     func configure() {
         do {
             try AirPodsMic.shared.apply(to: session, ducking: holdsDucking)
-            // A plugged-in external mic (the DJI receiver) wins over the AirPods and the phone.
-            if let usb = session.availableInputs?.first(where: { $0.portType == .usbAudio }) {
-                try session.setPreferredInput(usb)
-            }
+            // A plugged-in external mic (the DJI receiver) wins, then AirPods at high quality. A
+            // preference that won't take never stops the run: iOS's own choice is never HFP.
+            try? session.setPreferredInput(AirPodsMic.shared.preferredInput(in: session))
             // The session's haptics (armed, set ended, rest's up) are muted by iOS while recording unless allowed.
             try? session.setAllowHapticsAndSystemSoundsDuringRecording(true)
             try session.setActive(true)
             if AirPodsMic.shared.check(session) {
                 // Back to A2DP output and the DJI or iPhone mic, then on with the run.
-                try AirPodsMic.shared.apply(to: session, ducking: false)
-                if let usb = session.availableInputs?.first(where: { $0.portType == .usbAudio }) { try session.setPreferredInput(usb) }
+                try AirPodsMic.shared.apply(to: session, ducking: holdsDucking)
+                try? session.setPreferredInput(AirPodsMic.shared.preferredInput(in: session))
                 try session.setActive(true)
             }
             updateInput()
@@ -456,7 +455,9 @@ final class AudioService {
     /// "DJI Mic RX · USB → AirPods Pro · Bluetooth A2DP": the live route for the Probes screen.
     var routeDescription: String {
         let route = session.currentRoute
-        let ins = route.inputs.map { "\($0.portName) · \($0.portType.rawValue)" }.joined(separator: ", ")
+        let ins = route.inputs.map {
+            "\($0.portName) · \($0.portType.rawValue)\($0.bluetoothMicrophoneExtension?.highQualityRecording.isEnabled == true ? " · high quality" : "")"
+        }.joined(separator: ", ")
         let outs = route.outputs.map { "\($0.portName) · \($0.portType.rawValue)" }.joined(separator: ", ")
         return "\(ins.isEmpty ? "no input" : ins) → \(outs.isEmpty ? "no output" : outs)"
     }

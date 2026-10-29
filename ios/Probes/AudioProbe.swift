@@ -95,14 +95,22 @@ final class AudioProbeModel {
 
     func configure() {
         do {
+            #if SETECHO_APP
+            // In the app, the same options and input as a session, so "Use AirPods mic" shows here.
+            try AirPodsMic.shared.apply(to: session, ducking: false)
+            let preferred = AirPodsMic.shared.preferredInput(in: session)
+            #else
             try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetoothA2DP])
+            let preferred = session.availableInputs?.first(where: { $0.portType == .usbAudio })
+            #endif
             let available = session.availableInputs ?? []
             inputs = available.map { "\($0.portName) · \($0.portType.rawValue)" }
-            if let usb = available.first(where: { $0.portType == .usbAudio }) {
-                try session.setPreferredInput(usb)
-                note("Preferred input set to \(usb.portName) (USB)")
+            if let preferred {
+                try session.setPreferredInput(preferred)
+                note("Preferred input set to \(preferred.portName) (\(preferred.portType.rawValue))")
             } else {
-                note("No USB input found; \(available.first?.portName ?? "default") will be used")
+                try? session.setPreferredInput(nil)
+                note("No USB or high-quality AirPods input found; \(available.first?.portName ?? "default") will be used")
             }
             try session.setActive(true)
             refreshRoute()
@@ -190,7 +198,7 @@ final class AudioProbeModel {
     func speak(_ text: String = "Set three done. Next, two twenty-five for eight. Rest two thirty.") {
         guard !isSpeaking else { return }
         do {
-            try session.setCategory(.playAndRecord, mode: .default, options: [.duckOthers, .allowBluetoothA2DP])
+            try session.setCategory(.playAndRecord, mode: .default, options: callout(ducking: true))
             try session.setActive(true)
         } catch {
             note("Duck failed: \(error.localizedDescription)")
@@ -205,13 +213,22 @@ final class AudioProbeModel {
 
     private func restoreMixing() {
         do {
-            try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetoothA2DP])
-            try session.setActive(true)
+            // No second activation: that is what threw "can't interrupt others" at the gym (Oct 28).
+            try session.setCategory(.playAndRecord, mode: .default, options: callout(ducking: false))
             note("Finished speaking. Music should be back at full volume.")
         } catch {
             note("Restore failed: \(error.localizedDescription)")
         }
         isSpeaking = false
+    }
+
+    /// The callout's options: the app's own in the app, mixable either way.
+    private func callout(ducking: Bool) -> AVAudioSession.CategoryOptions {
+        #if SETECHO_APP
+        AirPodsMic.shared.options(ducking: ducking)
+        #else
+        ducking ? [.mixWithOthers, .duckOthers, .allowBluetoothA2DP] : [.mixWithOthers, .allowBluetoothA2DP]
+        #endif
     }
 
     private func note(_ line: String) {
