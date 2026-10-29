@@ -118,6 +118,14 @@ final class FilmingRecorder {
         return dest
     }
 
+    /// Every take on the phone as one zip, each take in its own folder inside it.
+    static func zippedAll(in root: URL) throws -> URL {
+        let folder = root.appendingPathComponent("filming", isDirectory: true)
+        let dest = FileManager.default.temporaryDirectory.appendingPathComponent("setecho-takes.zip")
+        try ZipWriter.zip(folder: folder, to: dest)
+        return dest
+    }
+
     /// Every take under media/filming, newest first, for History's AirDrop export.
     static func takes(in root: URL) -> [URL] {
         let folder = root.appendingPathComponent("filming", isDirectory: true)

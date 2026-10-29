@@ -60,9 +60,15 @@ struct DeveloperView: View {
                     .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
                 Text("Records every spoken line and answer for the demo video, with captions.")
                     .font(.footnote).secondaryText()
+                CardDivider()
                 if takes.isEmpty {
-                    CardDivider()
                     Text("Takes appear here.").font(.subheadline).secondaryText()
+                } else {
+                    // Every take at once, as one zip, for the edit.
+                    Button("AirDrop all \(takes.count) takes", systemImage: "square.and.arrow.up") {
+                        do { exportFile = FileExport(url: try FilmingRecorder.zippedAll(in: store.mediaDirectory)) } catch { exportError = error.userMessage }
+                    }
+                    .buttonStyle(.setechoTonalWide)
                 }
                 ForEach(takes, id: \.self) { take in
                     CardDivider()
