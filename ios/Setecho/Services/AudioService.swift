@@ -140,7 +140,11 @@ final class AudioService {
         let engine = AVAudioEngine()
         let input = engine.inputNode
         voiceProcessingOn = false
-        if wantsVoiceProcessing {
+        if wantsVoiceProcessing, session.isOtherAudioPlaying {
+            // Oct 29: with his music playing, a session start with voice processing on stopped it,
+            // while the same mic without it kept the music at full quality. His music wins.
+            logAudio("voice processing skipped: music playing", lowered: false, error: nil)
+        } else if wantsVoiceProcessing {
             // Noise suppression and gain control, with his music ducked as little as iOS allows.
             do {
                 try input.setVoiceProcessingEnabled(true)
@@ -148,6 +152,15 @@ final class AudioService {
                 voiceProcessingOn = true
             } catch {
                 lastError = "Voice processing: \(error.localizedDescription)"
+            }
+            // Voice processing can turn the session into a call (voiceChat, HFP only, not mixable),
+            // which stops his music and the AirPods' high quality. Then it goes off and the
+            // session's own configuration comes back.
+            if voiceProcessingOn, session.mode != .default || !session.categoryOptions.contains(.mixWithOthers) {
+                logAudio("voice processing off: it made the session a call", lowered: false, error: nil)
+                try? input.setVoiceProcessingEnabled(false)
+                voiceProcessingOn = false
+                configure()
             }
         }
         let format = input.outputFormat(forBus: 0)

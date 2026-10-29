@@ -123,7 +123,7 @@ private struct TurnTimingsCard: View {
             LabeledRow("Mics on offer", inputs)
             LabeledRow("AirPods mic", AirPodsMic.shared.state)
             if let notice = AirPodsMic.shared.notice { Text(notice).font(.footnote).secondaryText() }
-            Text("Check the mic sets up audio as a session does and listens for 2 seconds, so the route is the one a session would use.")
+            Text("Check the mic sets up audio as a session does, voice processing included, and listens for 2 seconds, so the route is the one a session would use.")
                 .font(.footnote).secondaryText()
             HStack {
                 LinkButton(title: checking ? "Listening…" : "Check the mic", chevron: .none) { Task { await checkMic() } }
@@ -140,6 +140,7 @@ private struct TurnTimingsCard: View {
     private func checkMic() async {
         checking = true
         let audio = AudioService()
+        audio.wantsVoiceProcessing = Settings.shared.voiceProcessing // as a session would
         audio.startListening()
         try? await Task.sleep(for: .seconds(2))
         route = audio.routeDescription

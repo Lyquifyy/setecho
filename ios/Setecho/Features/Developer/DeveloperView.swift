@@ -41,7 +41,7 @@ struct DeveloperView: View {
             SectionCard("Hearing") {
                 Toggle("Apple voice processing", isOn: $settings.voiceProcessing)
                     .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
-                Text("Noise suppression and gain control on the session mic, with your music ducked as little as iOS allows. Each utterance in the session data says whether it was on: keep whichever hears more.")
+                Text("Noise suppression and gain control on the session mic. It never runs while your music plays: iOS turns it into a phone call, which stops the music and the AirPods' full quality. Each utterance in the session data says whether it was on.")
                     .font(.footnote).secondaryText()
                 CardDivider()
                 LinkButton(title: mixingProbe.running ? "Testing…" : "Test music with each mic setting") {
