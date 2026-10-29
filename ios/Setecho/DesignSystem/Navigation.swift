@@ -92,22 +92,35 @@ struct TileCard<Content: View>: View {
     }
 }
 
-/// How far along something is ("3 of 7 ready"): a thin cobalt bar on the field fill.
+/// How far along something is ("3 of 7 ready", or a fraction of a job): a thin cobalt bar on the
+/// field fill, which moves smoothly as the value changes.
 struct MeterBar: View {
-    let value: Int
-    let total: Int
+    let fraction: Double
+    let label: String
+
+    init(value: Int, total: Int) {
+        fraction = total > 0 ? Double(min(value, total)) / Double(total) : 0
+        label = "\(value) of \(total)"
+    }
+
+    /// 0…1 of a job under way (a video export).
+    init(fraction: Double) {
+        self.fraction = min(max(fraction, 0), 1)
+        label = "\(Int((self.fraction * 100).rounded())) percent"
+    }
 
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 Capsule().fill(Theme.fieldFill)
                 Capsule().fill(Theme.cobalt)
-                    .frame(width: total > 0 ? geometry.size.width * CGFloat(min(value, total)) / CGFloat(total) : 0)
+                    .frame(width: geometry.size.width * CGFloat(fraction))
+                    .animation(.easeOut(duration: 0.25), value: fraction)
             }
         }
         .frame(height: 6)
         .accessibilityElement()
-        .accessibilityLabel("\(value) of \(total)")
+        .accessibilityLabel(label)
     }
 }
 

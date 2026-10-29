@@ -32,6 +32,9 @@ struct CheckInMorningView: View {
                     LinkButton(title: "Read it back", chevron: .none) { Task { await model.readBack() } }
                     Spacer()
                     LinkButton(title: "Start over", chevron: .none) { Task { await model.startOver() } }
+                    Spacer()
+                    // The way out once it's done: the answers are saved, the tab can send later.
+                    LinkButton(title: "Done for now", chevron: .none) { Task { await model.leave() } }
                 }
             } else {
                 HoldButton(title: "Hold to stop",
@@ -52,9 +55,11 @@ struct CheckInMorningView: View {
         }) {
             PhotoSessionView(store: store).environment(store)
         }
-        .fullScreenCover(isPresented: $model.showReview) {
+        .fullScreenCover(isPresented: $model.showReview, onDismiss: { Task { await model.reviewClosed() } }) {
             NavigationStack { ReviewSendView(coordinator: coordinator) }.environment(store)
         }
+        // Sent, or "done for now": the morning closes itself once its last line is said.
+        .onChange(of: model.finished) { _, finished in if finished { dismiss() } }
         .animation(.snappy(duration: 0.3), value: model.isDone)
     }
 }

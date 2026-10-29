@@ -69,7 +69,9 @@ struct DeveloperView: View {
                     HStack {
                         Text(take.lastPathComponent).font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
                         Spacer()
-                        LinkButton(title: "AirDrop", chevron: .none) { exportFile = FileExport(url: take) }
+                        LinkButton(title: "AirDrop", chevron: .none) {
+                            do { exportFile = FileExport(url: try FilmingRecorder.zipped(take)) } catch { exportError = error.userMessage }
+                        }
                     }
                 }
             }

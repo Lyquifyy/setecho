@@ -110,6 +110,21 @@ final class FilmingRecorder {
         return String(format: "%02d:%02d:%02d,%03d", ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60, ms % 1000)
     }
 
+    /// A take as one zip in the temporary folder, for AirDrop (Oct 28: a folder would not go after
+    /// the fact). The system makes the zip through the file coordinator's upload reading.
+    static func zipped(_ take: URL) throws -> URL {
+        let dest = FileManager.default.temporaryDirectory.appendingPathComponent(take.lastPathComponent + ".zip")
+        try? FileManager.default.removeItem(at: dest)
+        var coordinationError: NSError?
+        var copyError: Error?
+        NSFileCoordinator().coordinate(readingItemAt: take, options: .forUploading, error: &coordinationError) { zipURL in
+            do { try FileManager.default.copyItem(at: zipURL, to: dest) } catch { copyError = error }
+        }
+        if let coordinationError { throw coordinationError }
+        if let copyError { throw copyError }
+        return dest
+    }
+
     /// Every take under media/filming, newest first, for History's AirDrop export.
     static func takes(in root: URL) -> [URL] {
         let folder = root.appendingPathComponent("filming", isDirectory: true)

@@ -46,7 +46,7 @@ enum VideoCropper {
     }
 
     /// Export the crop as a 720p H.264 MP4 next to the clip. Returns the file name.
-    static func export(clip url: URL, pick: VideoPick, into directory: URL) async throws -> String {
+    static func export(clip url: URL, pick: VideoPick, into directory: URL, progress: (@Sendable @MainActor (Double) -> Void)? = nil) async throws -> String {
         let asset = AVURLAsset(url: url)
         let duration = try await asset.load(.duration).seconds
         let start = min(pick.cropStart, max(0, duration - 0.5))
@@ -60,7 +60,16 @@ enum VideoCropper {
         session.timeRange = CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 600), end: CMTime(seconds: end, preferredTimescale: 600))
         session.shouldOptimizeForNetworkUse = true
         session.fileLengthLimit = Int64(maxBytes)
+        // The export's own progress, a few times a second, for the bar on Review and send.
+        nonisolated(unsafe) let watched = session  // read for its progress only, while export() runs it
+        let watcher = Task { @Sendable in
+            for await state in watched.states(updateInterval: 0.2) {
+                if case .exporting(let p) = state { await progress?(p.fractionCompleted) }
+            }
+        }
+        defer { watcher.cancel() }
         try await session.export(to: out, as: .mp4)
+        await progress?(1)
         return name
     }
 }

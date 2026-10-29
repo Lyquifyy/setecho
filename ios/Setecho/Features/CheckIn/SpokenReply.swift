@@ -25,6 +25,14 @@ enum SpokenReply: Equatable {
     nonisolated(unsafe) private static let backPattern = pattern(
         #"\b(i'?m back|back now|ready|let'?s go|go ahead|continue|carry on|keep going|where were we|next question|go on)\b"#)
 
+    /// Leaving once everything is done: "I'm done", "that's all", "done for now", "close it".
+    static func isFinished(_ transcript: String) -> Bool {
+        matches(finishedPattern, transcript.lowercased().replacingOccurrences(of: "’", with: "'"))
+    }
+
+    nonisolated(unsafe) private static let finishedPattern = pattern(
+        #"\b(i'?m done|that'?s (?:all|it|everything)|all done|done for now|we'?re done|close (?:it|this)|finish(?:ed)?|that'?ll do)\b"#)
+
     static func read(_ transcript: String, offered: Bool) -> SpokenReply? {
         let text = transcript.lowercased().replacingOccurrences(of: "’", with: "'")
             .replacing(/[^\w' ]/, with: " ")

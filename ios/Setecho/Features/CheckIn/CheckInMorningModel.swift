@@ -186,6 +186,8 @@ final class CheckInMorningModel {
     var showPhotos = false
     /// Review and send, the one tap of the morning.
     var showReview = false
+    /// The morning is over and the screen should close: everything was sent, or he said he's done.
+    private(set) var finished = false
     private(set) var pendingForCoach: String?
     private(set) var awaitingWeightReading = false
     /// Speech that arrived while a turn was in flight, read when that turn comes to nothing.
@@ -270,13 +272,15 @@ final class CheckInMorningModel {
     static let photosLine = "Time for photos. Set up the tripod, and tell me when you're ready."
     static let photosDoneLine = "Photos are in."
     static let doneLine = "Want me to read it all back, or are you ready to send?"
+    static let sentLine = "That's sent. Nice work this morning."
+    static let leaveLine = "Okay. Everything's saved; the Check-in tab sends it whenever you're ready."
 
     /// The coach's questions and the fixed lines, rendered once and kept by a hash of the line and voice.
     private func prerender() {
         var lines = [Self.scaleLine, Self.scaleReadingLine, Self.glucoseLine, Self.glucoseAfterWeightLine, Self.photosLine, Self.photosDoneLine,
                      Self.doneLine, "No rush. Tell me when you're ready.", "Okay.", "Nice.",
                      "Welcome back. Let's pick up where we left off.", "Sorry, can you say that again?", "Okay, we'll skip that one.",
-                     "Okay, we'll leave the photos for later.", "Okay, from the top.", "Got it.", "I'll add that to your notes.", "Okay, I'll leave that out.",
+                     "Okay, we'll leave the photos for later.", "Okay, from the top.", Self.sentLine, Self.leaveLine, "Got it.", "I'll add that to your notes.", "Okay, I'll leave that out.",
                      "Take your time.", "What should it say?", "Go ahead."]
         let groups = questionGroups
         lines += groups.map { flow.prompt(for: $0, draft: draft) }
@@ -701,6 +705,18 @@ final class CheckInMorningModel {
         // Anything but another wait ends the wait.
         let wasPaused = isPaused
         if said != .hold, response.intent != .pause { isPaused = false }
+        // On the finished screen, "I'm done" or "that's all" leaves; "send" or "ready" opens the review.
+        if isDone, response.answers.isEmpty {
+            if SpokenReply.isFinished(response.transcript) {
+                await leave()
+                return
+            }
+            if response.intent == .ready || response.transcript.lowercased().contains("send") {
+                showReview = true
+                isListening = false
+                return
+            }
+        }
         // Back from a wait: "I'm back", "ready", "okay, go ahead" picks the question up again (Oct 28:
         // "ready" mid-questions only got "Go ahead", with no question to go ahead with).
         if wasPaused, step == .questions || step == .review, response.answers.isEmpty, SpokenReply.isBack(response.transcript) {
@@ -979,6 +995,26 @@ final class CheckInMorningModel {
         // Dismissed because the app left the front: the return to the front picks the step up.
         guard !isPaused else { return }
         await resume(after: ack)
+    }
+
+    /// Review and send closed: sent means the morning is over and says so; otherwise the mic opens
+    /// again on the finished screen.
+    func reviewClosed() async {
+        if coordinator.draft?.isSent == true {
+            await leave(saying: Self.sentLine)
+        } else {
+            isListening = true
+            armSilenceTimer()
+        }
+    }
+
+    /// "Done for now", by tap or by voice: the answers are saved, the screen closes.
+    func leave(saying line: String = CheckInMorningModel.leaveLine) async {
+        audio.stopListening()
+        isListening = false
+        await say(line)
+        stop()
+        finished = true
     }
 
     /// "Start over": the spoken answers and today's photos go, the data stays, and the morning runs

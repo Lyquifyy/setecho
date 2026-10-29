@@ -28,6 +28,8 @@ struct ReviewSendView: View {
     @State private var exporting = false
     /// What is happening to the videos right now: "Cropping Incline DB press to the reps, 1 of 2".
     @State private var exportStatus: String?
+    /// The current export's own progress, 0…1.
+    @State private var exportProgress = 0.0
     @State private var exportTask: Task<Void, Never>?
     @State private var photosFirst = false
     @State private var settings = Settings.shared
@@ -199,7 +201,16 @@ struct ReviewSendView: View {
                 }
                 if let exportStatus {
                     CardDivider()
-                    LoadingRow(title: exportStatus, detail: "On the phone, before it goes to WhatsApp. Sending waits for this.")
+                    VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(exportStatus).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.navy)
+                            Spacer()
+                            Text("\(Int((exportProgress * 100).rounded()))%").font(.subheadline.weight(.semibold)).monospacedDigit().foregroundStyle(Theme.cobalt)
+                        }
+                        MeterBar(fraction: exportProgress)
+                        Text("On the phone, before it goes to WhatsApp. Sending waits for this.").font(.footnote).secondaryText()
+                    }
+                    .accessibilityElement(children: .combine)
                 } else if !picks.isEmpty, picks.allSatisfy({ videoFiles[$0.setId] != nil }) {
                     CardDivider()
                     HStack(spacing: Theme.Space.xs) {
@@ -376,8 +387,11 @@ struct ReviewSendView: View {
             }
             guard let set = periodSessions.flatMap(\.sets).first(where: { $0.id == pick.setId }), let file = set.clipFile else { continue }
             exportStatus = "Cropping \(pick.caption) to just the reps, \(index + 1) of \(picks.count)"
+            exportProgress = 0
             let url = store.mediaDirectory.appendingPathComponent(file)
-            if let name = try? await VideoCropper.export(clip: url, pick: pick, into: store.mediaDirectory) { videoFiles[pick.setId] = name }
+            if let name = try? await VideoCropper.export(clip: url, pick: pick, into: store.mediaDirectory, progress: { exportProgress = $0 }) {
+                videoFiles[pick.setId] = name
+            }
         }
     }
 }
