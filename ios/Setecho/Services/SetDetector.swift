@@ -128,11 +128,6 @@ final class SetDetector: NSObject {
             connection.automaticallyAdjustsVideoMirroring = false
             connection.isVideoMirrored = false
         }
-        // The recorded files stand upright (a rotation in the file, no re-encode): the replay plays the
-        // right way up and the backend's crop reads the box in the same portrait frame.
-        for connection in movieOutput.connections where connection.isVideoRotationAngleSupported(90) {
-            connection.videoRotationAngle = 90
-        }
         processor.orientation = front ? .left : .right
         captureSession.commitConfiguration()
 

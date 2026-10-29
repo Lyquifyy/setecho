@@ -85,7 +85,7 @@ struct SessionView: View {
     /// During rest, the set he just did, from the clip kept for his coach (once it's exported).
     private var replayFeed: AnyView? {
         guard coordinator.cameraRunning, let file = engine.session.sets.last?.clipFile else { return nil }
-        return AnyView(ReplayView(url: store.mediaDirectory.appendingPathComponent(file), mirrored: coordinator.detector.front))
+        return AnyView(ReplayView(url: store.mediaDirectory.appendingPathComponent(file), front: coordinator.detector.front))
     }
 
     private func endSession() {

@@ -44,20 +44,21 @@ struct SessionCameraPreview: UIViewRepresentable {
 }
 
 /// The set he just did, looping and silent, during rest: the full-quality clip kept for his coach.
+/// The clip is stored the way the sensor sees it (landscape, so SAM's 720p copy keeps its width);
+/// the player turns it upright here (the back camera's frames turn right, the front camera's left)
+/// and mirrors the front camera's, like the live picture.
 struct ReplayView: UIViewRepresentable {
     let url: URL
-    var mirrored: Bool
+    var front: Bool
 
     func makeUIView(context: Context) -> PlayerView {
         let view = PlayerView()
-        view.play(url)
-        view.transform = mirrored ? CGAffineTransform(scaleX: -1, y: 1) : .identity
+        view.play(url, front: front)
         return view
     }
 
     func updateUIView(_ view: PlayerView, context: Context) {
-        view.play(url)
-        view.transform = mirrored ? CGAffineTransform(scaleX: -1, y: 1) : .identity
+        view.play(url, front: front)
     }
 
     static func dismantleUIView(_ view: PlayerView, coordinator: ()) {
@@ -65,20 +66,56 @@ struct ReplayView: UIViewRepresentable {
     }
 
     final class PlayerView: UIView {
-        override class var layerClass: AnyClass { AVPlayerLayer.self }
-        private var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+        private let playerLayer = AVPlayerLayer()
         private var looper: AVPlayerLooper?
         private var current: URL?
+        /// Quarter turns to stand the picture upright: +1 right, -1 left, 0 already upright.
+        private var turns = 0
+        private var front = false
 
-        func play(_ url: URL) {
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            clipsToBounds = true
+            playerLayer.videoGravity = .resizeAspectFill
+            layer.addSublayer(playerLayer)
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+        func play(_ url: URL, front: Bool) {
             guard url != current else { return }
             current = url
+            self.front = front
+            let asset = AVURLAsset(url: url)
             let player = AVQueuePlayer()
             player.isMuted = true
-            looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
+            looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(asset: asset))
             playerLayer.player = player
-            playerLayer.videoGravity = .resizeAspectFill
             player.play()
+            Task { [weak self] in
+                guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+                      let size = try? await track.load(.naturalSize),
+                      let transform = try? await track.load(.preferredTransform) else { return }
+                let shown = size.applying(transform)
+                let landscape = abs(shown.width) > abs(shown.height)
+                await MainActor.run {
+                    self?.turns = landscape ? (front ? -1 : 1) : 0
+                    self?.setNeedsLayout()
+                }
+            }
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            let size = turns == 0 ? bounds.size : CGSize(width: bounds.height, height: bounds.width)
+            playerLayer.bounds = CGRect(origin: .zero, size: size)
+            playerLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+            var t = CGAffineTransform(rotationAngle: CGFloat(turns) * .pi / 2)
+            if front { t = t.concatenating(CGAffineTransform(scaleX: -1, y: 1)) }
+            playerLayer.setAffineTransform(t)
+            CATransaction.commit()
         }
 
         func stop() {
