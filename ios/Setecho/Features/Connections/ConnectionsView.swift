@@ -10,6 +10,10 @@ struct ConnectionsView: View {
     @State private var healthSources: [String]?
     @State private var confirmDisconnect = false
 
+    /// Opens reading Apple Health; the screen renders (ScreenRenderTests) pass the sources instead,
+    /// so no Health permission sheet covers the screen.
+    init(healthSources: [String]? = nil) { _healthSources = State(initialValue: healthSources) }
+
     /// Apple Health on its own: the card shows what reaches Setecho through Health.
     private let health = HealthService(direct: nil)
 
@@ -20,7 +24,7 @@ struct ConnectionsView: View {
             withingsCard
         }
         .task {
-            await loadHealthSources()
+            if healthSources == nil { await loadHealthSources() }
             await withings.refreshIfDue()
         }
         .confirmationDialog("Disconnect Withings?", isPresented: $confirmDisconnect, titleVisibility: .visible) {

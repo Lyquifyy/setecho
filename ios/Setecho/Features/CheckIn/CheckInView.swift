@@ -10,13 +10,15 @@ struct CheckInView: View {
     @State private var showWrapUp = false
     @State private var showReview = false
     @State private var showFacts = false
-    @State private var filter: FieldFilter = .all
+    @State private var filter: FieldFilter
 
     /// The tabs over the form: every field, the ones still waiting on the athlete, or the ones ready.
     enum FieldFilter: Hashable { case all, toDo, ready }
 
-    init(store: Store) {
+    /// Opens on All; the screen renders (ScreenRenderTests) open it on each tab.
+    init(store: Store, filter: FieldFilter = .all) {
         _coordinator = State(initialValue: CheckInCoordinator(store: store))
+        _filter = State(initialValue: filter)
     }
 
     var body: some View {
