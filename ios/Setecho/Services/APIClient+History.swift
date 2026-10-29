@@ -34,7 +34,7 @@ extension APIClient {
         struct Response: Decodable { let matches: [HistoryMatch] }
         var request = URLRequest(url: baseURL.appendingPathComponent("/import/history/match"))
         request.httpMethod = "POST"
-        request.timeoutInterval = 120
+        request.timeoutInterval = 180  // Spark took up to 73 s on 52 names
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONCoding.encoder.encode(Body(names: names, exercises: exercises.map { Exercise(id: $0.id, name: $0.name) }))
         let (data, response) = try await session.data(for: request)

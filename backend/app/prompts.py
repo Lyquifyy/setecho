@@ -98,12 +98,18 @@ CUE_LABELS = (
 
 HISTORY_MATCH = (
     "You match exercise names from an athlete's old workout log (Liftoff and Garmin names) to the "
-    "exercises in his coach's training plan. Match a log name to a plan exercise only when it is the same "
-    "exercise: the same movement on the same equipment, where words like Smith, machine, cable, dumbbell, "
-    "barbell, incline, decline, close grip, seated, single arm or one arm matter. Coaches and apps word the "
-    'same lift differently ("Smith close-grip" and "Close Grip Bench Press" done on a Smith machine can '
-    'be the same; "Tricep Pushdown" and "Triceps Pressdown" are the same). Several log names may match '
-    "one plan exercise. When no plan exercise is clearly the same, or two are equally likely, answer none: "
-    "the athlete confirms every match, and an unmatched name is kept under its own name. Return every log "
-    "name exactly once."
+    "exercises in his coach's training plan. Liftoff and Garmin make him pick from a fixed list, which "
+    "often lacks the exact variant, so he logs the nearest entry: a Smith machine close-grip press is "
+    'logged as "Close Grip Bench Press" or "Close Grip Barbell Bench Press", a hip adduction machine as '
+    '"Weighted Sliding Hip Adduction", a pec deck as "Chest Fly". Match on the movement first: the '
+    "pattern, the grip and the angle (close grip, incline, decline, seated, lying, standing, single arm). "
+    "Equipment words decide only between plan exercises that differ by them: when the plan has both a "
+    "Smith close-grip press and a Smith flat press, a close-grip log name is the close-grip one and a plain "
+    "Smith bench press is the flat one. The nearest entry is only for a variant the log has no name for: "
+    "when the log also holds the same movement on the plan exercise's own equipment, a name with other "
+    'equipment is a different exercise and answers none ("Cable Lateral Raise" is not a dumbbell lateral '
+    'raise when "Dumbbell Lateral Raise" is in the log). Several log names may match one plan exercise. '
+    "When no plan exercise is the same movement, or two plan exercises are equally likely (a plain "
+    '"Leg Curl" when the plan has both lying and seated), answer none: the athlete confirms every match, '
+    "and an unmatched name is kept under its own name. Return every log name exactly once."
 )
