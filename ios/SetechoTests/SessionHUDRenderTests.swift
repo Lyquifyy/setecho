@@ -20,3 +20,21 @@ import Testing
         }
     }
 }
+
+/// Nothing on the session screen may lay it out wider than the phone (Oct 29: a 19-set day pushed
+/// the whole screen past both edges). Every state, plus a day longer than any he trains, at the
+/// narrowest phone this ships to and the iPhone 17 Pro.
+@Test @MainActor func sessionScreenNeverOutgrowsThePhone() {
+    var crowded = SessionHUDModel.readyCrowded
+    crowded.progress = (1...8).map { .init(name: "Lift number \($0)", dots: Array(repeating: .upcoming, count: 5)) }
+    crowded.micLabel = "A very long Bluetooth headset name"
+    crowded.exercise = "Single-arm cable lateral raise with a pause"
+    let states = SessionHUDModel.gallery.map(\.1) + [crowded]
+    for width in [375.0, 402.0] {
+        for model in states {
+            let host = UIHostingController(rootView: SessionHUD(model: model))
+            let size = host.sizeThatFits(in: CGSize(width: width, height: 874))
+            #expect(size.width <= width + 0.5, "\(model.phase.name) laid out \(size.width) pt wide on a \(width) pt phone")
+        }
+    }
+}

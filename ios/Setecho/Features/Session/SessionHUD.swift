@@ -320,7 +320,9 @@ private extension Font {
 /// Today's lifts, as he asked to keep them: a short name, a dot per set, on a white bar across the
 /// top. Done dots navy, the current set yellow (waiting on him), upcoming ones open, a skipped
 /// exercise a dash; add-ons after a hairline. Every name stays whole: the names step down to fit
-/// the day, and a day too long for any size keeps every lift's dots and names only the current one.
+/// the day, and a day too long for any size (his real days run to 19 sets) becomes one flexible
+/// bar per lift, a segment per set, with only the lift he's on named. That last form always fits,
+/// so the strip can never push the screen wider than the phone.
 struct LiftsStrip: View {
     var exercises: [SessionHUDModel.ExerciseDots]
 
@@ -329,7 +331,7 @@ struct LiftsStrip: View {
             row(nameSize: 20)
             row(nameSize: 17)
             row(nameSize: 15)
-            compact
+            bars
         }
         .padding(.vertical, Theme.Space.s)
         .padding(.horizontal, Theme.Space.m)
@@ -351,13 +353,48 @@ struct LiftsStrip: View {
         }
     }
 
-    /// The longest days: every lift's dots, and the name of the one he's on above them.
-    private var compact: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.xs) {
-            if let current = exercises.first(where: { $0.dots.contains(.current) }) {
-                Text(current.name).font(.hudLabel.weight(.bold)).foregroundStyle(Theme.navy).lineLimit(1)
+    /// The longest days: a bar per lift that shares the width, a segment per set, and the name of
+    /// the lift he's on (or the next one up) above them. Nothing in it has a fixed width.
+    private var bars: some View {
+        let focus = exercises.firstIndex { $0.dots.contains(.current) } ?? exercises.firstIndex { $0.dots.contains(.upcoming) }
+        return VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            if let focus {
+                HStack(spacing: Theme.Space.xs) {
+                    Text(exercises[focus].name).font(.hudLabel.weight(.bold)).foregroundStyle(Theme.navy)
+                    Text("· \(focus + 1) of \(exercises.count)").font(.hudLabel).foregroundStyle(Theme.textSecondary)
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             }
-            columns { ex, _ in dots(ex) }
+            HStack(spacing: Theme.Space.xs) {
+                ForEach(Array(exercises.enumerated()), id: \.element.id) { i, ex in
+                    HStack(spacing: 2) {
+                        ForEach(Array(ex.dots.enumerated()), id: \.offset) { _, dot in Segment(dot: dot) }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(3)
+                    .background(i == focus ? Theme.page : .clear, in: Capsule())
+                }
+            }
+        }
+    }
+
+    /// One set in the bars: done navy, current yellow, upcoming open, skipped dim.
+    private struct Segment: View {
+        var dot: SessionHUDModel.ExerciseDots.Dot
+        var body: some View {
+            Capsule()
+                .fill(fill)
+                .overlay { if dot == .upcoming { Capsule().strokeBorder(Theme.textSecondary.opacity(0.45), lineWidth: 1.5) } }
+                .frame(maxWidth: .infinity, minHeight: 10, maxHeight: 10)
+        }
+        private var fill: Color {
+            switch dot {
+            case .done: Theme.navy
+            case .current: Theme.yellow
+            case .upcoming: .clear
+            case .skipped: Theme.border
+            }
         }
     }
 
@@ -412,10 +449,12 @@ private struct StatusRow: View {
             row(long: true, audioLabel: true)
             row(long: true, audioLabel: false)
             row(long: false, audioLabel: false)
+            row(long: false, audioLabel: false, flexible: true)
         }
     }
 
-    private func row(long: Bool, audioLabel: Bool) -> some View {
+    /// `flexible`: the last resort, where the audio pill's words shrink rather than overflow.
+    private func row(long: Bool, audioLabel: Bool, flexible: Bool = false) -> some View {
         HStack(spacing: Theme.Space.s) {
             StageMark()
             if camera { StatePill(phase: model.phase, long: long).fixedSize() }
@@ -427,7 +466,8 @@ private struct StatusRow: View {
                     AudioConnection(label: model.micLabel, onHim: model.micOnHim, showsLabel: audioLabel || !model.micOnHim)
                 }
             }
-            .fixedSize()
+            .fixedSize(horizontal: !flexible, vertical: true)
+            .minimumScaleFactor(0.7)
         }
     }
 }
@@ -443,7 +483,7 @@ struct AudioConnection: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: onHim ? (label.contains("AirPods") ? "airpodspro" : "mic.fill") : "exclamationmark.triangle.fill")
-            if showsLabel { Text(onHim ? label : "\(label) · too far") }
+            if showsLabel { Text(warning) }
         }
         .foregroundStyle(onHim ? Theme.cobalt : Theme.navy)
         .font(.hudLabel.weight(.semibold))
@@ -452,8 +492,13 @@ struct AudioConnection: View {
         .frame(minHeight: 44)
         .background(onHim ? Theme.cobaltTint : Theme.yellow, in: Capsule())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(onHim ? "Listening on \(label)" : "Using the \(label). It's too far to hear you well.")
+        .accessibilityLabel(onHim ? "Listening on \(label)" : noMic ? "No mic connected" : "Using the \(label). It's too far to hear you well.")
     }
+
+    private var noMic: Bool { label == "No mic" }
+
+    /// "AirPods mic"; the phone's own mic "Phone mic · too far"; nothing at all "No mic".
+    private var warning: String { onHim || noMic ? label : "\(label) · too far" }
 }
 
 /// In a pocket the screen isn't the point: the pill says the buzzes carry it.
@@ -927,6 +972,28 @@ extension SessionHUDModel {
         return m
     }()
 
+    /// His real long day as the phone showed it (Oct 29): six lifts, 19 sets, the camera not yet on
+    /// him, no mic. Nothing may push the screen wider than the phone.
+    static let readyCrowded: SessionHUDModel = {
+        var m = ready
+        m.progress = [
+            .init(name: "Stationary", dots: [.current, .upcoming]), .init(name: "Incline", dots: [.upcoming, .upcoming, .upcoming]),
+            .init(name: "Flat", dots: [.upcoming, .upcoming]), .init(name: "Pec", dots: [.upcoming, .upcoming, .upcoming]),
+            .init(name: "Lateral", dots: [.upcoming, .upcoming, .upcoming, .upcoming]),
+            .init(name: "Abs", dots: [.upcoming, .upcoming, .upcoming, .upcoming, .upcoming], isAddOn: true),
+        ]
+        m.camera = false
+        m.micLabel = "No mic"
+        m.micOnHim = false
+        m.exercise = "Stationary Bike"
+        m.role = nil
+        m.setLabel = "set 1 of 2"
+        m.load = nil
+        m.reps = "5 min"
+        m.lastTime = nil
+        return m
+    }()
+
     static let armed = SessionHUDModel(
         phase: .armed, progress: day5, micLabel: "AirPods mic", micOnHim: true, exercise: "Incline DB press", role: "Back-off",
         setLabel: "set 2 of 2", load: 65, reps: "8–10", voice: .speaking("Set two. Lift when you're ready.", spoken: 3),
@@ -975,7 +1042,7 @@ extension SessionHUDModel {
 
     /// Every state for the screenshots, in order.
     static let gallery: [(String, SessionHUDModel)] = [
-        ("1-ready", ready), ("1b-ready-long-day", readyLongDay), ("2-armed", armed), ("3-recording", recording), ("4-rest", rest), ("4b-rest-overtime", restOvertime),
+        ("1-ready", ready), ("1b-ready-long-day", readyLongDay), ("1c-ready-crowded", readyCrowded), ("2-armed", armed), ("3-recording", recording), ("4-rest", rest), ("4b-rest-overtime", restOvertime),
         ("5-hold", hold), ("6-pocket", pocket), ("7-session-end", done),
     ]
 }
