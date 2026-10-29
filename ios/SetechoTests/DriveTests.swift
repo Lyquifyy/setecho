@@ -165,7 +165,7 @@ private func logSet(_ engine: SessionEngine, reps: Int) -> SessionEngine.Outcome
 @Test @MainActor func anAutomaticWarmUpIsSaidAndUndoMakesItAWorkingSet() {
     let engine = SessionEngine(day: day, weekNumber: 1, warmups: warmups)
     let warm = engine.apply(say(.endSet, "done, 6", number: 6))
-    #expect(warm.speech?.hasPrefix("Logged as warm-up one.") == true)
+    #expect(warm.speech?.hasPrefix("Warm-up one, logged.") == true)
     #expect(engine.session.sets[0].isWarmup)
     engine.apply(say(.undo, "undo"))
     #expect(!engine.session.sets[0].isWarmup && engine.setNumber == 2)

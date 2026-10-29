@@ -577,7 +577,7 @@ private func easy(_ reps: Int, slowdown: Double = 5) -> RepCounter.Result {
     engine.setStarted(at: t0) // his set starts it: warm-up mode
     #expect(engine.warmupMode)
     let w1 = engine.setEnded(at: t0.addingTimeInterval(15), phone: easy(6), willMeasure: true)
-    #expect(w1.speech == "Logged as warm-up one. Rest three minutes.")
+    #expect(w1.speech == "Warm-up one, logged. Rest three minutes, then your top set: 6–8 reps.")
     #expect(engine.session.sets[0].role == .warmup && engine.session.sets[0].repCount.status == .done && engine.pendingCounts.isEmpty)
     #expect(engine.setNumber == 1 && engine.warmupCount == 1 && engine.session.workingSets.isEmpty)
     #expect(!engine.shouldUpload(setId: engine.session.sets[0].id))
@@ -589,9 +589,56 @@ private func easy(_ reps: Int, slowdown: Double = 5) -> RepCounter.Result {
     #expect(engine.session.sets[1].role == .top && engine.session.sets[1].repCount.status == .counting && !engine.warmupMode)
     #expect(engine.setNumber == 2 && engine.currentPlannedSet?.role == .backOff)
     // Nine reps is never a warm-up, whatever the slowdown; the plan's reps (no count) never are either.
-    #expect(!SessionEngine.looksLikeWarmup(reps: 9, source: .phone, phone: easy(9), maxReps: 8))
-    #expect(!SessionEngine.looksLikeWarmup(reps: 8, source: .plan, phone: nil, maxReps: 8))
-    #expect(SessionEngine.looksLikeWarmup(reps: 5, source: .spoken, phone: nil, maxReps: 8))
+    let topSet = planned(nil, min: 6, max: 8, role: .top)
+    #expect(SessionEngine.warmupCall(reps: 9, source: .phone, phone: easy(9), maxReps: 8, planned: topSet, last: nil) == .working)
+    #expect(SessionEngine.warmupCall(reps: 8, source: .plan, phone: nil, maxReps: 8, planned: topSet, last: nil) == .working)
+    // A measured slowdown decides; a count with none is read against the range and last time.
+    #expect(SessionEngine.warmupCall(reps: 7, source: .phone, phone: easy(7), maxReps: 8, planned: topSet, last: nil) == .warmup)
+    #expect(SessionEngine.warmupCall(reps: 4, source: .spoken, phone: nil, maxReps: 8, planned: topSet, last: nil) == .warmup)
+    #expect(SessionEngine.warmupCall(reps: 5, source: .spoken, phone: nil, maxReps: 8, planned: topSet, last: nil) == .unsure)
+    #expect(SessionEngine.warmupCall(reps: 7, source: .spoken, phone: nil, maxReps: 8, planned: topSet, last: LastSet(loadLb: 115, reps: 6)) == .unsure)
+    // Last time 115 for 4: a set of 3 could be his top set too.
+    #expect(SessionEngine.warmupCall(reps: 3, source: .spoken, phone: nil, maxReps: 8, planned: topSet, last: LastSet(loadLb: 115, reps: 4)) == .unsure)
+}
+
+@Test @MainActor func aSpokenCountThatCouldBeTheTopSetIsAskedOnceAndKeptWithNoAnswer() {
+    let engine = SessionEngine(day: day1, weekNumber: 1, warmups: hisWarmups, lastSets: ["incline|top": LastSet(loadLb: 115, reps: 6),
+                                                                                      "incline|backOff": LastSet(loadLb: 90, reps: 10)])
+    engine.apply(intent(.skipSet)) // past the bike
+    // Well under 6 to 8: a warm-up, and its rest leads into the top set with last time.
+    let warm = engine.apply(intent(.endSet, 3, transcript: "done, 3"), now: t0)
+    #expect(warm.speech == "Warm-up one, logged. Rest three minutes, then your top set: 115 for 6–8. Last time 115 for 6.")
+    #expect(engine.session.sets[0].isWarmup && engine.warmupMode)
+    // Seven could be either: logged as the top set, and asked once.
+    let maybe = engine.apply(intent(.endSet, 7, transcript: "done, 7"), now: t0.addingTimeInterval(200))
+    #expect(maybe.speech == "Seven. Was that your top set?")
+    #expect(engine.session.sets[1].role == .top && engine.setNumber == 2 && !engine.warmupMode)
+    #expect(VoiceGuide.hints(for: engine) == ["yes", "warm-up"])
+    // Yes: on to the back-off, nothing else changes.
+    let yes = engine.apply(intent(.yes, transcript: "yeah"), now: t0.addingTimeInterval(210))
+    #expect(yes.speech == "Got it. Next, 90 for 6–8.")
+    #expect(engine.session.sets[1].role == .top && engine.pendingAsk == nil)
+}
+
+@Test @MainActor func warmUpAnswersTheTopSetQuestionAndNoAnswerKeepsTheTopSet() {
+    let engine = SessionEngine(day: day1, weekNumber: 1, warmups: hisWarmups, lastSets: ["incline|top": LastSet(loadLb: 115, reps: 6)])
+    engine.apply(intent(.skipSet))
+    engine.apply(intent(.endSet, 6, transcript: "done, 6"), now: t0)
+    // "Warm-up": it was a warm-up after all, and the top set is still to come.
+    let fix = engine.apply(intent(.warmup, transcript: "warm-up"), now: t0.addingTimeInterval(10))
+    #expect(fix.speech == "Got it, warm-up one. Next up, your top set: 115 for 6–8. Last time 115 for 6.")
+    #expect(engine.session.sets[0].isWarmup && engine.setNumber == 1 && engine.warmupMode && engine.pendingAsk == nil)
+    // Asked again on the next one; this time no answer, and the next set keeps it as the top set.
+    engine.apply(intent(.endSet, 7, transcript: "done, 7"), now: t0.addingTimeInterval(200))
+    #expect(engine.pendingAsk == .topSetCheck(setId: engine.session.sets[1].id))
+    engine.apply(intent(.endSet, 9, transcript: "done, 9"), now: t0.addingTimeInterval(400))
+    #expect(engine.session.sets[1].role == .top && engine.session.sets[2].role == .backOff)
+    // "No" works the same as "warm-up".
+    let other = SessionEngine(day: day1, weekNumber: 1, warmups: hisWarmups)
+    other.apply(intent(.skipSet))
+    other.apply(intent(.endSet, 6, transcript: "done, 6"), now: t0)
+    other.apply(intent(.no, transcript: "no"), now: t0.addingTimeInterval(10))
+    #expect(other.session.sets[0].isWarmup && other.setNumber == 1)
 }
 
 @Test @MainActor func topSetAndThatWasAWarmupFixTheClassificationEitherWayWithUndo() {
@@ -605,7 +652,7 @@ private func easy(_ reps: Int, slowdown: Double = 5) -> RepCounter.Result {
     #expect(engine.session.sets[0].role == .top && engine.setNumber == 2)
     // "That was a warm-up": the set becomes a warm-up, the counter moves back, SAM is not waited for.
     let fix = engine.apply(intent(.warmup, transcript: "that was a warm-up"))
-    #expect(fix.speech == "Warm-up. Set 1 is next." && engine.session.sets[0].isWarmup && engine.setNumber == 1 && engine.warmupMode)
+    #expect(fix.speech == "Got it, warm-up one. Next up, your top set: 6–8 reps." && engine.session.sets[0].isWarmup && engine.setNumber == 1 && engine.warmupMode)
     #expect(engine.pendingCounts.isEmpty && engine.session.sets[0].repCount.status == .done)
     // "That was my top set": back to the working set, and its clip goes to SAM now.
     let back = engine.apply(intent(.topSet, transcript: "that was my top set"))

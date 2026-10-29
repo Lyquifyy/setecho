@@ -426,7 +426,11 @@ _STARTING = re.compile(
 _TOP_SET = re.compile(
     r"\b(top set|this is (the|my) top set|that was (the|my) top set|going for the top set)\b"
 )
-_WARMUP = re.compile(r"\b(that was (just |only )?(a |my )?warm[ -]?up|warm[ -]?up set|still warming up)\b")
+_WARMUP = re.compile(
+    r"\b((that|it|this) was (just |only )?(a |my )?warm[ -]?up|warm[ -]?up set|still warming up)\b"
+    # The answer to "Was that your top set?": "warm-up", "no, just a warm-up", "nope, warm up".
+    r"|^(no|nope|nah)?[,.]?\s*(just |only )?(a |my )?warm[ -]?up[.!]?$"
+)
 _FLAG = re.compile(
     r"\b(flag (that|it|this)( one)?|send (that|this)( one)? to (the )?coach|flag for (the )?coach)\b"
 )

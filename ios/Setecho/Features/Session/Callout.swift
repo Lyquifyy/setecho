@@ -116,9 +116,11 @@ enum Callout {
         return parts.joined(separator: " ")
     }
 
-    /// A warm-up never gets a count spoken as a result: "Warm-up 2. Rest one thirty."
-    static func warmupDone(number: Int, restSeconds: Int) -> String {
-        "Logged as warm-up \(word(number)). Rest \(spoken(seconds: restSeconds))."
+    /// A warm-up never gets a count spoken as a result, and its rest leads into what's next:
+    /// "Warm-up two, logged. Rest one thirty, then your top set: 115 for 6–8. Last time 115 for 6."
+    static func warmupDone(number: Int, restSeconds: Int, upNext: String? = nil) -> String {
+        let rest = "Rest \(spoken(seconds: restSeconds))"
+        return "Warm-up \(word(number)), logged. " + (upNext.map { "\(rest), then \($0)" } ?? "\(rest).")
     }
 
     /// A hold ended: "Time. Next, 60 s. Rest thirty seconds." or, cut short, "Forty seconds logged."

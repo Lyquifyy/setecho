@@ -91,6 +91,9 @@ final class SessionEngine {
         case logPlanSets(count: Int)
         /// "Smith's taken. His first choice is …": his options in his order, then Wait.
         case takenOffer(TakenOffer)
+        /// Warm-up mode couldn't tell from a spoken count: "Six. Was that your top set?" Logged as the
+        /// working set already; no (or "warm-up") makes it a warm-up, and no answer keeps it.
+        case topSetCheck(setId: UUID)
     }
 
     /// What was offered when a machine was taken, for the HUD's TakenCard and the choices.
@@ -538,7 +541,11 @@ final class SessionEngine {
             reps = planReps
             source = .plan
         }
-        let isWarmup = warmupMode && !forceWorkingForCurrentSet && Self.looksLikeWarmup(reps: reps, source: source, phone: phone, maxReps: warmupMaxReps)
+        let call: WarmupCall = warmupMode && !forceWorkingForCurrentSet
+            ? Self.warmupCall(reps: reps, source: source, phone: phone, maxReps: warmupMaxReps, planned: planned,
+                              last: lastSets[Self.loadKey(exercise.id, planned.role)])
+            : .working
+        let isWarmup = call == .warmup
         let logged = LoggedSet(
             id: UUID(),
             exerciseId: exercise.id,
@@ -568,7 +575,7 @@ final class SessionEngine {
             warmupCount += 1
             // An automatic decision, said; "undo" makes it a working set.
             undoStack.append(UndoEntry(action: .autoWarmup(setId: logged.id), description: "the warm-up"))
-            let callout = Callout.warmupDone(number: warmupCount, restSeconds: rest)
+            let callout = Callout.warmupDone(number: warmupCount, restSeconds: rest, upNext: warmupPreview)
             lastCallout = callout
             state = .rest(remaining: rest)
             restTotal = rest
@@ -594,7 +601,11 @@ final class SessionEngine {
         advance()
         finishedName = currentExercise?.id == exercise.id ? nil : exercise.name
         let callout: String
-        if howMany {
+        let checkTopSet = call == .unsure && !howMany && !isComplete
+        if checkTopSet {
+            callout = "\(Callout.word(reps).capitalized)."
+            if willMeasure, source != .spoken { pendingCounts.append(PendingCount(setId: logged.id, endedAt: now, spoken: true)) }
+        } else if howMany {
             callout = Callout.setDone(setNumber: doneNumber, restSeconds: rest, sessionOver: isComplete)
         } else if willMeasure, source != .spoken {
             // SAM is the count of record: no number until it answers, or 60 s pass.
@@ -612,7 +623,10 @@ final class SessionEngine {
                                                     : "Set \(doneNumber) saved: \(Format.number(logged.loadLb)) × \(reps)"
         var outcome = Outcome(speech: callout, echo: howMany ? "Set \(doneNumber) saved: \(Format.number(logged.loadLb)) lb, how many?" : saved,
                               sound: .setEnded)
-        if howMany, !isComplete {
+        if checkTopSet {
+            let question = planned.role == .top ? "Was that your top set?" : "Was that a working set?"
+            outcome = outcome.merged(with: ask(.topSetCheck(setId: logged.id), question, now: now))
+        } else if howMany, !isComplete {
             outcome = outcome.merged(with: ask(.howMany(setId: logged.id), "How many?", now: now))
         } else if !(willMeasure && source != .spoken), let i = session.sets.firstIndex(where: { $0.id == logged.id }) {
             // Nothing to wait for: the effort and his rule's suggestion come now, after the set-end line.
@@ -626,12 +640,28 @@ final class SessionEngine {
         return outcome
     }
 
-    /// 8 reps or fewer with under 20% slowdown is a warm-up (§13). The athlete's own number counts
-    /// as reps; with no reading of the slowdown, a short set is still a warm-up.
-    static func looksLikeWarmup(reps: Int, source: RepSource, phone: RepCounter.Result?, maxReps: Int) -> Bool {
-        guard source != .plan else { return false }
-        guard reps <= maxReps else { return false }
-        return (phone?.velocityLossPct ?? 0) < warmupMaxSlowdownPct
+    enum WarmupCall: Equatable { case warmup, working, unsure }
+
+    /// Warm-up mode's call on a set just finished (§13, Oct 29). More reps than his warm-ups ever take
+    /// is working, and a measured slowdown decides: under 20% is a warm-up. A count with no slowdown
+    /// (said, or the pocket) is read against the planned set and last time: well under the range is a
+    /// warm-up, and anything that could be the set itself is asked once. The plan's reps (no count)
+    /// are never a warm-up.
+    static func warmupCall(reps: Int, source: RepSource, phone: RepCounter.Result?, maxReps: Int,
+                           planned: PlannedSet?, last: LastSet?) -> WarmupCall {
+        guard source != .plan, reps <= maxReps else { return .working }
+        if let loss = phone?.velocityLossPct { return loss < warmupMaxSlowdownPct ? .warmup : .working }
+        guard let low = planned?.minimumReps ?? planned?.totalReps else { return .warmup }
+        let floor = min(low, last?.reps ?? low)
+        return reps < floor - 1 ? .warmup : .unsure
+    }
+
+    /// What a warm-up's rest leads to: "your top set: 115 for 6–8. Last time 115 for 6."
+    private var warmupPreview: String? {
+        guard let ex = currentExercise, let planned = currentPlannedSet else { return nil }
+        var line = "\(planned.role == .top ? "your top set" : "your first working set"): \(Callout.target(load: targetLoadLb, reps: targetRepsText))."
+        if let logbook = logbookLine(for: ex) { line += " \(logbook)" }
+        return line
     }
 
     /// The set's trimmed clip finished exporting after the set was logged.
@@ -1337,6 +1367,19 @@ final class SessionEngine {
                 return echo("Logged \(logged) from the plan", speech: "Logged \(logged) from the plan.").merged(with: moveToNextExercise())
             }
             if no { clearAsk(); return moveToNextExercise(skipped: count) }
+        case .topSetCheck(let setId):
+            guard let i = session.sets.firstIndex(where: { $0.id == setId }) else { clearAsk(); return nil }
+            if yes || kind == .topSet {
+                clearAsk()
+                var outcome = Outcome(speech: "Got it.", echo: "Set \(session.sets[i].setIndex + 1) is the \(session.sets[i].role == .top ? "top set" : "working set")")
+                outcome = outcome.merged(with: settle(at: i, mode: .askOnly))
+                if pendingSuggestion == nil, let next = nextTarget { outcome = outcome.merged(with: Outcome(speech: Callout.nextLine(next))) }
+                return outcome
+            }
+            if no || kind == .warmup {
+                clearAsk()
+                return reclassify(at: i, toWarmup: true, transcript: response.transcript, now: now)
+            }
         case .takenOffer(let offer):
             let first = yes || kind == .choose && intent.number == 1
             let other = kind == .choose && intent.number == 2
@@ -1938,7 +1981,7 @@ final class SessionEngine {
         session.sets[i] = set
         undoStack.append(UndoEntry(action: .role(setId: set.id, oldRole: oldRole, oldStatus: oldStatus), description: toWarmup ? "warm-up" : "top set"))
         let number = set.setIndex + 1
-        return toWarmup ? echo("Set \(number) → warm-up", speech: "Warm-up. Set \(number) is next.")
+        return toWarmup ? echo("Set \(number) → warm-up", speech: "Got it, warm-up \(Callout.word(warmupCount))." + (warmupPreview.map { " Next up, \($0)" } ?? ""))
                         : echo("Warm-up → set \(number)", speech: "Set \(number) logged.")
     }
 
