@@ -1,12 +1,12 @@
 import SwiftUI
 
-/// Session (DESIGN.md): full-screen and hands-free. The phone sits on the tripod 2–3 m away.
-/// Top to bottom: exercise name, the target with the set counter, the state line, the last set's
-/// result, the voice echo, up next. The only tap target is End session, which needs a long press.
+/// Session (DESIGN.md): full-screen and hands-free. The phone sits on the tripod 2–3 m away, facing
+/// him. `SessionHUD` draws it from the live session (`SessionHUDModel(engine:live:)`): the lifts
+/// across the top, the audio connection, his own camera with the set up now (or the replay of the
+/// set he just did, during rest), the voice card. The only tap target is the long-press end.
 struct SessionView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var coordinator: SessionCoordinator
-    @State private var endProgress = false
     @State private var typed = ""
     private let store: Store
 
@@ -19,103 +19,25 @@ struct SessionView: View {
     }
 
     var body: some View {
-        let engine = coordinator.engine
-        VStack(spacing: Theme.Space.l) {
-            HStack {
-                Image("Lockup")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 26)
-                    .foregroundStyle(Theme.cobalt)
-                    .accessibilityHidden(true)
-                Spacer()
-                Text(engine.day == nil ? engine.title : "\(engine.title) · Week \(engine.weekNumber)").font(.hudLabel).secondaryText()
-            }
-
-            Spacer(minLength: 0)
-
-            if let exercise = engine.currentExercise {
-                Text(Self.nameLine(section: engine.currentEntry?.section, name: exercise.name)).font(.hudLabel).secondaryText()
-                Text(targetText(engine))
-                    .font(.hudTarget)
-                    .foregroundStyle(Theme.navy)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                TargetTag(text: engine.currentPlannedSet?.role.map { "\($0.label) · set \(engine.setNumber) of \(engine.setCount)" } ?? "Set \(engine.setNumber) of \(engine.setCount)")
-                    .scaleEffect(1.4)
-                    .padding(.vertical, Theme.Space.xs)
-            } else {
-                Text("Session over").font(.hudTarget).foregroundStyle(Theme.navy).minimumScaleFactor(0.5)
-                Text(sessionOverText(engine)).font(.hudLabel).secondaryText()
-            }
-
-            HStack(spacing: Theme.Space.m) {
-                HUDState(state: coordinator.hudState)
-                InputStatus(camera: coordinator.detector.isOnDuty, mic: coordinator.audio.inputLabel, micOnHim: coordinator.audio.isHeadWornMic)
-            }
-
-            if let last = engine.session.sets.last {
-                HStack(spacing: Theme.Space.s) {
-                    Text(lastSetText(last)).font(.hudLabel).foregroundStyle(Theme.navy)
-                    // "Measured" from SAM; "Phone" only as the fallback; "Counting" while SAM works.
-                    SourceChip(source: last.repCount.isCounting ? "Counting" : last.repCount.source.chipText)
-                        .scaleEffect(1.3)
-                        .padding(.horizontal, Theme.Space.xs)
-                }
-                if !last.isWarmup { EffortLine(set: last) }
-            }
-            if let suggestion = engine.pendingSuggestion {
-                SuggestionTag(suggestion: suggestion, reps: engine.targetRepsText)
-            }
-            if case .rest = engine.state, let line = coordinator.spokenLine {
-                Text(line).font(.hudLabel).secondaryText().multilineTextAlignment(.center)
-            }
-
-            if let echo = coordinator.echo {
-                VoiceEcho(text: echo)
-            } else if let heard = coordinator.heard {
-                // Chatter: shown, never answered.
-                Text(heard).font(.hudLabel).secondaryText().lineLimit(2)
-            } else if engine.currentExercise != nil, !VoiceGuide.hints(for: engine).isEmpty {
-                // Two or three things that fit the moment, so he never needs the list.
-                Text("Try " + VoiceGuide.hints(for: engine).map { "\u{201C}\($0)\u{201D}" }.joined(separator: " · "))
-                    .font(.hudLabel).secondaryText().multilineTextAlignment(.center)
-            }
-            if let offer = engine.takenOffer {
-                TakenCard(what: offer.what ?? engine.exercises.first { $0.exercise.id == offer.exerciseId }?.exercise.name ?? "Machine",
-                          options: offer.options.filter { $0.kind != .wait }.map(\.name))
-            } else if let ask = coordinator.askBack {
-                Text(ask).font(.hudLabel).foregroundStyle(Theme.navy)
-            }
-
-            Spacer(minLength: 0)
-
-            if let next = upNext(engine) {
-                Text(next).font(.hudLabel).secondaryText()
-            }
-            if let error = coordinator.audio.lastError ?? coordinator.detector.lastError {
-                Text(error).font(.hudLabel).secondaryText()
-            }
-            if coordinator.permissionsDenied {
-                Text("Microphone access is needed for a hands-free session.").font(.hudLabel).foregroundStyle(Theme.navy)
-            }
-
-            if coordinator.rehearsal {
-                HStack(spacing: Theme.Space.s) {
-                    SettingsField(placeholder: "Say something, e.g. done, 12", text: $typed)
-                        .submitLabel(.send)
-                        .onSubmit(sendTyped)
-                    LinkButton(title: "Say", chevron: .none, action: sendTyped)
-                }
-            }
-
-            endButton
+        // A quarter-second clock for the elapsed time and the word-by-word fill; everything else
+        // updates as the engine, the mic and the camera change.
+        TimelineView(.periodic(from: .now, by: 0.25)) { context in
+            SessionHUD(model: SessionHUDModel(engine: engine, live: live(at: context.date)),
+                       onEnd: endSession,
+                       footer: coordinator.rehearsal ? AnyView(rehearsalField) : nil)
         }
-        .padding(Theme.gutter)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.page.ignoresSafeArea())
+        .environment(\.sessionCameraFeed, cameraFeed)
+        .environment(\.sessionReplayFeed, replayFeed)
         .overlay { if coordinator.showSlate { Color.white.ignoresSafeArea() } } // the filming slate
+        .overlay {
+            if coordinator.permissionsDenied {
+                Text("Microphone access is needed for a hands-free session.")
+                    .font(.hudLabel).foregroundStyle(Theme.navy).multilineTextAlignment(.center)
+                    .padding(Theme.cardPadding)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+                    .padding(Theme.gutter)
+            }
+        }
         .task { await coordinator.start() }
         // A tripod rest is 3–4 minutes: the screen must not lock and stop the camera, and the countdown stays in view.
         .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
@@ -138,30 +60,46 @@ struct SessionView: View {
             coordinator = SessionCoordinator(day: found.day, addOns: store.addOnsDue(on: found.day.id).map(\.addOn), weekNumber: found.week.number, store: store)
             Task { await coordinator.start() }
         }
-        .animation(.default, value: coordinator.echo)
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
     }
 
-    /// Long press only, so a brush against the phone never ends the session.
-    private var endButton: some View {
-        Text(engine.state == .ended ? "Done" : "Hold to end session")
-            .font(.headline)
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 60)
-            .background(endProgress ? Theme.cobaltPressed : Theme.cobalt,
-                        in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-            .contentShape(Rectangle())
-            .onLongPressGesture(minimumDuration: 1.2, pressing: { endProgress = $0 }) {
-                if engine.state == .ended {
-                    dismiss()
-                } else {
-                    coordinator.end()
-                    dismiss()
-                }
-            }
-            .accessibilityLabel("End session")
-            .accessibilityHint("Press and hold for one second, or say end session")
+    /// The mic, the camera and the conversation right now, for the screen's model.
+    private func live(at date: Date) -> SessionHUDModel.Live {
+        let audio = coordinator.audio
+        let talk = coordinator.conversation
+        return SessionHUDModel.Live(
+            micLabel: audio.inputLabel, micOnHim: audio.isHeadWornMic, micLevel: audio.inputLevel,
+            cameraRunning: coordinator.cameraRunning, cameraOnDuty: coordinator.detector.isOnDuty,
+            frontCamera: coordinator.detector.front, trackedBox: coordinator.detector.trackedBox,
+            hearing: audio.isHearing, liveWords: coordinator.liveWords, reading: talk.reading,
+            speakingLine: talk.speakingLine, speakingSince: talk.speakingSince, lastLine: talk.lastLine, now: date)
+    }
+
+    /// His live image, from the set detector's own capture session.
+    private var cameraFeed: AnyView? {
+        guard coordinator.cameraRunning else { return nil }
+        return AnyView(SessionCameraPreview(session: coordinator.detector.captureSession, mirrored: coordinator.detector.front))
+    }
+
+    /// During rest, the set he just did, from the clip kept for his coach (once it's exported).
+    private var replayFeed: AnyView? {
+        guard coordinator.cameraRunning, let file = engine.session.sets.last?.clipFile else { return nil }
+        return AnyView(ReplayView(url: store.mediaDirectory.appendingPathComponent(file), mirrored: coordinator.detector.front))
+    }
+
+    private func endSession() {
+        if engine.state != .ended { coordinator.end() }
+        dismiss()
+    }
+
+    private var rehearsalField: some View {
+        HStack(spacing: Theme.Space.s) {
+            SettingsField(placeholder: "Say something, e.g. done, 12", text: $typed)
+                .submitLabel(.send)
+                .onSubmit(sendTyped)
+            LinkButton(title: "Say", chevron: .none, action: sendTyped)
+        }
     }
 
     private var engine: SessionEngine { coordinator.engine }
@@ -171,50 +109,6 @@ struct SessionView: View {
         guard !line.isEmpty else { return }
         typed = ""
         Task { await coordinator.rehearse(line) }
-    }
-
-    private func targetText(_ engine: SessionEngine) -> String {
-        if case .hold(let remaining) = engine.state { return Format.duration(TimeInterval(remaining)) }
-        if case .leadIn(let remaining) = engine.state { return "\(remaining)" }
-        if engine.currentSetIsTimed { return engine.targetRepsText }
-        if let load = engine.targetLoadLb { return "\(Format.number(load)) × \(engine.targetRepsText)" }
-        return "× \(engine.targetRepsText)"
-    }
-
-    /// The count shows once it is settled: while SAM works, the set is the load alone. A warm-up
-    /// says so, and a hold shows its seconds.
-    private func lastSetText(_ set: LoggedSet) -> String {
-        let name = set.isWarmup ? "warm-up" : "set \(set.setIndex + 1)"
-        var s: String
-        if let seconds = set.seconds {
-            s = "Last: \(name), \(Format.duration(TimeInterval(seconds)))"
-        } else if set.repCount.isCounting {
-            s = "Last: \(name), \(Format.load(set.loadLb))"
-        } else if set.loadLb > 0 {
-            s = "Last: \(name), \(Format.number(set.loadLb)) × \(set.reps)"
-        } else {
-            s = "Last: \(name), \(set.reps) reps"
-        }
-        if let rpe = set.rpe { s += " · RPE \(Format.number(rpe))" }
-        return s
-    }
-
-    /// "12 sets logged · SAM median 24 s": the latency report the human reads off the screen (P1b).
-    private func sessionOverText(_ engine: SessionEngine) -> String {
-        var s = "\(engine.session.workingSets.count) sets logged"
-        if let median = coordinator.medianCountLatency { s += " · SAM median \(Int(median.rounded())) s" }
-        return s
-    }
-
-    private func upNext(_ engine: SessionEngine) -> String? {
-        guard let exercise = engine.currentExercise else { return nil }
-        if engine.setIndex + 1 < exercise.sets.count {
-            return "Up next: set \(engine.setNumber + 1) of \(exercise.sets.count)"
-        }
-        let nextIndex = engine.exerciseIndex + 1
-        guard engine.exercises.indices.contains(nextIndex) else { return "Up next: last set of the session" }
-        let next = engine.exercises[nextIndex]
-        return "Up next: \(Self.nameLine(section: next.section, name: next.exercise.name))"
     }
 
     /// "Abs · Plank", but "Stomach Vacuums" once when the add-on and its exercise share the name.

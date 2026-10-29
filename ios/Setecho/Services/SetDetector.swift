@@ -39,6 +39,9 @@ final class SetDetector: NSObject {
     var startsAllowed = true
     /// Bodies in the latest pose frame, for the HUD and the debug record.
     private(set) var bodiesInFrame = 0
+    /// His box in the latest pose frame (normalized, top-left origin, the upright unmirrored frame),
+    /// for the screen's lock-on brackets; nil when he isn't in it.
+    private(set) var trackedBox: CGRect?
 
     /// The set's real start (capture-clock seconds).
     var onSetStart: ((Double) -> Void)?
@@ -125,6 +128,11 @@ final class SetDetector: NSObject {
             connection.automaticallyAdjustsVideoMirroring = false
             connection.isVideoMirrored = false
         }
+        // The recorded files stand upright (a rotation in the file, no re-encode): the replay plays the
+        // right way up and the backend's crop reads the box in the same portrait frame.
+        for connection in movieOutput.connections where connection.isVideoRotationAngleSupported(90) {
+            connection.videoRotationAngle = 90
+        }
         processor.orientation = front ? .left : .right
         captureSession.commitConfiguration()
 
@@ -192,6 +200,7 @@ final class SetDetector: NSObject {
             him = tracker.follow(frame.bodies, at: frame.t)
         }
         if let box = him?.box { boxes.append((frame.t, box)) }
+        if trackedBox != him?.box { trackedBox = him?.box }
         handle(JointSeries.Sample(t: frame.t, joints: him?.joints ?? [:]))
     }
 

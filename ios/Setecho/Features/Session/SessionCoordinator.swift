@@ -37,6 +37,13 @@ final class SessionCoordinator {
     let rehearsal: Bool
     /// The realtime stream of the utterance being heard now; a new one opens for each utterance.
     private var stream: RealtimeTranscriber?
+    /// His words as the realtime stream hears them, for the screen's voice card.
+    var liveWords: String? {
+        guard let text = stream?.text, !text.isEmpty else { return nil }
+        return text
+    }
+    /// The camera is running (not a rehearsal, not a morning of holds).
+    var cameraRunning: Bool { cameraOn }
     /// The set the camera is filming, by its real start on the capture clock.
     private var currentSetStart: Double?
     /// Logged sets waiting for their clips, keyed by the set's capture-clock start.

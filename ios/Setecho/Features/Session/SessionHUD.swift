@@ -89,13 +89,20 @@ struct SessionHUDModel: Equatable {
     /// The camera is filming him (the front camera, facing the bench). Off for a morning of holds.
     var camera = true
     /// His lock-on box in the camera's frame, normalized, top-left origin (`BodyTracker`).
-    var lockBox: CGRect? = CGRect(x: 0.08, y: 0.3, width: 0.9, height: 0.62)
+    var lockBox: CGRect?
 }
 
 /// The live camera, injected by the session (the front camera's preview layer, mirrored for him);
 /// previews show a placeholder, and the screenshots a sample frame.
 extension EnvironmentValues {
     @Entry var sessionCameraFeed: AnyView? = nil
+    /// The set he just did, looping, for the camera card during rest.
+    @Entry var sessionReplayFeed: AnyView? = nil
+}
+
+extension SessionHUDModel {
+    /// The camera's upright frame, width over height (1080 × 1920 portrait).
+    static let frameAspect: CGFloat = 9.0 / 16.0
 }
 
 extension SessionHUDModel.Phase {
@@ -116,6 +123,10 @@ extension SessionHUDModel.Phase {
 
 struct SessionHUD: View {
     var model: SessionHUDModel
+    /// The long press that ends the session (no tap ends anything); nil in previews.
+    var onEnd: (() -> Void)?
+    /// Developer → Rehearse a session: the typed line field, above the end button.
+    var footer: AnyView?
 
     var body: some View {
         VStack(spacing: Theme.Space.s) {
@@ -147,16 +158,27 @@ struct SessionHUD: View {
                     .id(model.phase.name + (model.pocket ? "-pocket" : ""))
                     .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
             }
+            // A question waiting on him (outside rest, where the next-set card carries it) stays on screen
+            // until it's answered or lapses: "End the session? Six sets logged.", a machine-taken offer.
+            if let ask = model.nextAsk, !isRest {
+                AskCard(text: ask)
+            }
             if !model.pocket, model.voice != .idle(hints: []) {
                 VoiceCard(voice: model.voice)
             }
-            EndButton(label: model.phase == .done ? "Hold to close" : "Hold to end session")
+            if let footer { footer }
+            EndButton(label: model.phase == .done ? "Hold to close" : "Hold to end session", onEnd: onEnd)
         }
         .padding(.horizontal, Theme.gutter)
         .padding(.top, Theme.Space.xs)
         .padding(.bottom, Theme.Space.xs)
         .background(Theme.page.ignoresSafeArea())
         .animation(.smooth(duration: 0.45), value: model.phase)
+    }
+
+    private var isRest: Bool {
+        if case .rest = model.phase { return true }
+        return false
     }
 
     /// He sees himself on the bench: the camera card is the screen's centre whenever it's filming
@@ -406,7 +428,14 @@ private struct ThisSetCard: View {
 /// with its measured count.
 private struct CameraCard: View {
     var model: SessionHUDModel
-    @Environment(\.sessionCameraFeed) private var feed
+    @Environment(\.sessionCameraFeed) private var liveFeed
+    @Environment(\.sessionReplayFeed) private var replayFeed
+
+    /// During rest, the set he just did; otherwise the live camera.
+    private var feed: AnyView? {
+        if case .rest = model.phase, let replayFeed { return replayFeed }
+        return liveFeed
+    }
 
     var body: some View {
         // The feed fills whatever room the cards leave; it never sizes the card itself.
@@ -425,9 +454,16 @@ private struct CameraCard: View {
             .overlay {
                 GeometryReader { proxy in
                     if brackets, let box = model.lockBox {
+                        // The picture fills the card (aspect fill): place the box where his image actually is.
+                        let size = proxy.size
+                        let shown = size.width / size.height > SessionHUDModel.frameAspect
+                            ? CGSize(width: size.width, height: size.width / SessionHUDModel.frameAspect)
+                            : CGSize(width: size.height * SessionHUDModel.frameAspect, height: size.height)
+                        let origin = CGPoint(x: (size.width - shown.width) / 2, y: (size.height - shown.height) / 2)
                         LockBrackets()
-                            .frame(width: box.width * proxy.size.width, height: box.height * proxy.size.height)
-                            .offset(x: box.minX * proxy.size.width, y: box.minY * proxy.size.height)
+                            .frame(width: box.width * shown.width, height: box.height * shown.height)
+                            .offset(x: origin.x + box.minX * shown.width, y: origin.y + box.minY * shown.height)
+                            .animation(.linear(duration: 0.12), value: box)
                     }
                 }
             }
@@ -776,6 +812,23 @@ private struct DoneCard: View {
     }
 }
 
+/// The question waiting on his answer, in navy on a white card with a yellow tag naming it.
+private struct AskCard: View {
+    var text: String
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
+            HUDTag(text: "Asked")
+            Text(text).font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.navy)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(Theme.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+        .accessibilityElement(children: .combine)
+    }
+}
+
 // MARK: The voice card
 
 /// The talking indicator, the check-in's `VoiceBar` at hands-free scale: a cobalt-tint disc that
@@ -844,23 +897,33 @@ struct VoiceCard: View {
     }
 }
 
-/// The long press that ends the session, as the app's primary button (no tap ends anything).
+/// The long press that ends the session, as the app's primary button (no tap ends anything), so a
+/// brush against the phone never ends it.
 private struct EndButton: View {
     var label: String
+    var onEnd: (() -> Void)?
+    @State private var pressing = false
+
     var body: some View {
         Text(label)
             .font(.headline)
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: 56)
-            .background(Theme.cobalt, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+            .background(pressing ? Theme.cobaltPressed : Theme.cobalt,
+                        in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+            .contentShape(Rectangle())
+            .onLongPressGesture(minimumDuration: 1.2, pressing: { pressing = $0 }) { onEnd?() }
             .accessibilityLabel(label)
-            .accessibilityHint("Press and hold, or say end session")
+            .accessibilityHint("Press and hold for one second, or say end session")
     }
 }
 
 // MARK: The states, for previews and the screenshots
 
 extension SessionHUDModel {
+    /// Where he is in the sample frame (the full 9:16 picture).
+    private static let sampleBox = CGRect(x: 0.04, y: 0.36, width: 0.92, height: 0.3)
+
     private static let day5: [ExerciseDots] = [
         .init(name: "Smith CG", dots: [.done, .done]),
         .init(name: "Incline", dots: [.done, .current]),
@@ -875,11 +938,13 @@ extension SessionHUDModel {
 
     static let armed = SessionHUDModel(
         phase: .armed, progress: day5, micLabel: "AirPods mic", micOnHim: true, exercise: "Incline DB press", role: "Back-off",
-        setLabel: "set 2 of 2", load: 65, reps: "8–10", voice: .speaking("Set two. Lift when you're ready.", spoken: 3))
+        setLabel: "set 2 of 2", load: 65, reps: "8–10", voice: .speaking("Set two. Lift when you're ready.", spoken: 3),
+        lockBox: sampleBox)
 
     static let recording = SessionHUDModel(
         phase: .recording(elapsed: 24), progress: day5, micLabel: "AirPods mic", micOnHim: true, exercise: "Incline DB press",
-        role: "Back-off", setLabel: "set 2 of 2", load: 65, reps: "8–10", voice: .idle(hints: ["done", "done, 9"]))
+        role: "Back-off", setLabel: "set 2 of 2", load: 65, reps: "8–10", voice: .idle(hints: ["done", "done, 9"]),
+        lockBox: sampleBox)
 
     static let rest = SessionHUDModel(
         phase: .rest(remaining: 100, total: 180), progress: day5, micLabel: "AirPods mic", micOnHim: true, exercise: "Incline DB press",

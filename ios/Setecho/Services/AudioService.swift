@@ -11,6 +11,8 @@ import Observation
 final class AudioService {
     private(set) var isListening = false
     private(set) var isSpeaking = false
+    /// Someone is talking into the mic right now (the stream is open): the screen's voice card moves.
+    private(set) var isHearing = false
     /// Check-in morning, the photo session and the wrap-up are one conversation: the music stays ducked
     /// from start to end, and no line changes the session category. Oct 28: switching between duck and
     /// mix around every line kept the mic closed for a moment after each one. Sessions leave it off.
@@ -214,6 +216,7 @@ final class AudioService {
         }
         // The stream opens at the lower trigger in sessions, at the utterance's onset in the check-in.
         let live = detector.isSpeaking || detector.streamOpen
+        if isHearing != live { isHearing = live }
         if live, !wasSpeaking {
             wasSpeaking = true
             onSpeechStart?()

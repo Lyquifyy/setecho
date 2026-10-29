@@ -235,12 +235,15 @@ final class SessionEngine {
     private(set) var recentLines: [String] = []
     /// Where the quiet "ready when you are" falls in the current rest, as seconds remaining.
     private var restCueAtRemaining: Int?
-    private var recordingStartedAt: Date?
+    /// When the set under way started, for the screen's elapsed clock.
+    private(set) var recordingStartedAt: Date?
+    /// The length of the rest running now, for the screen's "of 3:00".
+    private(set) var restTotal = 0
     private var stateBeforePause: State = .ready
     private var repsOverrideForCurrentSet: Int?
     /// "Top set" said during the set: it is a working set whatever the count says.
     private var forceWorkingForCurrentSet = false
-    private var holdStartedAt: Date?
+    private(set) var holdStartedAt: Date?
     /// Approved coach cues by exercise id (HANDOFF.md §7, Coach voice cues).
     var cues: [String: VoiceCue] = [:]
     private(set) var playedCueExerciseIds: Set<String> = []
@@ -568,6 +571,7 @@ final class SessionEngine {
             let callout = Callout.warmupDone(number: warmupCount, restSeconds: rest)
             lastCallout = callout
             state = .rest(remaining: rest)
+            restTotal = rest
             return Outcome(speech: callout, echo: "Warm-up \(warmupCount) saved: \(Format.number(logged.loadLb)) × \(reps). Say undo if it was a working set.",
                            sound: .setEnded)
         }
@@ -602,6 +606,7 @@ final class SessionEngine {
         }
         lastCallout = callout
         state = isComplete ? .ended : .rest(remaining: rest)
+        restTotal = rest
         if isComplete { session.endedAt = now }
         let saved = willMeasure && source != .spoken ? "Set \(doneNumber) saved: \(Format.number(logged.loadLb)) lb, counting"
                                                     : "Set \(doneNumber) saved: \(Format.number(logged.loadLb)) × \(reps)"
@@ -716,6 +721,7 @@ final class SessionEngine {
                                        sessionOver: isComplete)
         lastCallout = callout
         state = isComplete ? .ended : .rest(remaining: rest)
+        restTotal = rest
         if isComplete { session.endedAt = now }
         return Outcome(speech: callout, echo: "Set \(doneNumber) saved: \(Callout.spoken(seconds: ran))", sound: .setEnded)
     }

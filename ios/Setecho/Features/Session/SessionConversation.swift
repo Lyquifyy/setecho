@@ -37,6 +37,14 @@ final class SessionConversation {
     /// The rest-time line being spoken, as text on the HUD (DESIGN.md Session, Rest).
     private(set) var spokenLine: String?
     private(set) var isBusy = false
+    /// For the screen's voice card: his words while the turn is being read, the line being said now
+    /// (and when it started, so the card can fill it word by word), and the last line, shown in full
+    /// for a few seconds after.
+    private(set) var reading: String?
+    private(set) var speakingLine: String?
+    private(set) var speakingSince: Date?
+    private(set) var lastLine: String?
+    private var lastLineTask: Task<Void, Never>?
 
     /// The backend: the fast path, else a Spark turn. Throws on a timeout or a failed request.
     @ObservationIgnored var classify: @MainActor (Heard, SessionTurnRequest) async throws -> SessionTurnResponse = { _, _ in
@@ -96,6 +104,8 @@ final class SessionConversation {
             heard.transcript = await words()
             if heard.transcript != nil { log.toTranscript = now().timeIntervalSince(heard.speechEndedAt) }
         }
+        reading = heard.transcript
+        defer { reading = nil }
         // The chime the moment he's heard, before the turn's ~2 s: never mid-set, where it waits for a set command.
         var chimed = false
         if engine.state != .recording, let words = heard.transcript, words.contains(where: \.isLetter) {
@@ -157,6 +167,15 @@ final class SessionConversation {
         return outcome
     }
 
+    private func showLastLine(_ line: String) {
+        lastLine = line
+        lastLineTask?.cancel()
+        lastLineTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            if !Task.isCancelled { self?.lastLine = nil }
+        }
+    }
+
     /// He spoke over a line: it stopped, and the lines waiting behind it are dropped (they're on the HUD).
     func interrupt() {
         speechQueue.removeAll()
@@ -216,7 +235,12 @@ final class SessionConversation {
         speaking = true
         Task {
             while !speechQueue.isEmpty {
-                await speak(speechQueue.removeFirst())
+                let next = speechQueue.removeFirst()
+                speakingLine = next
+                speakingSince = .now
+                await speak(next)
+                speakingLine = nil
+                showLastLine(next)
             }
             speaking = false
         }
