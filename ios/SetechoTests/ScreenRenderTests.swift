@@ -192,11 +192,11 @@ enum ScreenShots {
         .map { AnyView(Image(uiImage: $0).resizable().scaledToFill()) }
 
     static func hudIndex(_ name: String) -> String {
-        ["1-ready": "2", "2-armed": "3", "3-recording": "4", "4-rest": "5", "4b-rest-overtime": "6", "5-hold": "7", "6-pocket": "8", "7-session-end": "9"][name] ?? "9"
+        ["1-ready": "2", "1b-ready-long-day": "2b", "2-armed": "3", "3-recording": "4", "4-rest": "5", "4b-rest-overtime": "6", "5-hold": "7", "6-pocket": "8", "7-session-end": "9"][name] ?? "9"
     }
 
     static func hudTitle(_ name: String) -> String {
-        ["1-ready": "Ready", "2-armed": "Armed", "3-recording": "Recording", "4-rest": "Rest", "4b-rest-overtime": "Rest's up",
+        ["1-ready": "Ready", "1b-ready-long-day": "Ready · a six-lift day", "2-armed": "Armed", "3-recording": "Recording", "4-rest": "Rest", "4b-rest-overtime": "Rest's up",
          "5-hold": "Hold", "6-pocket": "Pocket", "7-session-end": "Session end"][name] ?? name
     }
 }

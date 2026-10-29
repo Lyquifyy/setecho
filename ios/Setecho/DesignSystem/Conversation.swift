@@ -121,6 +121,8 @@ struct SummaryRow: Equatable, Identifiable {
 struct SummaryCard: View {
     let sections: [SummarySection]
     var onTap: ((SummaryRow) -> Void)?
+    /// Off inside a hands-free screen's white sheet, which is already the card.
+    var framed = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
@@ -143,10 +145,10 @@ struct SummaryCard: View {
                 }
             }
         }
-        .padding(Theme.cardPadding)
+        .padding(framed ? Theme.cardPadding : EdgeInsets())
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+        .background(framed ? Theme.surface : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(framed ? Theme.border : .clear, lineWidth: 1))
     }
 
     private func line(_ row: SummaryRow, editable: Bool) -> some View {
@@ -207,7 +209,8 @@ struct AthleteLine: View {
 }
 
 /// An answer the moment it is stored: the check draws itself, then the field, the value as the
-/// coach will read it, and where it came from.
+/// coach will read it, and where it came from. A soft page-coloured tile, since it sits on the
+/// hands-free screen's white sheet.
 struct AnswerCard: View {
     let label: String
     let value: String
@@ -228,8 +231,7 @@ struct AnswerCard: View {
         }
         .padding(Theme.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+        .background(Theme.page, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label): \(value). Source: \(source)")
     }
@@ -289,6 +291,13 @@ struct StepTrack: View {
     let steps: [Step]
     /// The index of the current step; `steps.count` once every step is done.
     let current: Int
+    /// On the navy stage: done steps white (cobalt can't be read on navy), the rest dim.
+    var onStage = false
+
+    private var doneColor: Color { onStage ? Theme.onStage : Theme.cobalt }
+    private var pendingColor: Color { onStage ? Theme.onStageTrack : Theme.border }
+    private var ink: Color { onStage ? Theme.onStage : Theme.navy }
+    private var secondaryInk: Color { onStage ? Theme.onStageSecondary : Theme.textSecondary }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
@@ -296,7 +305,7 @@ struct StepTrack: View {
                 ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
                     let state = index < current ? State.done : index == current ? .current : .pending
                     Capsule()
-                        .fill(state == .pending ? Theme.border : state == .done ? Theme.cobalt : Theme.yellow)
+                        .fill(state == .pending ? pendingColor : state == .done ? doneColor : Theme.yellow)
                         .frame(height: 8)
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("\(step.title), \(state == .done ? "done" : state == .current ? "now" : "to come")")
@@ -304,11 +313,11 @@ struct StepTrack: View {
             }
             HStack(spacing: Theme.Space.xs) {
                 if current < steps.count {
-                    Text(steps[current].title).font(.hudLabel.weight(.semibold)).foregroundStyle(Theme.navy)
-                    Text("· \(current + 1) of \(steps.count)").font(.hudLabel).secondaryText()
+                    Text(steps[current].title).font(.hudLabel.weight(.semibold)).foregroundStyle(ink)
+                    Text("· \(current + 1) of \(steps.count)").font(.hudLabel).foregroundStyle(secondaryInk)
                 } else {
-                    Image(systemName: "checkmark").font(.hudLabel.weight(.bold)).foregroundStyle(Theme.cobalt)
-                    Text("All \(steps.count) done").font(.hudLabel.weight(.semibold)).foregroundStyle(Theme.navy)
+                    Image(systemName: "checkmark").font(.hudLabel.weight(.bold)).foregroundStyle(doneColor)
+                    Text("All \(steps.count) done").font(.hudLabel.weight(.semibold)).foregroundStyle(ink)
                 }
             }
             .lineLimit(1)
@@ -347,6 +356,8 @@ struct VoiceBar: View {
     /// Which voice is speaking ("Ava (Premium)"), named while it speaks, so a fallback to a lesser
     /// voice is never a mystery.
     var voiceName: String?
+    /// Off inside a hands-free screen's white sheet, which is already the card.
+    var framed = true
 
     var body: some View {
         HStack(spacing: Theme.Space.m) {
@@ -374,11 +385,11 @@ struct VoiceBar: View {
                 .contentTransition(.opacity)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, Theme.Space.s)
+        .padding(.horizontal, framed ? Theme.Space.s : 0)
         .padding(.vertical, Theme.Space.xs)
         .frame(maxWidth: .infinity, minHeight: 72)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+        .background(framed ? Theme.surface : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(framed ? Theme.border : .clear, lineWidth: 1))
         .animation(.snappy(duration: 0.3), value: phase)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)

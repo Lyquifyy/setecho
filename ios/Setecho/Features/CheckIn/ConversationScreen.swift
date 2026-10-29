@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// The one layout a spoken check-in uses, for Check-in morning and the wrap-up (DESIGN.md):
-/// the lockup and which check-in this is, the step track, the conversation filling the middle,
-/// the voice bar saying whose turn it is, then the footer. Full-screen and hands-free: the footer
-/// holds the hold-to-stop button, and only once it is done, the one tap of the morning.
+/// The one layout a spoken check-in uses, for Check-in morning and the wrap-up (DESIGN.md), on the
+/// hands-free `StageSheet`: the navy stage holds the mark, which check-in this is, the step track
+/// and the one line being asked now, in white; the white sheet holds what was just heard and
+/// stored, the voice bar saying whose turn it is, and the footer. Earlier lines leave the screen:
+/// the voice said them, and the check-in keeps the answers.
 struct ConversationScreen<Footer: View>: View {
     /// "Thursday check-in", "Practice run", "Wrap-up · 4 of 9".
     let eyebrow: String
@@ -19,43 +20,89 @@ struct ConversationScreen<Footer: View>: View {
     /// A summary line tapped, to change it.
     var onSummaryTap: ((SummaryRow) -> Void)?
     @ViewBuilder let footer: Footer
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(spacing: Theme.Space.m) {
-            HStack(alignment: .center) {
-                Image("Lockup")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 26)
-                    .foregroundStyle(Theme.cobalt)
-                    .accessibilityLabel("Setecho")
-                Spacer()
-                Text(eyebrow).font(.hudLabel).monospacedDigit().secondaryText().lineLimit(1).minimumScaleFactor(0.8)
+        StageSheet {
+            Theme.stage
+        } overlay: {
+            VStack(alignment: .leading, spacing: Theme.Space.m) {
+                HStack(alignment: .center) {
+                    StageMark()
+                    Spacer()
+                    Text(eyebrow).font(.hudLabel).monospacedDigit().foregroundStyle(Theme.onStageSecondary)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                }
+                if !steps.isEmpty {
+                    StepTrack(steps: steps, current: currentStep, onStage: true)
+                }
+                Spacer(minLength: 0)
+                if let asked {
+                    Text(asked.text)
+                        .font(asked.text.count > 70 ? .hudQuestion : .hudState)
+                        .foregroundStyle(Theme.onStage)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .id(asked.id)
+                        .transition(reduceMotion ? .opacity : .asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+                        .accessibilityLabel("Setecho: \(asked.text)")
+                }
             }
-            if !steps.isEmpty {
-                StepTrack(steps: steps, current: currentStep)
+        } sheet: {
+            VStack(spacing: Theme.Space.m) {
+                if let summary {
+                    ScrollView {
+                        SummaryCard(sections: summary, onTap: onSummaryTap, framed: false)
+                    }
+                    .scrollIndicators(.hidden)
+                    .frame(height: 260)
+                } else {
+                    ForEach(recent) { entry in
+                        row(entry).transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+                if phase != .idle {
+                    VoiceBar(phase: phase, level: level, voiceName: voiceName, framed: false)
+                        .transition(.opacity)
+                }
+                if let notice, !notice.isEmpty {
+                    Text(notice).font(.hudLabel).secondaryText().multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .transition(.opacity)
+                }
+                footer
             }
-            ConversationTranscript(entries: entries, onSummaryTap: onSummaryTap)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if phase != .idle {
-                VoiceBar(phase: phase, level: level, voiceName: voiceName)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-            if let notice, !notice.isEmpty {
-                Text(notice).font(.hudLabel).secondaryText().multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .transition(.opacity)
-            }
-            footer
         }
-        .padding(Theme.gutter)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.page.ignoresSafeArea())
+        .animation(reduceMotion ? .easeInOut(duration: 0.25) : .spring(duration: 0.45, bounce: 0.12), value: entries.count)
         .animation(.snappy(duration: 0.3), value: phase)
         .animation(.snappy(duration: 0.3), value: notice)
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
+    }
+
+    /// The line being asked now: the last thing Setecho said.
+    private var asked: ConversationEntry? { entries.last { $0.kind == .setecho } }
+
+    /// What just happened, under the question: what he said and what was stored since the line
+    /// before it (two at most), so the sheet answers "did it hear me, and what went in?".
+    private var recent: [ConversationEntry] {
+        guard let now = entries.lastIndex(where: { $0.kind == .setecho }) else { return Array(entries.suffix(2)) }
+        let before = entries[..<now].lastIndex { $0.kind == .setecho } ?? -1
+        return Array(entries[(before + 1)...].filter { $0.kind != .setecho }.suffix(2))
+    }
+
+    private var summary: [SummarySection]? {
+        for entry in entries.reversed() { if case .summary(let sections) = entry.kind { return sections } }
+        return nil
+    }
+
+    @ViewBuilder private func row(_ entry: ConversationEntry) -> some View {
+        switch entry.kind {
+        case .athlete: AthleteLine(text: entry.text)
+        case .answer(let label, let value, let source): AnswerCard(label: label, value: value, source: source)
+        case .note: Text(entry.text).font(.hudLabel).secondaryText().frame(maxWidth: .infinity, alignment: .center)
+        case .setecho, .summary: EmptyView()
+        }
     }
 }
 

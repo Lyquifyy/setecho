@@ -221,3 +221,64 @@ struct SuggestionTag: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+
+// MARK: - Stage and sheet
+
+/// The hands-free layout (DESIGN.md, Hands-free screens): a stage across the top, edge to edge
+/// and under the status bar (his camera, or `Theme.stage` holding the one big thing in white),
+/// and a white sheet across the bottom with everything else, ending in the hold-to-stop. The
+/// stage runs under the sheet's rounded corners so the sheet sits on it.
+struct StageSheet<Stage: View, Overlay: View, Sheet: View>: View {
+    @ViewBuilder var stage: Stage
+    /// What sits on the stage, inside its safe area: the strip, the pills, the hero.
+    @ViewBuilder var overlay: Overlay
+    @ViewBuilder var sheet: Sheet
+
+    var body: some View {
+        VStack(spacing: 0) {
+            overlay
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding(.horizontal, Theme.gutter)
+                .padding(.top, Theme.Space.xs)
+                .padding(.bottom, Theme.Space.m)
+                .background {
+                    Color.clear
+                        .overlay { stage }
+                        .clipped()
+                        .padding(.bottom, -Theme.Radius.sheet)
+                        .ignoresSafeArea(edges: .top)
+                }
+            sheet
+                // The sheet takes the height it needs; the stage gets the rest.
+                .layoutPriority(1)
+                .padding(.horizontal, Theme.gutter)
+                .padding(.top, Theme.Space.l)
+                .padding(.bottom, Theme.Space.xs)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background {
+                    UnevenRoundedRectangle(topLeadingRadius: Theme.Radius.sheet, topTrailingRadius: Theme.Radius.sheet, style: .continuous)
+                        .fill(Theme.surface)
+                        .shadow(color: Theme.stage.opacity(0.18), radius: 18, y: -4)
+                        .ignoresSafeArea(edges: .bottom)
+                }
+        }
+        .background(Theme.stage.ignoresSafeArea())
+    }
+}
+
+/// The brand on a hands-free screen: the mark alone on a white tile, small, so the screen's
+/// height goes to the set (Oct 29).
+struct StageMark: View {
+    var body: some View {
+        Image("Logo")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 22, height: 22)
+            .foregroundStyle(Theme.cobalt)
+            .frame(width: 44, height: 44)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+            .accessibilityLabel("Setecho")
+    }
+}
