@@ -1,5 +1,5 @@
-"""POST /session/turn/text and /session/turn: one thing the athlete said between sets, as a
-conversation turn (HANDOFF.md §5, §7 Talk to it like a person).
+"""POST /session/turn/text and /session/turn: one thing the athlete said, between sets or during
+one, as a conversation turn (HANDOFF.md §5, §7 Talk to it like a person).
 
 Two layers, like /voice/command. The fast path is the rule layer for the few lines he says a
 hundred times a session (arm phrases, "done" with or without a number, "that was N", "go with it",
@@ -15,6 +15,10 @@ it neither advises nor judges. Advice asked for gets the coach line and the note
 fails falls back to the rules' reading with the engine's template, else "Sorry, say that again?".
 Setecho never coaches, and never changes the plan: actions go to the phone's engine, which applies
 each one, confirms it in a template and can undo it.
+
+Mid-set the rules' set commands act at once, a plain question about the plan gets the phone's
+answer, and only words that sound meant for Setecho reach Spark, with its actions held to the few
+that make sense under the bar (`mid_set_turn`).
 """
 
 from __future__ import annotations
@@ -161,19 +165,22 @@ class SparkTurn(StrictModel):
     )
     expectsAnswer: bool = Field(description="The reply asks him something")
     outOfScope: bool = Field(
-        description="He asked for advice on form, food, programming, pain or what weight to use"
+        description=(
+            "He asked for advice on form, food, programming or pain, or for a weight other than the plan's. "
+            "What the plan's weight is, is a fact: never out of scope"
+        )
     )
 
 
 SPARK_SCHEMA = strict_schema(SparkTurn)
 
 SYSTEM = (
-    "You are Setecho, the voice in a lifter's ear between sets, like a training partner who keeps his log. "
-    "You are not his coach. The user message has today's facts (the plan, where he is, every set logged, "
+    "You are Setecho, the voice in a lifter's ear for the whole session, like a training partner who keeps his "
+    "log. You are not his coach. The user message has today's facts (the plan, where he is, every set logged, "
     "the rest left, the question you are waiting on, last time's numbers, his coach's rules and sheet notes), "
     "your last few exchanges, and what he just said. The phone hears everything, so first decide whether it "
     "was meant for you. Talk to someone else, music, half-heard words, exclamations: addressed false, no "
-    "actions, empty reply.\n"
+    "actions, empty reply. Anything he says to you is for you, small talk included: answer it.\n"
     "Actions are the app's own: starting (he's about to lift), endSet (a set just ended, number = reps if he "
     "said them), reps (a count for a set: setNumber when he names one, else the last set), rpe (only with "
     "'felt like', 'RPE' or 'out of ten'), setLoad (pounds), loadDelta (+/- pounds), lastSetLoad (the weight he "
@@ -185,19 +192,31 @@ SYSTEM = (
     "(answering your question), answer (a number answering your question), logbook (last time's top set: "
     "number = load, reps), topSet, warmup, pause, resume, replayCue, endSession (he's finished for the day; "
     "the app asks first), goTo (text 'back' for 'go back' / 'redo that set', else the exercise he's moving to "
-    "within today), addSet ('one more set' of what he just did), endExercise ('that's it for incline': text the "
-    "exercise, or null for the one up now). Questions are answered in the reply from the facts, 'where am I?' "
-    "included ('Incline press, set 2 of 3, back-off.'). One utterance can carry several actions, in order: 'that was 9, and the incline's "
-    "taken' is reps 9 then equipmentTaken. Use the recent exchanges for follow-ups: 'same as last set' takes "
-    "the number from the facts, 'actually make it 140' corrects what was just set.\n"
+    "within today), addSet ('one more set' of what he just did; 'that was another set of laterals' or 'that "
+    "last one was laterals' about a set logged on the next lift: text the exercise he names), endExercise "
+    "('that's it for incline': text the exercise, or null for the one up now). One utterance can carry several "
+    "actions, in order: 'that was 9, and the incline's taken' is reps 9 then equipmentTaken. Use the recent "
+    "exchanges for follow-ups: 'same as last set' takes the number from the facts, 'actually make it 140' "
+    "corrects what was just set.\n"
+    "While he's mid-set (state recording) he's lifting: only endSet, reps, topSet, setLoad, loadDelta, note "
+    "and addSet count, and a reply is a few words.\n"
+    "Questions: answer anything about today from the facts. 'Where am I?' ('Incline press, set 2 of 3, "
+    "back-off.'). What weight this set or the next is ('what weight should I do?', 'what weight for my next "
+    "set?') is a fact, never advice: targetLoadLb with targetReps, or the exercise's loadLb ('25 for 10 to "
+    "15.'). 'What's left', 'what do I got for the rest of this lift' is the lift up now: setsPlanned minus "
+    "setsDone at its load and target, then what comes after ('Two more, 25 for 10 to 15. Then machine "
+    "shoulder press.'). 'How's today going?', 'how many sets have I done?' come from the sets logged.\n"
     "Numbers: never invent one. Every number in an action or the reply must be in his words or the facts. "
     "A bare number is a rep count; his coach uses no RPE.\n"
-    "The reply: what a friend spotting him would say back, 20 words or fewer, plain and short. Confirm what "
-    "you did in plain words ('Nine on set two.', 'Swapped to dumbbells. Noted for Thursday.'). Answer "
-    "questions from the facts only ('One forty left.', 'Last time 145 for 9.'). When unsure, ask a real "
-    "question ('Was that nine reps, or how hard it felt?') and set expectsAnswer. Never judge a set or his "
-    "numbers, never praise or criticise. Never advise on form, food, pain, programming or what weight to use: "
-    "set outOfScope and leave the reply empty. Use his first name rarely."
+    "The reply: talk like a friend spotting him, not a readout. Short natural sentences, 20 words or fewer, "
+    "and don't open the way your last line did. Confirm what you did in plain words ('Got it, nine on set "
+    "two.', 'Swapped to dumbbells. I'll note it for Thursday.'). Answer straight from the facts ('Last time you "
+    "did 145 for 9.'). Small talk gets a short friendly answer ('Doing good. Ready when you are.'), thanks "
+    "gets 'Anytime.' When unsure, ask a real question ('Was that nine reps, or how hard it felt?') and set "
+    "expectsAnswer. Warmth is fine ('Nice.', 'Let's go.'), but never rate a set or his numbers (good, bad, "
+    "easy, heavy) and never criticise. Never advise on form, food, pain or programming, and never pick a "
+    "weight the plan doesn't have (heavier, lighter, next week): set outOfScope and leave the reply empty. "
+    "Use his first name rarely."
 )
 
 _ADVICE = re.compile(
@@ -335,6 +354,19 @@ def out_of_scope_turn(transcript: str, actions: list[voice.VoiceIntent]) -> Turn
     )  # fmt: skip
 
 
+# Questions the phone answers from the plan with its own template. Spark marked "What weight should I
+# do?" out of scope three times on Oct 30 while the weight was on his screen.
+PLAN_TOPICS = ("load", "next", "setsLeft", "whereAmI", "lastTime", "lastSet", "restLeft")
+
+
+def plan_question(req: TurnRequest) -> voice.VoiceIntent | None:
+    """The rules' reading when it's a plain question about today's plan, else None."""
+    ruled = voice.classify_by_rules(req.transcript, context_for(req))
+    if ruled is not None and ruled.intent == "question" and ruled.topic in PLAN_TOPICS:
+        return ruled
+    return None
+
+
 def validated(spark: SparkTurn, req: TurnRequest) -> TurnResponse:
     """The model's turn, checked. Anything that fails falls back to the rules or a plain re-ask."""
     transcript = req.transcript
@@ -351,10 +383,20 @@ def validated(spark: SparkTurn, req: TurnRequest) -> TurnResponse:
             return fallback(req, f"action: {why}")
         actions.append(to_intent(action))
     if spark.outOfScope:
+        if (asked := plan_question(req)) is not None:
+            return TurnResponse(
+                transcript=transcript, actions=[*actions, asked], reply=None, addressed=True,
+                classifiedBy="spark", unclearReason="outOfScope on a plan question",
+            )  # fmt: skip
         return out_of_scope_turn(transcript, actions)
     reply = spark.reply.strip()
     if reply and (why := check_reply(reply, known)) is not None:
         if why == "advice":
+            if (asked := plan_question(req)) is not None:
+                return TurnResponse(
+                    transcript=transcript, actions=[*actions, asked], reply=None, addressed=True,
+                    classifiedBy="spark", unclearReason="advice on a plan question",
+                )  # fmt: skip
             return out_of_scope_turn(transcript, actions)
         if actions:
             # The actions stand; the engine's templates confirm them.
@@ -402,6 +444,7 @@ def context_for(req: TurnRequest) -> voice.SessionContext:
         lastSpoken=req.recentTurns[-1].said if req.recentTurns else None,
         exercisesAhead=[e.name for e in f.exercises if e.setsDone < e.setsPlanned],
         addOnNames=f.addOns,
+        exercisesToday=[e.name for e in f.exercises],
     )
 
 
@@ -415,16 +458,42 @@ def fast_path(req: TurnRequest) -> voice.VoiceIntent | None:
         dropped = (
             ruled.number is None and ruled.intent not in ("starting", "topSet") and numbers_in(req.transcript)
         )
-        return None if dropped else ruled
+        return None if dropped or _leaves_a_number(ruled, req.transcript) else ruled
     if ruled.intent == "answer":  # a bare number: a count, or the answer to what was asked
-        return ruled
+        return None if _leaves_a_number(ruled, req.transcript) else ruled
     if ruled.intent in FAST_WHEN_ASKED and req.facts.openAsk:
         return ruled
     if ruled.intent == "chatter":
         return ruled  # "let's go", "ugh, that was brutal": not for Setecho, nothing said
     if ruled.intent == "question" and ruled.topic == "help":
         return ruled  # "what can I say?": the phone's guide for this moment, a template
+    if ruled.intent == "addSet" and ruled.text:
+        return ruled  # "that was another set of laterals": the phone moves it
     return None
+
+
+# Mid-set a plain question gets the phone's answer, with no Spark round trip: one topic, no numbers,
+# and short ("what do I got for the rest of this lift?"). Between sets Spark answers it in its words.
+MAX_PLAIN_QUESTION_WORDS = 14
+
+
+def plain_question(ruled: voice.VoiceIntent, transcript: str) -> bool:
+    return (
+        ruled.intent == "question"
+        and ruled.topic in PLAN_TOPICS
+        and len(voice.question_topics(transcript)) == 1
+        and not numbers_in(transcript)
+        and len(transcript.split()) <= MAX_PLAIN_QUESTION_WORDS
+    )
+
+
+def _leaves_a_number(ruled: voice.VoiceIntent, transcript: str) -> bool:
+    """He said a number the rules' reading doesn't use: "12.5 for 13 reps" is a load and a count, and
+    the rules took 12.5 as the count (Oct 30). Spark reads it with the turns before it."""
+    if ruled.number is None:
+        return False
+    used = {float(v) for v in (ruled.number, ruled.reps, ruled.setNumber) if v is not None}
+    return any(not _is_known(n, used) for n in numbers_in(transcript))
 
 
 def spark_turn(req: TurnRequest) -> SparkTurn:
@@ -439,17 +508,68 @@ def spark_turn(req: TurnRequest) -> SparkTurn:
     return SparkTurn.model_validate(raw)
 
 
+# Mid-set (Oct 30: "I need to be able to say anything to it during the set"). The rules' set commands
+# act as before; a plain question gets the phone's answer; anything else that sounds meant for Setecho
+# goes to Spark, whose actions are held to the few that make sense under the bar. Grunts, counting
+# aloud and the gym's noise never reach Spark.
+MID_SET_ACTIONS = {"endSet", "reps", "topSet", "setLoad", "loadDelta", "note", "addSet"}
+MID_SET_TOPICS = (*PLAN_TOPICS, "coachNotes", "help")
+_ADDRESSED = re.compile(
+    r"\b(what|what's|whats|how|where|which|can you|could you|do i|did i|am i|is it|is this|setecho|"
+    r"change|make it|log|note|weight|load|pounds|reps|sets?|lift|next|left|extra|another)\b|\?"
+)
+MIN_ADDRESSED_WORDS = 3
+
+
+def mid_set_turn(req: TurnRequest) -> TurnResponse:
+    transcript = req.transcript.strip()
+    quiet = TurnResponse(transcript=transcript, actions=[], addressed=False, classifiedBy="rules")
+    ruled = voice.classify_by_rules(transcript, context_for(req))
+    if ruled is not None:
+        if ruled.intent in voice.SET_COMMANDS or (ruled.intent == "addSet" and ruled.text):
+            return TurnResponse(transcript=transcript, actions=[ruled], classifiedBy="rules")
+        if (
+            ruled.intent == "question"
+            and ruled.topic in MID_SET_TOPICS
+            and (ruled.topic in ("help", "coachNotes") or plain_question(ruled, transcript))
+        ):
+            return TurnResponse(transcript=transcript, actions=[ruled], classifiedBy="rules")
+        if ruled.intent == "chatter":
+            return quiet
+    if len(transcript.split()) < MIN_ADDRESSED_WORDS or not _ADDRESSED.search(transcript.lower()):
+        return quiet
+    t0 = time.monotonic()
+    try:
+        spark = spark_turn(req)
+    except Exception as e:  # noqa: BLE001 - mid-set, a failed read is silence, never "say that again"
+        log.info("session turn: spark failed mid-set: %s", e)
+        return quiet
+    out = validated(spark, req)
+    out.timings["spark"] = round(time.monotonic() - t0, 2)
+    if out.classifiedBy == "fallback":
+        # The rules' reading of what Spark couldn't: a set command still counts, the rest is silence.
+        kept = [a for a in out.actions if a.intent in voice.SET_COMMANDS]
+        return out.model_copy(
+            update={"actions": kept, "reply": None, "expectsAnswer": False, "addressed": bool(kept)}
+        )
+    actions = [a for a in out.actions if a.intent in MID_SET_ACTIONS or a.intent == "question"]
+    if any(a.topic == "outOfScope" for a in actions):
+        # No ask mid-set: the note offer would wait on a yes he can't give under the bar.
+        return out.model_copy(
+            update={"actions": [], "reply": "That's one for your coach.", "expectsAnswer": False}
+        )
+    if not actions and not out.reply:
+        return quiet
+    return out.model_copy(update={"actions": actions, "expectsAnswer": False})
+
+
 def take_turn(req: TurnRequest) -> TurnResponse:
     """One utterance: the fast path, the set-time gate, then a Spark turn with its validator."""
     transcript = req.transcript.strip()
     if not transcript or not re.search(r"[a-z0-9]", transcript.lower()):
         return TurnResponse(transcript=transcript, actions=[], addressed=False, classifiedBy="rules")
     if req.state == "recording":
-        # During a set only the rules' set commands count; Spark is never called.
-        ruled, _ = voice.route(transcript, context_for(req))
-        if ruled.intent in voice.SET_COMMANDS:
-            return TurnResponse(transcript=transcript, actions=[ruled], classifiedBy="rules")
-        return TurnResponse(transcript=transcript, actions=[], addressed=False, classifiedBy="rules")
+        return mid_set_turn(req.model_copy(update={"transcript": transcript}))
     if (fast := fast_path(req)) is not None:
         if fast.intent == "chatter":
             return TurnResponse(transcript=transcript, actions=[], addressed=False, classifiedBy="rules")

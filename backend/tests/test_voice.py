@@ -454,3 +454,68 @@ def test_moving_around_todays_plan(transcript, intent, text, topic):
 
 def test_a_move_to_something_not_in_todays_plan_goes_to_spark():
     assert voice.classify_by_rules("I'm on squats now", DRIVE_CONTEXT) is None
+
+
+# ---------------------------------------------------------------------------
+# Oct 30, Day 5 in the gym on the AirPods mic: what the transcriber actually heard
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("transcript", "number"),
+    [
+        ("Done.", None),
+        ("then", None),
+        ("Dann.", None),
+        ("Set Dan.", None),
+        ("said done", None),
+        ("SetSet, done.", None),
+        ("then got 11.", 11),
+        ("Done. 35.", 35),
+        ("Set done. 35 reps.", 35),
+        ("done 25", 25),
+    ],
+)
+def test_done_as_the_transcriber_hears_it_mid_set_ends_the_set(transcript, number):
+    result, by = voice.route(transcript, CONTEXT.model_copy(update={"state": "recording"}))
+    assert (result.intent, result.number, by) == ("endSet", number, "rules")
+
+
+@pytest.mark.parametrize(
+    "transcript",
+    ["then we can go over there", "Yeah, I appreciate it. Yeah.", "then got the bar", "one two three four"],
+)
+def test_done_sound_alikes_need_a_short_line_mid_set(transcript):
+    result, _ = voice.route(transcript, CONTEXT.model_copy(update={"state": "recording"}))
+    assert result.intent != "endSet"
+
+
+def test_done_sound_alikes_only_count_mid_set():
+    assert voice.classify_by_rules("then", CONTEXT.model_copy(update={"state": "rest"})) is None
+
+
+def test_a_full_stop_is_not_part_of_a_number():
+    assert voice.normalize("Done. 35.") == "done 35"
+    assert voice.normalize("12.5 for 13 reps.") == "12.5 for 13 reps"
+
+
+@pytest.mark.parametrize("transcript", ["Starts at", "starts at.", "Star set"])
+def test_start_set_as_the_transcriber_hears_it_arms(transcript):
+    assert voice.classify_by_rules(transcript, CONTEXT).intent == "starting"
+
+
+def test_an_arm_word_in_a_long_sentence_is_not_an_arm():
+    said = "straight on your muscles when you're lifting? Really?"
+    assert voice.classify_by_rules(said, CONTEXT) is None
+
+
+@pytest.mark.parametrize(
+    "transcript", ["Hey, never mind.", "Change the third rep. Or never mind.", "forget it"]
+)
+def test_never_mind_never_undoes(transcript):
+    assert voice.classify_by_rules(transcript, CONTEXT).intent == "chatter"
+
+
+def test_words_after_never_mind_are_read_on_their_own():
+    result = voice.classify_by_rules("never mind, that was 10", CONTEXT)
+    assert (result.intent, result.number) == ("reps", 10)

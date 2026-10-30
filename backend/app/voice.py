@@ -110,6 +110,9 @@ class SessionContext(StrictModel):
     lastSpoken: str | None = Field(default=None, description="The app's last line")
     exercisesAhead: list[str] = Field(default_factory=list, description="Today's exercises still to do")
     addOnNames: list[str] = Field(default_factory=list, description="Add-ons the athlete can add or skip")
+    exercisesToday: list[str] = Field(
+        default_factory=list, description="Every exercise in today's plan, done or not"
+    )
 
 
 def intent(kind: str, number: float | None = None, confidence: float = 0.95, **fields) -> VoiceIntent:
@@ -287,7 +290,11 @@ _NUMBER_WORDS = set(_UNITS) | set(_TENS) | {"hundred", "and", "a", "half", "poin
 _NEGATION = re.compile(r"\b(can'?t|cannot|don'?t|do not|not|no|never|won'?t|nah)\b")
 _LEAD = r"^(?:(?:wait|actually|no|oh|sorry|hold on|hang on|um|so)\s+)*"
 
-_UNDO = re.compile(r"\b(undo|scratch that|never ?mind|take that back)\b")
+_UNDO = re.compile(r"\b(undo|scratch that|take that back)\b")
+# "Never mind" drops what he was saying; it never undoes a logged set (Oct 30: "Change the third rep.
+# Or never mind." then "Hey, never mind." undid two things he never meant to). Words after it are
+# read on their own: "never mind, that was 10" is a count.
+_NEVER_MIND = re.compile(r"\b(?:never ?mind|forget (?:it|that))\b")
 _REPLAY = re.compile(r"\b(say that again|repeat that|play (that|it) again|again please)\b")
 _YES = re.compile(
     r"^(yes|yeah|yep|yup|correct|right|sure|affirmative|ok|okay|alright|all right)"
@@ -315,7 +322,15 @@ _QUESTIONS: list[tuple[str, re.Pattern[str]]] = [
         ),
     ),
     ("whereAmI", re.compile(r"\bwhere am i\b|\bwhat set am i on\b|\bwhich set (is this|am i on)\b")),
-    ("setsLeft", re.compile(r"\bhow many (more )?sets\b|\bsets (left|to go)\b")),
+    (
+        "setsLeft",
+        re.compile(
+            r"\bhow many (more )?sets\b|\bsets (left|to go)\b"
+            # "What do I got for the rest of this lift?" (Oct 30), "what's left?", "what have I got left?"
+            r"|\brest of (this|the|my) (lift|exercise|set|sets)\b|\bwhat'?s left\b"
+            r"|\bwhat (do i|have i|i) (have|got|get)( left| to go| remaining)\b"
+        ),
+    ),
     (
         "restLeft",
         re.compile(
@@ -345,6 +360,7 @@ _QUESTIONS: list[tuple[str, re.Pattern[str]]] = [
         "load",
         re.compile(
             r"\bwhat (weight|load)\b|\bwhat'?s the (weight|load|back-?off|back down)\b|\bhow (heavy|much weight)\b|\bwhat am i lifting\b"
+            r"|\bhow much (am i|should i be|do i) (lifting|using|putting on)\b"
         ),
     ),
     (
@@ -390,6 +406,13 @@ _GO_TO = re.compile(
     r"|^let'?s (?:do|go to|move to) (?:the )?(?P<name2>[a-z][a-z' -]{1,40}?) (?:next|now)$"
 )
 _ADD_SET = re.compile(r"\b(one more set|another set|add (?:a|one|another) set|an extra set|extra set)\b")
+# A set logged on the wrong lift: "that was another set of laterals", "that last one was cable laterals",
+# "this is an extra set of laterals" (Oct 30: his third set of cable laterals was logged as set 1 of
+# triceps pushdowns). addSet with the exercise named moves it there; the name must be one of today's.
+_SET_OF = re.compile(
+    r"^(?:(?:no|wait|actually|oh)\s+)*(?:that|this|that last one|that last set|that one|that set|the last one|the last set)"
+    r"(?:'s| was| is)(?: actually| really)?(?: (?:another|an extra|one more|a) set (?:of|on))? (?:the |my )?(?P<name>[a-z][a-z' -]{1,40}?)$"
+)
 _END_EXERCISE = re.compile(
     r"^that'?s (?:it|all|enough) (?:for|on) (?:the )?(?P<name>[a-z][a-z' -]{1,40}?)$"
     r"|^(?:i'?m )?(?:done|finished) with (?:the )?(?P<name2>[a-z][a-z' -]{1,40}?)$"
@@ -400,6 +423,14 @@ _END_SESSION = re.compile(
     r"|\bdone for (the day|today)\b|\bcall it a day\b"
 )
 _IM_DONE = re.compile(r"^(?:ok |okay |alright )?i'?m (?:all )?done$")
+# "Done" as the transcriber heard it mid-set through AirPods (Oct 30): "then", "Dann.", "Set Dan.",
+# "then got 11.". Only while a set runs, only a short line, and any words after it must be a count.
+_DONE_ALIKE = re.compile(
+    r"^(?:(?:ok|okay|alright|and|so|set|said|i'?m)\s+)*(?:done|dun|dunn|don|dawn|then|den|dan|dann)"
+    r"(?:\s+(?:got|at|with|for))?(?:\s+(?P<n>[\w .]+?))?(?:\s+reps?)?$"
+)
+# "Set done. 35 reps." mid-set: the set ends with its count, not a count on a set still running.
+_DONE_WORD = re.compile(r"\b(?:done|finished)\b")
 _NAMED_SET = re.compile(
     _LEAD
     + r"set (?P<set>\w+)(?: of (?:the )?(?P<name>[a-z][a-z ]*?))? (?:was|got|is|had) (?:only )?(?P<n>[\w .]+?)(?: reps?)?$"
@@ -437,7 +468,12 @@ _STARTING = re.compile(
     r"|^(?:(?:alright|all right|ok|okay|right)[ ,]+)?(go|going|ready|start|i'?m ready|i'?m going)( now)?$"
     r"|^(?:(?:alright|ok|okay)[ ,]+)?(?:the )?back[- ]?(?:off|down)( set)?( now)?$"
     r"|^(?:(?:alright|ok|okay)[ ,]+)?set (?:one|two|three|four|five|six|\d)$"
+    # "Start set" as the transcriber heard it through AirPods (Oct 30): "starts at", three times.
+    r"|^(?:starts?|stars?) (?:set|sat|at|said|that)$"
 )
+# The words above match anywhere, so only in a short line: "...when you're lifting? Really?" to
+# someone at the gym armed a set (Oct 30).
+MAX_ARM_WORDS = 6
 _TOP_SET = re.compile(
     r"\b(top set|this is (the|my) top set|that was (the|my) top set|going for the top set)\b"
 )
@@ -508,6 +544,9 @@ _NAME_STOPWORDS = {
 def normalize(transcript: str) -> str:
     t = transcript.lower().strip()
     t = re.sub(r"[^\w\s.'-]", " ", t)
+    # A full stop between words is a sentence break, not part of a number: "Done. 35." is "done 35"
+    # (Oct 30: it wasn't read as "done"). "12.5" keeps its point.
+    t = re.sub(r"(?<!\d)\.|\.(?!\d)", " ", t)
     t = _FILLER.sub(" ", t)
     return re.sub(r"\s+", " ", t).strip(" .")
 
@@ -539,6 +578,13 @@ def _short_and_positive(t: str) -> bool:
     return len(t.split()) <= 5 and not _NEGATION.search(t)
 
 
+def question_topics(transcript: str) -> list[str]:
+    """Every question topic the words ask about, in the rules' order: one is a plain question the
+    phone answers with its template, two ("where am I and what's next?") is Spark's to answer."""
+    t = normalize(transcript)
+    return [topic for topic, pattern in _QUESTIONS if pattern.search(t)]
+
+
 def _number(m: re.Match[str], *groups: str) -> float | None:
     for g in groups:
         if (value := m.group(g)) and (n := parse_number(value)) is not None:
@@ -560,6 +606,9 @@ def classify_by_rules(transcript: str, context: SessionContext | None = None) ->
 
     if _UNDO.search(t):
         return intent("undo")
+    if m := _NEVER_MIND.search(t):
+        rest = t[m.end() :].strip(" ,.")
+        return classify_by_rules(rest, context) if rest else intent("chatter", confidence=0.9)
     if _REPLAY.search(t):
         return intent("replayCue")
     if _YES.match(t):
@@ -594,6 +643,11 @@ def classify_by_rules(transcript: str, context: SessionContext | None = None) ->
         return intent("endSession")
     if _GO_BACK.match(t):
         return intent("goTo", text="back", confidence=0.9)
+    if (m := _SET_OF.match(t)) and _named(
+        said := m.group("name").strip(), context.exercisesToday if context else []
+    ):
+        # His words, not the first match: "laterals" is two lifts today, and the phone takes the one he just did.
+        return intent("addSet", text=said, confidence=0.9)
     if _ADD_SET.search(t):
         return intent("addSet", confidence=0.9)
     if m := _END_EXERCISE.match(t):
@@ -606,6 +660,19 @@ def classify_by_rules(transcript: str, context: SessionContext | None = None) ->
         return intent("goTo", text=named, confidence=0.9)
     if _IM_DONE.match(t):
         return intent("endSet" if recording else "endSession")
+    if recording and (m := _DONE_ALIKE.match(t)):
+        if m.group("n") is None:
+            return intent("endSet")
+        if (n := parse_number(m.group("n"))) is not None:
+            return intent("endSet", n)
+    if (
+        recording
+        and _DONE_WORD.search(t)
+        and not _NEGATION.search(t)
+        and (m := _REPS.match(t))
+        and (n := _number(m, "n", "m")) is not None
+    ):
+        return intent("endSet", n)
     if (m := _LAST_SET_LOAD.match(t)) and (n := _number(m, "a", "b", "c", "d", "e")) is not None:
         return intent("lastSetLoad", n, confidence=0.9)
     if (
@@ -632,7 +699,7 @@ def classify_by_rules(transcript: str, context: SessionContext | None = None) ->
         return intent("endSet")
     if _STOP.match(t) and context is not None and context.state in ("recording", "hold"):
         return intent("endSet")
-    if _STARTING.search(t):
+    if _STARTING.search(t) and len(t.split()) <= MAX_ARM_WORDS:
         return intent("starting")
     if _TOP_SET.search(t):
         return intent("topSet")
