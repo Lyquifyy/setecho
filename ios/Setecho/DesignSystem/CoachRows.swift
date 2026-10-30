@@ -4,8 +4,10 @@ import SwiftUI
 /// value struck through, when it starts, the coach's exact words beneath, and a checkbox. An
 /// unclear item uses the same row with no checkbox and an "Add by hand" link.
 struct ChangeRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let change: PlanChange
     var onToggle: (() -> Void)?
+    var applied = false
 
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Space.s) {
@@ -17,6 +19,7 @@ struct ChangeRow: View {
                         Text("→").font(.body).secondaryText()
                     }
                     Text(change.after ?? "").font(.body.weight(.semibold)).monospacedDigit().foregroundStyle(Theme.navy)
+                        .contentTransition(reduceMotion ? .opacity : .numericText())
                 }
                 if let from = change.appliesFromDate {
                     Text("From \(from.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))")
@@ -28,9 +31,18 @@ struct ChangeRow: View {
             if let onToggle {
                 Checkbox(isOn: change.approved, action: onToggle)
                     .accessibilityLabel("\(change.label), \(change.approved ? "approved" : "not approved")")
+            } else if applied && change.approved {
+                VStack(spacing: Theme.Space.xxs) {
+                    AnimatedCheck(size: 24)
+                    Text("Applied").font(.caption).foregroundStyle(Theme.cobalt)
+                }
+                .transition(.opacity)
+            } else if applied {
+                Text("Not applied").font(.caption).secondaryText()
             }
         }
         .padding(.vertical, Theme.Space.xxs)
+        .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.35), value: applied)
     }
 }
 

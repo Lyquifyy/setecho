@@ -44,6 +44,7 @@ struct ConversationEntry: Identifiable, Equatable {
 /// The conversation so far, newest at the bottom, scrolled to the latest line as it arrives. The
 /// line being asked now is the big one; everything before it has settled into the record.
 struct ConversationTranscript: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let entries: [ConversationEntry]
     /// A summary line tapped, to change it. Nil leaves the summary read-only.
     var onSummaryTap: ((SummaryRow) -> Void)?
@@ -63,7 +64,7 @@ struct ConversationTranscript: View {
                         ForEach(shown) { entry in
                             row(entry)
                                 .id(entry.id)
-                                .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
+                                .transition(reduceMotion ? .opacity : .asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
                         }
                         Color.clear.frame(height: 1).id("bottom")
                     }
@@ -74,11 +75,11 @@ struct ConversationTranscript: View {
                 .defaultScrollAnchor(.bottom)
                 .scrollIndicators(.hidden)
                 .onChange(of: entries.count) {
-                    withAnimation(.snappy(duration: 0.4)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.4)) { proxy.scrollTo("bottom", anchor: .bottom) }
                 }
             }
         }
-        .animation(.snappy(duration: 0.4), value: entries.count)
+        .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.4), value: entries.count)
     }
 
     @ViewBuilder private func row(_ entry: ConversationEntry) -> some View {
@@ -241,6 +242,7 @@ struct AnswerCard: View {
 
 /// A check mark that draws itself when it appears: the ring lands, then the stroke sweeps through.
 struct AnimatedCheck: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var size: CGFloat = 28
     var color: Color = Theme.cobalt
     @State private var landed = false
@@ -259,6 +261,7 @@ struct AnimatedCheck: View {
         }
         .frame(width: size, height: size)
         .onAppear {
+            if reduceMotion { landed = true; drawn = true; return }
             withAnimation(.spring(duration: 0.4, bounce: 0.4)) { landed = true }
             withAnimation(.easeOut(duration: 0.35).delay(0.15)) { drawn = true }
         }
@@ -350,6 +353,7 @@ enum VoicePhase: Equatable {
 /// pulse while it speaks, a thinking beat while a turn is read, and a quiet line while he takes
 /// his time. The one place on the screen that moves.
 struct VoiceBar: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let phase: VoicePhase
     /// The mic level above the room, 0…1, for the waveform while listening.
     var level: Double = 0
@@ -390,7 +394,7 @@ struct VoiceBar: View {
         .frame(maxWidth: .infinity, minHeight: 72)
         .background(framed ? Theme.surface : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous).strokeBorder(framed ? Theme.border : .clear, lineWidth: 1))
-        .animation(.snappy(duration: 0.3), value: phase)
+        .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.3), value: phase)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
     }
@@ -408,24 +412,25 @@ struct VoiceBar: View {
 
 /// Five bars that follow a level, with a little life of their own while something is being said.
 struct WaveformBars: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// 0…1
     var level: Double
     var animating: Bool
     var color: Color = Theme.cobalt
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: !animating)) { context in
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: !animating || reduceMotion)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             HStack(spacing: 3) {
                 ForEach(0..<5, id: \.self) { i in
                     let phase = Double(i) * 1.1
-                    let wobble = animating ? 0.5 + 0.5 * sin(t * 7 + phase) : 0
+                    let wobble = animating && !reduceMotion ? 0.5 + 0.5 * sin(t * 7 + phase) : 0
                     let shape = [0.55, 0.85, 1.0, 0.85, 0.55][i]
-                    let height = 6 + (0.7 * level + 0.3 * wobble * max(level, 0.35)) * 24 * shape
+                    let height = 6 + (0.7 * min(1, max(0, level)) + 0.3 * wobble * max(level, 0.35)) * 24 * shape
                     Capsule().fill(color).frame(width: 4, height: height)
                 }
             }
-            .animation(.easeOut(duration: 0.1), value: level)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: level)
         }
         .accessibilityHidden(true)
     }
@@ -433,12 +438,13 @@ struct WaveformBars: View {
 
 /// Three dots taking turns, while a turn is being read.
 struct ThinkingDots: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 20)) { context in
+        TimelineView(.animation(minimumInterval: 1 / 20, paused: reduceMotion)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             HStack(spacing: 5) {
                 ForEach(0..<3, id: \.self) { i in
-                    let lift = max(0, sin(t * 4 - Double(i) * 0.7))
+                    let lift = reduceMotion ? 0 : max(0, sin(t * 4 - Double(i) * 0.7))
                     Circle().fill(Theme.cobalt).frame(width: 7, height: 7)
                         .offset(y: -4 * lift)
                         .opacity(0.45 + 0.55 * lift)

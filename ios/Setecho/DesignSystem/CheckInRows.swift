@@ -23,6 +23,7 @@ struct SourceChip: View {
 /// One check-in field: the coach's label, the answer, its source, and its state.
 /// Filled shows the chip; drafted adds a yellow "Confirm"; missing shows "Ask in wrap-up".
 struct FieldRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let field: FieldSpec
     let answer: FieldAnswer?
 
@@ -32,6 +33,8 @@ struct FieldRow: View {
                 Text(field.label).font(.subheadline).secondaryText()
                 if let answer, !answer.text.isEmpty {
                     Text(answer.text).font(.body).monospacedDigit().foregroundStyle(Theme.navy)
+                        .contentTransition(reduceMotion ? .opacity : .numericText())
+                        .transition(.opacity)
                 } else {
                     Text(placeholder).font(.body).secondaryText()
                 }
@@ -49,6 +52,7 @@ struct FieldRow: View {
         }
         .padding(.vertical, Theme.Space.xxs)
         .contentShape(Rectangle())
+        .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.35), value: answer?.text)
     }
 
     /// A field filled from data is asked only when the data has nothing (an empty answer exists).

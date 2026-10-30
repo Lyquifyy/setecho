@@ -51,6 +51,7 @@ extension SessionHUDModel {
             },
             voice: Self.voice(engine, live: live, phase: phase),
             result: Self.result(engine),
+            loggedLoadLb: engine.session.sets.last?.loadLb,
             next: Self.next(engine),
             nextAsk: engine.pendingAskText,
             summary: phase == .done ? Self.summary(engine) : nil,

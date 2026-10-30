@@ -4,6 +4,7 @@ import SwiftUI
 /// card, the changes grouped by what they touch, the unclear sentences, the cues for sessions,
 /// and "Apply N changes". Not hands-free: it's reviewed at home.
 struct CoachReplyView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
     @Environment(Store.self) private var store
     let reply: CoachReply
@@ -37,6 +38,7 @@ struct CoachReplyView: View {
                                 .font(.footnote).secondaryText()
                         }
                     }
+                    .transition(.opacity)
                 } else if reply.isApplied {
                     SectionCard("Applied") {
                         Text("Applied as plan version \(reply.appliedVersion ?? 0). Revert from History → Plan changes.")
@@ -52,7 +54,7 @@ struct CoachReplyView: View {
                     SectionCard(group.group) {
                         ForEach(Array(group.changes.enumerated()), id: \.element.id) { index, change in
                             if index > 0 { CardDivider() }
-                            ChangeRow(change: change, onToggle: reply.isApplied ? nil : { model.toggle(change) })
+                            ChangeRow(change: change, onToggle: reply.isApplied ? nil : { model.toggle(change) }, applied: reply.isApplied)
                         }
                     }
                 }
@@ -79,7 +81,9 @@ struct CoachReplyView: View {
         } footer: {
             if let reply, !reply.isApplied {
                 Button(model.approvedCount == 1 ? "Apply 1 change" : "Apply \(model.approvedCount) changes") {
-                    model.apply()
+                    withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.4)) {
+                        model.apply()
+                    }
                 }
                 .buttonStyle(.setechoPrimary)
                 .disabled(model.approvedCount == 0 && model.cues.isEmpty)
@@ -103,7 +107,7 @@ struct CoachReplyView: View {
                 .foregroundStyle(Theme.navy)
                 .lineLimit(showAll ? nil : 4)
                 .textSelection(.enabled)
-            if reply.transcript.count > 200 {
+            if !reply.transcript.isEmpty {
                 LinkButton(title: showAll ? "Show less" : "Show all", chevron: .none) { showAll.toggle() }
             }
         }

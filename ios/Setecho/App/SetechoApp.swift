@@ -7,6 +7,7 @@ struct SetechoApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .modifier(BrandLaunchOverlay())
                 .environment(store)
                 .preferredColorScheme(.light)
         }

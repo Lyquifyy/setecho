@@ -81,6 +81,8 @@ struct SessionHUDModel: Equatable {
     var voice: Voice
     /// Rest: the set just done, as facts.
     var result: [Fact] = []
+    /// The saved set's load, never the upcoming target or an animated invented value.
+    var loggedLoadLb: Double? = nil
     /// Rest: the next set ("Back-off 145 × 8") and what to say to it.
     var next: String?
     var nextAsk: String?
@@ -213,7 +215,10 @@ struct SessionHUD: View {
         switch model.phase {
         case .rest(let remaining, let total):
             if showsCamera {
-                if !model.result.isEmpty { ResultSticker(facts: model.result) }
+                if !model.result.isEmpty {
+                    ResultSticker(facts: model.result, loadLb: model.loggedLoadLb)
+                        .transition(arrival)
+                }
             } else {
                 StageClock(remaining: remaining, total: total, caption: "Resting")
             }
@@ -642,11 +647,21 @@ private struct LockBrackets: View {
 
 /// The measured result on the replay: a white sticker at the foot of the stage.
 private struct ResultSticker: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var facts: [SessionHUDModel.Fact]
+    var loadLb: Double?
     var body: some View {
-        ResultRow(facts: facts)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+        VStack(alignment: .leading, spacing: Theme.Space.xxs) {
+            if let loadLb, loadLb > 0 {
+                Text("\(Format.number(loadLb)) lb logged")
+                    .font(.hudLabel).monospacedDigit().foregroundStyle(Theme.textSecondary)
+                    .contentTransition(reduceMotion ? .opacity : .numericText(value: loadLb))
+                    .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.35), value: loadLb)
+            }
+            ResultRow(facts: facts)
+        }
+            .padding(.horizontal, Theme.Space.m)
+            .padding(.vertical, Theme.Space.s)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 }
@@ -798,6 +813,7 @@ private struct RestBlock: View {
 
 /// The last set as Results shows it: the count, where it came from as a source chip, the effort.
 private struct ResultRow: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var facts: [SessionHUDModel.Fact]
     var body: some View {
         let count = facts.first { !$0.source }
@@ -805,7 +821,11 @@ private struct ResultRow: View {
         let effort = facts.filter { !$0.source }.dropFirst().map(\.text)
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: Theme.Space.s) {
-                if let count { Text(count.text).font(.system(size: 34, weight: .bold).monospacedDigit()).foregroundStyle(Theme.navy) }
+                if let count {
+                    Text(count.text).font(.system(size: 34, weight: .bold).monospacedDigit()).foregroundStyle(Theme.navy)
+                        .contentTransition(reduceMotion ? .opacity : .numericText())
+                        .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.35), value: count.text)
+                }
                 if let source {
                     Text(source.text.prefix(1).uppercased() + source.text.dropFirst())
                         .font(.hudLabel.weight(.semibold))
