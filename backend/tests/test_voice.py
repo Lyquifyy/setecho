@@ -23,6 +23,8 @@ CONTEXT = voice.SessionContext(
         ("two hundred and twenty five", 225), ("nine", 9), ("nine and a half", 9.5), ("9.5", 9.5),
         ("twenty four and three quarters", 24.75), ("215", 215), ("seven", 7), ("thirty one", 31),
         ("sixteen", 16), ("five pounds", 5), ("nothing here", None),
+        # Oct 29: "five, five" after "How many?" was logged as 505 reps.
+        ("five, five,", 5), ("eight eight", 8), ("one oh five", 105), ("five oh five", 505), ("two oh five", 205),
     ],
 )  # fmt: skip
 def test_parse_number(said, expected):
@@ -126,6 +128,7 @@ def test_add_on_rules_match_only_the_sessions_names():
         ("that was 12", "rest", "reps", 12),
         ("done, 12", "ready", "endSet", 12),
         ("twelve", "ready", "answer", 12),
+        ("five,Five,", "rest", "answer", 5),  # Oct 29: logged as 505 reps
         ("I'm done", "recording", "endSet", None),
         ("I'm done with this set", "rest", "endSet", None),
         ("I'm done", "rest", "endSession", None),

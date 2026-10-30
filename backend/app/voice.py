@@ -190,7 +190,8 @@ _FRACTIONS = {"half": 0.5, "quarter": 0.25, "quarters": 0.25}
 
 def parse_number(text: str) -> float | None:
     """The first number in `text`, digits or words. "two fifteen" is 215, "two twenty five" is 225,
-    "a hundred and eighty five" is 185, "twenty four and three quarters" is 24.75, "9.5" is 9.5."""
+    "one oh five" is 105, "a hundred and eighty five" is 185, "twenty four and three quarters" is
+    24.75, "9.5" is 9.5. One number said twice is that number: "five, five" is 5, not 505 (Oct 29)."""
     if m := re.search(r"\d+(?:\.\d+)?", text):
         value = float(m.group())
         if re.search(rf"{re.escape(m.group())}\s+and\s+a\s+half", text):
@@ -198,6 +199,7 @@ def parse_number(text: str) -> float | None:
         return value
     words = re.findall(r"[a-z]+", text.lower())
     groups: list[int] = []  # spoken chunks like "two", "fifteen", "twenty five"
+    said_oh = False  # "one oh five": the "oh" makes the five a tail, never a repeat
     current: int | None = None
     fraction = 0.0
     i = 0
@@ -213,6 +215,12 @@ def parse_number(text: str) -> float | None:
         elif w in _UNITS:
             if w == "oh" and not groups:
                 i += 1
+                continue
+            if w == "oh" and i + 1 < len(words) and words[i + 1] in _UNITS and _UNITS[words[i + 1]] < 10:
+                # "one oh five": the oh and the five are one tail, 05
+                groups.append(_UNITS[words[i + 1]])
+                said_oh = True
+                i += 2
                 continue
             groups.append(_UNITS[w])
         elif w == "hundred":
@@ -247,6 +255,8 @@ def parse_number(text: str) -> float | None:
         return None
     if len(groups) == 1:
         return groups[0] + fraction
+    if not said_oh and len(set(groups)) == 1:
+        return groups[0] + fraction  # "five, five": said twice
     # "two fifteen" -> 215, "two twenty five" -> 225, "one eighty" -> 180
     if groups[0] < 10 and all(0 <= g < 100 for g in groups[1:]):
         value = groups[0] * 100 + groups[1]

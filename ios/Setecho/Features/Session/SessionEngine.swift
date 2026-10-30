@@ -153,6 +153,8 @@ final class SessionEngine {
     static let sameSetSeconds: TimeInterval = 20
     /// In Ready with the camera on duty, "that was 8" corrects the last set only this soon after it.
     static let correctionWindowSeconds: TimeInterval = 180
+    /// A spoken count over this is misheard, never logged: "five, five" came back as 505 (Oct 29).
+    static let maxSpokenReps = 100
 
     let day: ProgramDay?
     let weekNumber: Int
@@ -1334,6 +1336,7 @@ final class SessionEngine {
         let count = kind == .answer || (kind == .reps && intent.setNumber == nil) ? intent.number.map { Int($0) } : nil
         switch open {
         case .countConfirm(let question):
+            if let count, count > Self.maxSpokenReps { return misheardCount(count) }
             if let count { clearAsk(); return answerCount(question, with: count, transcript: response.transcript, now: now) }
             if yes { clearAsk(); return acceptMeasured(question, transcript: response.transcript, now: now) }
             if no {
@@ -1346,6 +1349,7 @@ final class SessionEngine {
             if no { return decideSuggestion(.kept, spoken: true) }
             if kind == .answer, let n = intent.number { return setLoad(n) }
         case .howMany(let setId):
+            if let count, count > Self.maxSpokenReps { return misheardCount(count) }
             if let count, let i = session.sets.firstIndex(where: { $0.id == setId }) {
                 clearAsk()
                 var outcome = spokenReps(at: i, count, transcript: response.transcript, now: now)
@@ -1507,6 +1511,11 @@ final class SessionEngine {
     /// edits a set of another exercise unless that set is named.
     private func routeCount(_ n: Int, done: Bool, named setNumber: Int?, exercise name: String?, transcript: String, now: Date,
                             phone: RepCounter.Result?, willMeasure: Bool) -> Outcome {
+        if n > Self.maxSpokenReps {
+            // "Done" still ends the set; the count is asked for instead.
+            if done, state == .recording { return setEnded(at: now, phone: phone, willMeasure: willMeasure, askHowMany: true) }
+            return misheardCount(n)
+        }
         if let setNumber { return correctNamedSet(setNumber, exercise: name, reps: n, transcript: transcript, now: now) }
         switch state {
         case .recording:
@@ -2212,6 +2221,10 @@ final class SessionEngine {
 
     private func say(_ text: String) -> Outcome {
         Outcome(speech: text, echo: text)
+    }
+
+    private func misheardCount(_ n: Int) -> Outcome {
+        say("\(n) reps? Say the count again.")
     }
 
     struct UndoEntry: Equatable {

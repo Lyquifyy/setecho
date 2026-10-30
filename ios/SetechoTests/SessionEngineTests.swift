@@ -49,6 +49,34 @@ private func intent(_ kind: VoiceIntent.Kind, _ number: Double? = nil, text: Str
     #expect(engine.session.sets[1].loadLb == 220 && engine.session.sets[1].reps == 8)
 }
 
+/// Oct 29: "five, five" after "How many?" came back as 505 and was logged. No set is that long.
+@Test @MainActor func aCountOverAHundredIsAskedAgainNotLogged() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted()
+    let asked = engine.apply(intent(.endSet, transcript: "done"))
+    #expect(asked.speech?.hasSuffix("How many?") == true)
+    let out = engine.apply(intent(.answer, 505, transcript: "five, five"))
+    #expect(out.speech == "505 reps? Say the count again.")
+    #expect(engine.session.sets[0].reps == 8 && engine.session.sets[0].edits.isEmpty)
+    engine.apply(intent(.answer, 5, transcript: "five"))
+    #expect(engine.session.sets[0].reps == 5 && engine.session.sets[0].repCount.source == .spoken)
+    // "Done, 505" during a set still ends it, and asks how many.
+    engine.skipRest()
+    engine.setStarted()
+    let done = engine.apply(intent(.endSet, 505, transcript: "done five oh five"))
+    #expect(engine.session.sets.count == 2 && engine.session.sets[1].reps == 8)
+    #expect(done.speech?.hasSuffix("How many?") == true)
+}
+
+@Test @MainActor func aCountOverAHundredDoesNotAnswerAMeasuredCountsQuestion() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), phone: phone(8), willMeasure: true)
+    engine.measured(setId: engine.session.sets[0].id, measured(7, confidence: 0.4), now: t0.addingTimeInterval(40))
+    let out = engine.apply(intent(.answer, 707, transcript: "seven seven"))
+    #expect(out.speech == "707 reps? Say the count again.")
+    #expect(engine.session.sets[0].reps == 8 && engine.pendingQuestion?.measured == 7)
+}
+
 @Test @MainActor func repsCorrectionAfterTheSetEditsTheLastSet() {
     let engine = SessionEngine(day: upperA, weekNumber: 1)
     engine.setStarted()
