@@ -158,6 +158,9 @@ enum AirPodsLowering: String, CaseIterable, Identifiable {
     case withActivation
     /// `.duckOthers` from the session's start to its end: the music lower throughout, no changes mid-session.
     case wholeSession
+    /// Each line spoken on the synthesizer's own session, which lowers his music for the line by
+    /// itself (`OwnSessionSpeaker`); the app's session never changes. No EQ or compressor on it.
+    case appleSpeech
 
     var id: String { rawValue }
 
@@ -167,6 +170,7 @@ enum AirPodsLowering: String, CaseIterable, Identifiable {
         case .optionOnly: "Per line, option only"
         case .withActivation: "Per line, with activation"
         case .wholeSession: "Whole session"
+        case .appleSpeech: "Per line, Apple's speech session"
         }
     }
 }

@@ -120,25 +120,44 @@ final class AudioMixingProbe {
     }
 
     /// With the AirPods recording at high quality and his music on: each way a line could lower it
-    /// (Developer → "Lower music on the AirPods mic"). He listens for the dip; the rows say whether the
-    /// music kept playing. Paused music gets 15 s for him to press play before the next way.
+    /// (Developer → "Lower music on the AirPods mic"), each with a spoken line. He listens: did the
+    /// music dip under the line, and was the line itself still loud? The rows say whether the music
+    /// kept playing. Paused music gets 15 s for him to press play before the next way.
     private func loweringTests() async {
         let setup = "Lowering"
         guard AirPodsMic.shared.isRecordingHighQuality(session) else {
             await step(setup, "skipped: the AirPods aren't recording at high quality") {}
             return
         }
-        for method in [AirPodsLowering.optionOnly, .withActivation] {
+        let settings = Settings.shared
+        let chosen = settings.airPodsLowering
+        defer { settings.airPodsLowering = chosen }
+        let ways: [(String, AirPodsLowering?)] = [
+            ("Apple's speech session", .appleSpeech),
+            ("Silent Apple session under the app's voice", nil),
+            ("Per line, option only", .optionOnly),
+            ("Per line, with activation", .withActivation),
+        ]
+        for (name, method) in ways {
             await waitForMusic(setup)
-            await step(setup, "\(method.label): lower") {
-                try AirPodsMic.shared.apply(to: self.session, ducking: true)
-                if method == .withActivation { try self.session.setActive(true) }
+            await step(setup, "\(name): before") {}
+            let line = "\(name). Your music should dip under this line, then come back."
+            if let method {
+                settings.airPodsLowering = method
+                await AudioService().speak(line)   // a fresh service: no lowering turned off by an earlier line
+            } else {
+                // The lowering from a silent line on Apple's own session, the voice from the app's chain.
+                let ducker = OwnSessionSpeaker()
+                ducker.holdSilence()
+                try? await Task.sleep(for: .milliseconds(400))
+                let voice = AudioService.preferredVoice()
+                let tone = AudioService.currentTone
+                let output = VoiceOutput()
+                await output.speak(SpokenText.utterance(line, voice: voice, tone: tone), tone: tone)
+                ducker.stop()
             }
-            try? await Task.sleep(for: .seconds(2.5))
-            await step(setup, "\(method.label): 2.5 s lowered") {}
-            await step(setup, "\(method.label): restore") { try AirPodsMic.shared.apply(to: self.session, ducking: false) }
             try? await Task.sleep(for: .seconds(2))
-            await step(setup, "\(method.label): 2 s restored") {}
+            await step(setup, "\(name): 2 s after the line") {}
         }
     }
 

@@ -293,3 +293,67 @@ final class VoiceOutput {
 private struct BufferBox: @unchecked Sendable {
     let buffer: AVAudioPCMBuffer?
 }
+
+/// Speaks on the synthesizer's own audio session (`usesApplicationAudioSession = false`). Apple's
+/// header: that session "will mix and duck other audio, and its active state will be managed
+/// automatically". His music lowers for the line and comes back after it, and the app's recording
+/// session is never touched: on the AirPods' high-quality link every change to that session pauses
+/// his music, and only its own activation can lower it (Oct 29). Lines skip the EQ and compressor.
+@MainActor
+final class OwnSessionSpeaker: NSObject, AVSpeechSynthesizerDelegate {
+    private let synth = AVSpeechSynthesizer()
+    private var current: ObjectIdentifier?
+    private var finished: CheckedContinuation<Void, Never>?
+
+    override init() {
+        super.init()
+        synth.usesApplicationAudioSession = false
+        synth.delegate = self
+    }
+
+    /// Returns when the line has been spoken or stopped; a callback that never comes ends it after a minute.
+    func speak(_ utterance: AVSpeechUtterance) async {
+        stop()
+        let id = ObjectIdentifier(utterance)
+        current = id
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(60))
+            self?.end(id)
+        }
+        await withCheckedContinuation { continuation in
+            finished = continuation
+            synth.speak(utterance)
+        }
+    }
+
+    /// Silence for up to `seconds`, held until `stop()`: the lowering without a voice of its own.
+    func holdSilence(seconds: Int = 30) {
+        let breaks = String(repeating: "<break time=\"5s\"/>", count: max(1, seconds / 5))
+        guard let utterance = AVSpeechUtterance(ssmlRepresentation: "<speak>\(breaks)</speak>") else { return }
+        stop()
+        current = ObjectIdentifier(utterance)
+        synth.speak(utterance)
+    }
+
+    func stop() {
+        if synth.isSpeaking { synth.stopSpeaking(at: .immediate) }
+        if let current { end(current) }
+    }
+
+    private func end(_ id: ObjectIdentifier) {
+        guard current == id else { return }
+        current = nil
+        finished?.resume()
+        finished = nil
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        let id = ObjectIdentifier(utterance)
+        Task { @MainActor in self.end(id) }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        let id = ObjectIdentifier(utterance)
+        Task { @MainActor in self.end(id) }
+    }
+}

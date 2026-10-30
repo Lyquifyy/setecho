@@ -96,7 +96,8 @@ final class SystemSpeaker: Speaker {
         let line = SpokenText.varied(text, after: lastLine)
         lastLine = line
         if isPending(line) { await warm([line], within: .milliseconds(Self.renderWaitMilliseconds)) }
-        if let file = cachedAudio(for: line) {
+        // On Apple's speech session a line is spoken live, so his music lowers under it.
+        if !audio.speaksOnItsOwnSession, let file = cachedAudio(for: line) {
             await audio.duck()
             do {
                 try await audio.output.play(file: file, tone: AudioService.currentTone)

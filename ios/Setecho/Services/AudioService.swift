@@ -57,6 +57,8 @@ final class AudioService {
     private let capture = CaptureBuffer()
     /// Every line, live or pre-rendered, goes out through this: player → EQ → compressor.
     let output = VoiceOutput()
+    /// Lines on the synthesizer's own session while it lowers his music (`AirPodsLowering.appleSpeech`).
+    let ownSessionVoice = OwnSessionSpeaker()
     private var engine: AVAudioEngine?
     private var detector: VoiceDetector?
     private var drainTask: Task<Void, Never>?
@@ -286,11 +288,23 @@ final class AudioService {
         }
     }
 
+    /// The AirPods record at high quality and he picked Apple's speech session to lower his music:
+    /// lines go to `ownSessionVoice`, never through a change to the app's session.
+    var speaksOnItsOwnSession: Bool {
+        !holdsDucking && Settings.shared.airPodsLowering == .appleSpeech && AirPodsMic.shared.isRecordingHighQuality(session)
+    }
+
     private func speakNow(_ text: String) async {
         isSpeaking = true
-        lowerMusic(true)
         let voice = Self.preferredVoice()
         let tone = Self.currentTone
+        if speaksOnItsOwnSession {
+            await ownSessionVoice.speak(SpokenText.utterance(text, voice: voice, tone: tone))
+            isSpeaking = false
+            micOpenedAt = .now
+            return
+        }
+        lowerMusic(true)
         await output.speak(SpokenText.utterance(text, voice: voice, tone: tone), tone: tone)
         lowerMusic(false)
         isSpeaking = false
@@ -420,7 +434,8 @@ final class AudioService {
     func lowerMusic(_ lowered: Bool) {
         guard !holdsDucking else { return }
         let method = AirPodsMic.shared.isRecordingHighQuality(session) ? Settings.shared.airPodsLowering : nil
-        if lowered, !perLineDuckingOff, method == .off || method == .wholeSession {
+        // Apple's speech session lowers his music itself for spoken lines; a coach cue plays over it.
+        if lowered, !perLineDuckingOff, method == .off || method == .wholeSession || method == .appleSpeech {
             perLineDuckingOff = true
             logAudio("per-line lowering off: the AirPods mic is at high quality", lowered: false, error: nil)
         }
@@ -479,6 +494,7 @@ final class AudioService {
     func stopSpeaking() {
         speechQueue.removeAll()
         output.cancel()
+        ownSessionVoice.stop()
     }
 
     /// Duck the music before a pre-rendered line plays through its own engine, and restore after.
