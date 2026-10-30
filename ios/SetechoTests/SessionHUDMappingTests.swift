@@ -81,7 +81,12 @@ private var tripod: SessionHUDModel.Live {
 @Test @MainActor func inAPocketOrWithoutACameraThereIsNoCameraCard() {
     let engine = SessionEngine(day: day, weekNumber: 1)
     var live = tripod
+    // On the tripod before the tracker finds him: his picture, so he can frame himself (Oct 29).
     live.cameraOnDuty = false
+    let framing = SessionHUDModel(engine: engine, live: live)
+    #expect(framing.camera && !framing.pocket)
+    // A dark picture is a pocket.
+    live.cameraDark = true
     let pocket = SessionHUDModel(engine: engine, live: live)
     #expect(pocket.pocket && !pocket.camera)
     live.cameraRunning = false

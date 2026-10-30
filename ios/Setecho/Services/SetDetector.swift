@@ -28,6 +28,9 @@ final class SetDetector: NSObject {
     private(set) var isRecording = false
     /// Body pose has found at least 6 joints in at least half the frames of the last 10 s.
     private(set) var isOnDuty = false
+    /// The picture is dark, as in a pocket: under 6% brightness, and lit again above 12% (Oct 29: the
+    /// screen hid his camera until the body tracker found him, so he couldn't frame himself).
+    private(set) var isDark = false
     private(set) var lastWristY: Double?
     private(set) var framesSeen = 0
     private(set) var lastError: String?
@@ -186,6 +189,9 @@ final class SetDetector: NSObject {
 
     private func handle(_ frame: FrameProcessor.PoseFrame) {
         framesSeen += 1
+        if let brightness = frame.brightness {
+            if isDark, brightness > 0.12 { isDark = false } else if !isDark, brightness < 0.06 { isDark = true }
+        }
         bodiesInFrame = frame.bodies.count
         let him: BodyTracker.Body?
         if relockPending, !frame.bodies.isEmpty {
@@ -429,6 +435,8 @@ final class FrameProcessor: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
     struct PoseFrame: Sendable {
         var t: Double
         var bodies: [BodyTracker.Body]
+        /// The frame's mean brightness, 0…1, from a grid of its luma: near 0 in a pocket.
+        var brightness: Double?
     }
 
     var onPose: (@Sendable (PoseFrame) -> Void)?
@@ -469,7 +477,34 @@ final class FrameProcessor: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                 bodies.append(BodyTracker.Body(box: box, joints: joints))
             }
         }
-        onPose(PoseFrame(t: t, bodies: bodies))
+        onPose(PoseFrame(t: t, bodies: bodies, brightness: Self.brightness(pixelBuffer)))
+    }
+
+    /// Mean luma over a 16 × 16 grid of the frame's first plane (the camera's 4:2:0 formats), or the
+    /// green of a BGRA frame; nil for any other format.
+    static func brightness(_ buffer: CVPixelBuffer) -> Double? {
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        let format = CVPixelBufferGetPixelFormatType(buffer)
+        let planar = CVPixelBufferIsPlanar(buffer)
+        let bgra = format == kCVPixelFormatType_32BGRA
+        guard planar || bgra,
+              let base = planar ? CVPixelBufferGetBaseAddressOfPlane(buffer, 0) : CVPixelBufferGetBaseAddress(buffer)
+        else { return nil }
+        let width = planar ? CVPixelBufferGetWidthOfPlane(buffer, 0) : CVPixelBufferGetWidth(buffer)
+        let height = planar ? CVPixelBufferGetHeightOfPlane(buffer, 0) : CVPixelBufferGetHeight(buffer)
+        let stride = planar ? CVPixelBufferGetBytesPerRowOfPlane(buffer, 0) : CVPixelBufferGetBytesPerRow(buffer)
+        guard width > 0, height > 0 else { return nil }
+        let bytes = base.assumingMemoryBound(to: UInt8.self)
+        var sum = 0
+        for row in 0..<16 {
+            let y = (row * 2 + 1) * height / 32
+            for col in 0..<16 {
+                let x = (col * 2 + 1) * width / 32
+                sum += Int(bytes[y * stride + (bgra ? x * 4 + 1 : x)])
+            }
+        }
+        return Double(sum) / (256 * 255)
     }
 }
 

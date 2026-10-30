@@ -12,6 +12,8 @@ extension SessionHUDModel {
         /// The camera is running (not a rehearsal or a morning of holds), and sees him.
         var cameraRunning = false
         var cameraOnDuty = false
+        /// The camera's picture is dark: the phone is in a pocket.
+        var cameraDark = false
         /// The front camera faces him; its picture is shown mirrored, like a mirror.
         var frontCamera = false
         /// His box in the camera's upright, unmirrored frame (`SetDetector.trackedBox`).
@@ -37,7 +39,9 @@ extension SessionHUDModel {
         let phase = Self.phase(engine, now: live.now)
         self.init(
             phase: phase,
-            pocket: live.cameraRunning && !live.cameraOnDuty,
+            // A pocket is a dark picture. Off duty alone isn't one: on the tripod before the tracker
+            // finds him, he needs his picture to frame himself (Oct 29).
+            pocket: live.cameraRunning && live.cameraDark,
             progress: Self.progress(engine),
             micLabel: live.micLabel,
             micOnHim: live.micOnHim,
@@ -55,7 +59,7 @@ extension SessionHUDModel {
             next: Self.next(engine),
             nextAsk: engine.pendingAskText,
             summary: phase == .done ? Self.summary(engine) : nil,
-            camera: live.cameraRunning && live.cameraOnDuty,
+            camera: live.cameraRunning && !live.cameraDark,
             lockBox: live.trackedBox.map { box in
                 live.frontCamera ? CGRect(x: 1 - box.maxX, y: box.minY, width: box.width, height: box.height) : box
             }

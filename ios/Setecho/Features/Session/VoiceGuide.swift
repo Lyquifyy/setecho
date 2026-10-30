@@ -65,6 +65,7 @@ enum VoiceGuide {
         case .suggestion: return ["go with it", "keep it"]
         case .countConfirm(let q): return ["yes", "no, it was \(max(1, q.current - 1))"]
         case .takenOffer: return ["go with it", "the other one", "I'll wait"]
+        case .laterLift(let offer): return offer.choices.count == 1 ? ["yes", "I'll wait"] : [offer.choices[0].lowercased(), "I'll wait"]
         case .howMany: return ["eight", "that was ten"]
         case .topSetCheck: return ["yes", "warm-up"]
         case .endSession, .noteOffer, .logPlanSets, .clarify, .countFor: return ["yes", "no"]

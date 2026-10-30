@@ -89,3 +89,27 @@ private func said(_ kind: VoiceIntent.Kind, _ transcript: String = "", number: D
         #expect(own.speech == "Noted for Thursday. Weight for these?" && engine.session.deviations.first?.doneAs == "dumbbells on the flat bench")
     }
 }
+
+/// Oct 29: "is there a swap for this?" with none to offer left him stuck. With lifts still ahead
+/// today he's asked to do one first, his pick, and the taken lift comes right after it.
+@Test @MainActor func withNoSwapHeCanDoALaterLiftFirst() {
+    let flyes = PlannedExercise(id: "flyes", name: "Cable incline flyes", sets: [p(12), p(12)], restSeconds: 90, notes: nil)
+    let laterals = PlannedExercise(id: "laterals", name: "Lateral raises", sets: [p(15)], restSeconds: 60, notes: nil)
+    let engine = SessionEngine(day: ProgramDay(id: "d", name: "Day 5", exercises: [smith, flyes, laterals]), weekNumber: 1)
+    let out = engine.apply(said(.equipmentTaken, "is there a swap for this?", text: nil))
+    #expect(out.speech == "No swap for Smith close-grip press. Do another lift first and come back to it: cable incline flyes or lateral raises? Say which, or 'I'll wait'.")
+    #expect(VoiceGuide.hints(for: engine) == ["cable incline flyes", "I'll wait"])
+    engine.apply(said(.choose, "lateral raises", text: "lateral raises"))   // his pick, as the backend reads it
+    #expect(engine.currentExercise?.id == "laterals" && engine.exercises.map(\.exercise.id) == ["laterals", "smith", "flyes"])
+    #expect(engine.session.deviations.first?.kind == .reorder && engine.pendingAsk == nil)
+
+    // One lift ahead: yes takes it; "I'll wait" waits.
+    let two = SessionEngine(day: ProgramDay(id: "d", name: "Day 5", exercises: [smith, flyes]), weekNumber: 1)
+    #expect(two.apply(said(.equipmentTaken, "can I swap this?", text: nil)).speech
+            == "No swap for Smith close-grip press. Do cable incline flyes first and come back to it? Say yes, or 'I'll wait'.")
+    two.apply(said(.yes, "yeah"))
+    #expect(two.currentExercise?.id == "flyes")
+    let wait = SessionEngine(day: ProgramDay(id: "d", name: "Day 5", exercises: [smith, flyes]), weekNumber: 1)
+    wait.apply(said(.equipmentTaken, "can I swap this?", text: nil))
+    #expect(wait.apply(said(.no, "no, I'll wait")).speech == "Waiting for it. Say 'it's free' when it is." && wait.currentExercise?.id == "smith")
+}

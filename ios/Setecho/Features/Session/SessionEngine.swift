@@ -91,6 +91,10 @@ final class SessionEngine {
         case logPlanSets(count: Int)
         /// "Smith's taken. His first choice is …": his options in his order, then Wait.
         case takenOffer(TakenOffer)
+        /// No swap for the lift up now: do one of today's later lifts first (he names it) or wait.
+        /// His choice moves it up, as "I'm on flyes now" does; Setecho never picks one (the fatigue
+        /// check that would let it is not built: HANDOFF.md §7, Machine taken).
+        case laterLift(LaterOffer)
         /// Warm-up mode couldn't tell from a spoken count: "Six. Was that your top set?" Logged as the
         /// working set already; no (or "warm-up") makes it a warm-up, and no answer keeps it.
         case topSetCheck(setId: UUID)
@@ -102,6 +106,12 @@ final class SessionEngine {
         /// What he said was taken ("Smith"), or nil when he only asked for another machine.
         var what: String?
         var options: [TakenOption]
+    }
+
+    /// The taken lift and today's next lifts after it, in plan order, named for him to choose from.
+    struct LaterOffer: Equatable {
+        var exerciseId: String
+        var choices: [String]
     }
 
     /// "Set 3, was that 7?" waiting for a yes, a no or a number.
@@ -1397,6 +1407,16 @@ final class SessionEngine {
                             transcript: response.transcript, now: now)
             }
             if wait { clearAsk(); return waitFor(offer.exerciseId) }
+        case .laterLift(let offer):
+            let named = offer.choices.first { choice in
+                [response.transcript, intent.text ?? ""].contains { !$0.isEmpty && Self.nameMatches($0, choice) }
+            }
+            let picked: String? = if let named { named }
+                else if kind == .choose, let n = intent.number.map({ Int($0) }), offer.choices.indices.contains(n - 1) { offer.choices[n - 1] }
+                else if yes, offer.choices.count == 1 { offer.choices[0] }
+                else { nil }
+            if let picked { clearAsk(); return goTo(picked, transcript: response.transcript, now: now) }
+            if no || kind == .choose && intent.text == "wait" { clearAsk(); return waitFor(offer.exerciseId) }
         }
         return nil
     }
@@ -1798,7 +1818,18 @@ final class SessionEngine {
         let what = name.map { $0.prefix(1).uppercased() + $0.dropFirst() }
         let swaps = options.filter { $0.kind != .wait }
         guard let first = swaps.first else {
-            return echo("\(ex.name): taken", speech: "\(what ?? "That")'s taken. The rest keeps running. Say what you'll do instead, or wait.")
+            // The lift up now, with lifts still ahead today: one of them first, his pick, then back to it.
+            let later = ex.id == currentExercise?.id
+                ? exercises.indices.filter { $0 > exerciseIndex && !endedExerciseIds.contains(exercises[$0].exercise.id) }.prefix(2).map { exercises[$0].exercise.name }
+                : []
+            guard !later.isEmpty else {
+                return echo("\(ex.name): taken", speech: "\(what ?? "That")'s taken. The rest keeps running. Say what you'll do instead, or wait.")
+            }
+            let lead = "No swap for \(Self.inSentence(ex.name))."
+            let line = later.count == 1
+                ? "\(lead) Do \(Self.inSentence(later[0])) first and come back to it? Say yes, or 'I'll wait'."
+                : "\(lead) Do another lift first and come back to it: \(Self.inSentence(later[0])) or \(Self.inSentence(later[1]))? Say which, or 'I'll wait'."
+            return ask(.laterLift(LaterOffer(exerciseId: ex.id, choices: later)), line, now: now)
         }
         var line = what.map { "\($0)'s taken. His first choice is \(Self.inSentence(first.name))." }
             ?? "For \(ex.name.lowercased()), his first choice is \(Self.inSentence(first.name))."
