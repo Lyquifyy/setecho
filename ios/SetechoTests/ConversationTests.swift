@@ -440,3 +440,27 @@ private func spark(_ engine: SessionEngine, _ turn: SessionTurnResponse) -> Sess
     await talk.hear(.init(transcript: "the incline's taken", wav: nil, seconds: 1, speechEndedAt: .now))
     #expect(talk.said.isEmpty && engine.state == .recording)
 }
+
+// MARK: Oct 30: "I need to be able to say anything to it during the set"
+
+@Test @MainActor func midSetAQuestionIsAnsweredAndTheSetRunsOn() async {
+    let engine = SessionEngine(day: shortDay, weekNumber: 1)
+    engine.setStarted()
+    let talk = spark(engine, SessionTurnResponse(transcript: "what do I got for the rest of this lift",
+                                                 actions: [VoiceIntent(intent: .question, topic: .setsLeft, confidence: 0.9)], classifiedBy: "rules"))
+    await talk.hear(.init(transcript: "what do I got for the rest of this lift", wav: nil, seconds: 1, speechEndedAt: .now))
+    #expect(talk.said == [engine.setsLeftLine])
+    #expect(talk.said.first?.hasPrefix("This is the last one") == true || talk.said.first?.contains("after this") == true)
+    #expect(engine.state == .recording && engine.session.sets.isEmpty)
+}
+
+@Test @MainActor func midSetTheWeightChangesAndTheReplyIsSaid() async {
+    let engine = SessionEngine(day: shortDay, weekNumber: 1)
+    engine.setStarted()
+    let talk = spark(engine, SessionTurnResponse(transcript: "this one's actually 25 pounds",
+                                                 actions: [VoiceIntent(intent: .setLoad, number: 25, confidence: 0.9)],
+                                                 reply: "Got it, 25 on this one.", classifiedBy: "spark"))
+    await talk.hear(.init(transcript: "this one's actually 25 pounds", wav: nil, seconds: 1, speechEndedAt: .now))
+    #expect(talk.said == ["Got it, 25 on this one."])
+    #expect(engine.targetLoadLb == 25 && engine.state == .recording)
+}

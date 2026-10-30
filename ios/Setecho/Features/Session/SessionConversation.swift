@@ -9,8 +9,9 @@ import Observation
 /// backend, the voice, the camera and the chime, and `ConversationTests` wire in fakes, so the path
 /// the athlete uses is the path the tests drive.
 ///
-/// During a set only the rule layer's set commands count ("done", "done, 12", "that was 8", "top
-/// set"); everything else then is noise. Talk not meant for Setecho is never answered: the HUD
+/// During a set "done", counts and "top set" act, and so do questions, notes, this set's weight and
+/// "this is another set of laterals"; grunts, counting aloud and the gym are noise. Talk not meant for
+/// Setecho is never answered: the HUD
 /// shows "Heard: …". A reply is spoken when the turn's actions ask nothing of their own; an action
 /// that opens a question (a count to confirm, a machine-taken offer, the end-session yes) speaks
 /// the engine's exact words.
@@ -77,7 +78,31 @@ final class SessionConversation {
     /// The session's exchanges, for follow-ups ("what about the other one?", "same as last set").
     private(set) var exchanges: [Exchange] = []
     static let recentTurns = 8
-    private var queue: [Heard] = []
+    private var queue: [Queued] = []
+    /// Mid-set readings started the moment each sound was heard, by its place in the queue.
+    private var earlyTasks: [Int: Task<Void, Never>] = [:]
+    private var earlyInputs: [Int: (heard: Heard, request: SessionTurnRequest)] = [:]
+    private var earlyTurns: [Int: EarlyTurn] = [:]
+    private var nextQueued = 0
+
+    private struct Queued {
+        var id: Int
+        var heard: Heard
+    }
+
+    /// A mid-set utterance read ahead of its turn: its words, and the turn read in the state it was heard in.
+    private struct EarlyTurn {
+        var state: String
+        var transcript: String?
+        var wordsAt: Date?
+        var response: SessionTurnResponse?
+        var error: (any Error)?
+
+        func turn() throws -> SessionTurnResponse {
+            if let response { return response }
+            throw error ?? APIError(status: 0, message: "No reading")
+        }
+    }
     private var speechQueue: [String] = []
     private var speaking = false
     private var echoTask: Task<Void, Never>?
@@ -91,7 +116,10 @@ final class SessionConversation {
 
     /// Queue an utterance; they are handled one at a time, in order, and none is dropped.
     func hear(_ heard: Heard) async {
-        queue.append(heard)
+        let id = nextQueued
+        nextQueued += 1
+        startEarly(heard, id: id)
+        queue.append(Queued(id: id, heard: heard))
         guard !isBusy else { return }
         isBusy = true
         defer { isBusy = false }
@@ -100,15 +128,58 @@ final class SessionConversation {
         }
     }
 
+    /// Mid-set what he says is read in the set's own state, so a sound's words and its reading start the
+    /// moment it's heard instead of waiting their turn. Oct
+    /// 30: ten clanks were queued ahead of a "done", each waiting 3-8 s for its file transcription in
+    /// order, and the "done" waited 7 s. The turns are still applied in order, and read again if the
+    /// set has ended by then ("done" then "eleven").
+    private func startEarly(_ heard: Heard, id: Int) {
+        guard engine.state == .recording, heard.transcript == nil, heard.words != nil || heard.wav != nil else { return }
+        let request = SessionTurnRequest(transcript: "", state: engine.context.state, recentTurns: Array(exchanges.suffix(Self.recentTurns)),
+                                         facts: engine.turnFacts(now: now()))
+        earlyInputs[id] = (heard, request)
+        earlyTasks[id] = Task { [weak self] in await self?.readEarly(id) }
+    }
+
+    private func readEarly(_ id: Int) async {
+        guard let input = earlyInputs.removeValue(forKey: id) else { return }
+        var heard = input.heard
+        var request = input.request
+        var early = EarlyTurn(state: request.state)
+        if let words = heard.words {
+            heard.transcript = await words()
+            if heard.transcript != nil { early.wordsAt = now() }
+        }
+        heard.words = nil
+        early.transcript = heard.transcript
+        request.transcript = heard.transcript ?? ""
+        do {
+            early.response = try await classify(heard, request)
+        } catch {
+            early.error = error
+        }
+        earlyTurns[id] = early
+    }
+
     /// Everything queued has been handled (for tests and the rehearsal screen).
     var isIdle: Bool { !isBusy && queue.isEmpty }
 
-    private func handle(_ heard: Heard) async {
-        var heard = heard
+    private func handle(_ queued: Queued) async {
+        var heard = queued.heard
         var log = SessionDebug.UtteranceRecord(at: heard.speechEndedAt, seconds: heard.seconds, state: engine.context.state)
         log.kind = "utterance"
         (log.input, log.voiceProcessing) = inputState()
-        if heard.transcript == nil, let words = heard.words {
+        var early: EarlyTurn?
+        if let task = earlyTasks.removeValue(forKey: queued.id) {
+            await task.value
+            early = earlyTurns.removeValue(forKey: queued.id)
+            heard.words = nil
+            heard.transcript = early?.transcript
+            if let at = early?.wordsAt { log.toTranscript = at.timeIntervalSince(heard.speechEndedAt) }
+            if (heard.transcript ?? "").isEmpty, let words = early?.response?.transcript, !words.isEmpty {
+                heard.transcript = words // the file's words, so a reading in another state needn't send it again
+            }
+        } else if heard.transcript == nil, let words = heard.words {
             heard.transcript = await words()
             if heard.transcript != nil { log.toTranscript = now().timeIntervalSince(heard.speechEndedAt) }
         }
@@ -124,7 +195,11 @@ final class SessionConversation {
                                          recentTurns: Array(exchanges.suffix(Self.recentTurns)), facts: engine.turnFacts(now: now()))
         let turn: SessionTurnResponse
         do {
-            turn = try await classify(heard, request)
+            if let early, early.state == request.state || (heard.transcript ?? "").isEmpty {
+                turn = try early.turn()
+            } else {
+                turn = try await classify(heard, request)
+            }
         } catch {
             // A failed or slow request is never a spoken error: the HUD says so and the mic carries on.
             log.error = String(describing: error)
@@ -149,26 +224,31 @@ final class SessionConversation {
         show(outcome)
     }
 
-    /// The turn's actions on the engine, in order, and what to say. Mid-set only the rules' set
-    /// commands act. The reply stands in for the templates unless an action asked something.
+    /// The turn's actions on the engine, in order, and what to say. Mid-set only what makes sense
+    /// under the bar acts (`actsMidSet`). The reply stands in for the templates unless an action asked
+    /// something, and mid-set it's said only when every action in the turn could act.
     private func apply(_ turn: SessionTurnResponse) -> SessionEngine.Outcome {
         guard turn.addressed else { return .init(heard: turn.transcript.isEmpty ? nil : turn.transcript) }
         let wasRecording = engine.state == .recording
-        let commands = wasRecording ? turn.commands.filter(Self.isSetCommand) : turn.commands
-        if wasRecording, commands.isEmpty {
-            // Mid-set: grunts, counting aloud, someone else. Never a command.
+        let commands = wasRecording ? turn.commands.filter(Self.actsMidSet) : turn.commands
+        let dropped = commands.count < turn.commands.count
+        if wasRecording, commands.isEmpty, dropped || (turn.reply ?? "").isEmpty {
+            // Mid-set: grunts, counting aloud, someone else, or a command that waits for the rest.
             return .init(heard: turn.transcript.isEmpty ? nil : turn.transcript)
         }
         let askBefore = engine.pendingAskText
         var outcome = SessionEngine.Outcome.none
-        for (i, command) in commands.enumerated() {
-            // The camera's count belongs to the set it was filming: only the first command can end it.
-            let camera = wasRecording && i == 0 ? cameraSet() : nil
+        var counted = false
+        for command in commands {
+            // The camera's count belongs to the set it was filming: only the first count can end it.
+            let counts = wasRecording && !counted && [.endSet, .reps].contains(command.intent.intent)
+            let camera = counts ? cameraSet() : nil
+            counted = counted || counts
             outcome = outcome.merged(with: engine.apply(command, now: now(), phone: camera?.phone, willMeasure: camera?.willMeasure ?? false))
             applied(command, wasRecording)
         }
         let openedAsk = engine.pendingAskText != nil && engine.pendingAskText != askBefore
-        if let reply = turn.reply, !reply.isEmpty, !openedAsk {
+        if let reply = turn.reply, !reply.isEmpty, !openedAsk, !(wasRecording && dropped) {
             outcome.speech = reply
             if commands.isEmpty { outcome.echo = reply }
         }
@@ -189,11 +269,12 @@ final class SessionConversation {
         speechQueue.removeAll()
     }
 
-    /// What may act during a set: the rule layer's "done", counts and "top set".
-    static func isSetCommand(_ response: VoiceCommandResponse) -> Bool {
-        guard response.intent.intent != .chatter else { return false }
-        guard response.classifiedBy == nil || response.classifiedBy == "rules" else { return false }
-        return [.endSet, .reps, .topSet].contains(response.intent.intent)
+    /// What may act during a set (Oct 30: "I need to be able to say anything to it during the set"):
+    /// "done", counts and "top set", a question, a note, this set's weight, and "this is another set of
+    /// laterals". The backend only sends these mid-set, and only Spark's when the words sounded meant for
+    /// Setecho; anything else waits for the rest.
+    static func actsMidSet(_ response: VoiceCommandResponse) -> Bool {
+        [.endSet, .reps, .topSet, .question, .note, .setLoad, .loadDelta, .addSet].contains(response.intent.intent)
     }
 
     // MARK: The clock

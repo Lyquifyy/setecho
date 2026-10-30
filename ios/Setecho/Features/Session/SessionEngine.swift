@@ -310,11 +310,16 @@ final class SessionEngine {
     /// role plus any accepted next-session step (HANDOFF.md §7, No planned loads). Nil means ask.
     var targetLoadLb: Double? {
         guard let ex = currentExercise else { return nil }
+        return loadLb(for: currentPlannedSet, of: ex)
+    }
+
+    /// The load for any planned set of today's: the same sources, in the same order, as `targetLoadLb`.
+    func loadLb(for planned: PlannedSet?, of ex: PlannedExercise) -> Double? {
         if let override = loadOverrides[ex.id] { return override }
         // Swapped for another variant: its load is his to say, never converted from the plan's.
         if let variant = doneAs[ex.id] { return variantLoads["\(ex.id)|\(variant.lowercased())"] }
-        if let planned = currentPlannedSet?.loadLb { return planned }
-        let key = Self.loadKey(ex.id, currentPlannedSet?.role)
+        if let planned = planned?.loadLb { return planned }
+        let key = Self.loadKey(ex.id, planned?.role)
         return nextSessionLoads[key] ?? lastSets[key]?.loadLb
     }
 
@@ -1313,6 +1318,7 @@ final class SessionEngine {
         case .goTo:
             return goTo(intent.text ?? response.transcript, transcript: response.transcript, now: now)
         case .addSet:
+            if let name = intent.text, !name.isEmpty { return extraSet(of: name, transcript: response.transcript, now: now) }
             return addSet()
         case .endExercise:
             return endExercise(named: intent.text, transcript: response.transcript, now: now)
@@ -1692,6 +1698,34 @@ final class SessionEngine {
     // MARK: Moving around by voice (HANDOFF.md §7, He drives)
 
     /// "Where am I?": "Incline press, set 2 of 3, back-off."
+    /// "What do I got for the rest of this lift?" (Oct 30): the sets left on the lift up now, at their
+    /// loads and targets, then what comes after. Mid-set it's the ones after this. Between lifts, the
+    /// one just finished is done and the next is up.
+    var setsLeftLine: String {
+        guard let ex = currentExercise else { return "That's the session." }
+        if !exerciseEntered, let last = session.sets.last, last.exerciseId != ex.id,
+           let finished = exercises.first(where: { $0.exercise.id == last.exerciseId })?.exercise {
+            let count = ex.sets.count - setIndex
+            let sets = count == 1 ? "one set" : "\(Callout.word(count)) sets"
+            return "That's all the \(finished.name.lowercased()). \(ex.name) next, \(sets), \(Callout.target(load: targetLoadLb, reps: targetRepsText))."
+        }
+        let first = setIndex + (state == .recording ? 1 : 0)
+        let remaining = ex.sets.indices.filter { $0 >= first }.map { ex.sets[$0] }
+        if remaining.isEmpty { return state == .recording ? "This is the last one. \(afterThisLift)" : afterThisLift }
+        let targets = remaining.map { Callout.target(load: loadLb(for: $0, of: ex), reps: $0.repsText) }
+        let more = remaining.count == 1 ? "One more" : "\(Callout.word(remaining.count).capitalized) more"
+        let lead = state == .recording ? "\(more) after this" : more
+        let what = Set(targets).count == 1 ? ", \(targets[0])." : ": \(targets.joined(separator: ", then "))."
+        return "\(lead)\(what) \(afterThisLift)"
+    }
+
+    /// "Then machine shoulder press." or "Then that's the session."
+    private var afterThisLift: String {
+        let next = exercises.indices.first { $0 > exerciseIndex && !endedExerciseIds.contains(exercises[$0].exercise.id)
+            && loggedCount(exercises[$0].exercise.id) < exercises[$0].exercise.sets.count }
+        return next.map { "Then \(exercises[$0].exercise.name.lowercased())." } ?? "Then that's the session."
+    }
+
     var whereAmI: String {
         guard let ex = currentExercise else { return "That's the session." }
         var line = "\(ex.name), set \(setNumber) of \(setCount)"
@@ -1754,10 +1788,11 @@ final class SessionEngine {
         return echo("Now: \(entry.exercise.name), set \(setNumber)", speech: [line, entering].compactMap { $0 }.joined(separator: " "))
     }
 
-    /// "One more set": a set added to the exercise just finished (or the one under way), today only.
-    private func addSet() -> Outcome {
+    /// "One more set": a set added to the exercise just finished (or the one under way, or the one he
+    /// named), today only.
+    private func addSet(to named: String? = nil) -> Outcome {
         guard state != .recording else { return .none }
-        let id = (currentEntry.flatMap { entry in loggedCount(entry.exercise.id) > 0 ? entry.exercise.id : nil })
+        let id = named ?? (currentEntry.flatMap { entry in loggedCount(entry.exercise.id) > 0 ? entry.exercise.id : nil })
             ?? session.sets.last(where: { !$0.isWarmup })?.exerciseId
         guard let id, let i = exercises.firstIndex(where: { $0.exercise.id == id }), let last = exercises[i].exercise.sets.last else {
             return say("No exercise to add a set to.")
@@ -1772,6 +1807,67 @@ final class SessionEngine {
         session.endedAt = nil
         let name = exercises[i].exercise.name
         return echo("One more: \(name), set \(setNumber)", speech: "One more set of \(name.lowercased()). Set \(setNumber).")
+    }
+
+    /// "That was another set of laterals" (Oct 30: his third set of cable laterals was logged as set 1
+    /// of triceps pushdowns, because the plan moves on once a lift's sets are done). After the set, the
+    /// last one logged moves to that lift as its next set, at the load he last used there, and the lift
+    /// it left starts over where it was. Mid-set ("this is an extra set of laterals") the set under way
+    /// logs there when it ends. With nothing to move, it's "one more set" of that lift. "Laterals" can
+    /// be two lifts today: the one he did most recently.
+    private func extraSet(of name: String, transcript: String, now: Date) -> Outcome {
+        let matches = exercises.indices.filter { Self.nameMatches(name, exercises[$0].exercise.name) }
+        let lastDone = { (i: Int) in self.session.sets.lastIndex { $0.exerciseId == self.exercises[i].exercise.id } ?? -1 }
+        guard let target = matches.max(by: { lastDone($0) < lastDone($1) }) else {
+            return say("\(name.prefix(1).uppercased() + name.dropFirst()) isn't in today's plan.")
+        }
+        let ex = exercises[target].exercise
+        if state == .recording {
+            guard target != exerciseIndex else { return say("This is set \(setNumber) of \(ex.name.lowercased()).") }
+            cursorUndo("the extra set")
+            if loggedCount(ex.id) >= ex.sets.count, let last = ex.sets.last { exercises[target].exercise.sets.append(last) }
+            exerciseIndex = target
+            setIndex = loggedCount(ex.id)
+            exerciseEntered = true
+            warmupMode = false
+            endedExerciseIds.remove(ex.id)
+            return echo("This set: \(ex.name), set \(setNumber)", speech: "Got it, set \(setNumber) of \(ex.name.lowercased()).")
+        }
+        // "That was another set of…" is about the set just done; "one more set of laterals" is one to come.
+        let said = " \(transcript.lowercased()) "
+        let aboutTheLast = [" was ", " that's ", " that ", " this "].contains { said.contains($0) }
+        guard aboutTheLast, let i = session.sets.indices.last, !session.sets[i].isWarmup else { return addSet(to: ex.id) }
+        guard session.sets[i].exerciseId != ex.id else {
+            return say("That one's already set \(session.sets[i].setIndex + 1) of \(ex.name.lowercased()).")
+        }
+        guard let from = exercises.firstIndex(where: { $0.exercise.id == session.sets[i].exerciseId }) else { return addSet(to: ex.id) }
+        let moved = session.sets[i]
+        undoStack.append(UndoEntry(action: .movedSet(was: moved, exercises: exercises, exerciseIndex: exerciseIndex, setIndex: setIndex,
+                                                     entered: exerciseEntered, ended: endedExerciseIds),
+                                   description: "the move"))
+        let slot = loggedCount(ex.id)
+        if slot >= ex.sets.count, let last = ex.sets.last { exercises[target].exercise.sets.append(last) }
+        let planned = exercises[target].exercise.sets[slot]
+        session.sets[i].exerciseId = ex.id
+        session.sets[i].setIndex = slot
+        session.sets[i].role = planned.role
+        session.sets[i].doneAs = doneAs[ex.id]
+        // Logged at the other lift's load; his last weight on this one is what he lifted.
+        let load = session.sets[..<i].last(where: { $0.exerciseId == ex.id && !$0.isWarmup })?.loadLb ?? loadLb(for: planned, of: ex)
+        if let load { session.sets[i].loadLb = load }
+        endedExerciseIds.remove(ex.id)
+        // The lift it left starts over at its first set not logged (and if that set had ended the day, it's back on).
+        if from == exerciseIndex || isComplete {
+            exerciseIndex = from
+            setIndex = min(loggedCount(exercises[from].exercise.id), max(0, exercises[from].exercise.sets.count - 1))
+            if loggedCount(exercises[from].exercise.id) == 0 { exerciseEntered = false }
+        }
+        if state == .ended { state = .ready }
+        session.endedAt = nil
+        let set = session.sets[i]
+        let line = "Moved it: set \(slot + 1) of \(ex.name.lowercased()), \(Format.number(set.loadLb)) for \(set.reps)."
+        let next = currentExercise.map { " \($0.name) is still up." } ?? ""
+        return echo("Set \(slot + 1) of \(ex.name): \(Format.number(set.loadLb)) × \(set.reps)", speech: line + next)
     }
 
     /// "That's it for incline": that exercise ends here. Its unlogged sets stay unlogged (plan sets are
@@ -1943,13 +2039,17 @@ final class SessionEngine {
             if let s = pendingSuggestion {
                 return say(s.role == .backOff ? "Back-off at \(Format.number(s.toLb)), his rule." : "\(Format.number(s.toLb)) next, his rule.")
             }
+            // Mid-set "what weight for my next set?" is the one after this.
+            if state == .recording, transcript.lowercased().contains("next"), let ex = currentExercise {
+                guard ex.sets.indices.contains(setIndex + 1) else { return say("This is the last set of these. \(afterThisLift)") }
+                let planned = ex.sets[setIndex + 1]
+                guard let load = loadLb(for: planned, of: ex) else { return say("No weight set for the next one yet.") }
+                return say("Next set's \(Callout.target(load: load, reps: planned.repsText)).")
+            }
             guard let load = targetLoadLb else { return say("No weight set for these yet.") }
             return say("\(Callout.target(load: load, reps: targetRepsText)).")
         case .setsLeft:
-            guard let ex = currentExercise else { return say("That's the session.") }
-            let left = ex.sets.count - setIndex
-            let then = exercises.indices.contains(exerciseIndex + 1) ? "then \(exercises[exerciseIndex + 1].exercise.name.lowercased())" : "then that's the session"
-            return say("\(Callout.word(left).capitalized) more of these, \(then).")
+            return say(setsLeftLine)
         case .effort:
             guard let last = session.workingSets.last else { return say("No set yet.") }
             if let rpe = last.rpe { return say("You said RPE \(Format.number(rpe)).") }
@@ -2188,6 +2288,19 @@ final class SessionEngine {
             if let deviation { session.deviations.removeAll { $0.id == deviation } }
             if state == .ended { state = .ready }
             session.endedAt = nil
+        case .movedSet(let was, let saved, let exIndex, let sIndex, let entered, let ended):
+            if let i = session.sets.firstIndex(where: { $0.id == was.id }) {
+                session.sets[i].exerciseId = was.exerciseId
+                session.sets[i].setIndex = was.setIndex
+                session.sets[i].role = was.role
+                session.sets[i].doneAs = was.doneAs
+                session.sets[i].loadLb = was.loadLb
+            }
+            exercises = saved
+            exerciseIndex = exIndex
+            setIndex = sIndex
+            exerciseEntered = entered
+            endedExerciseIds = ended
         case .removedExercise(let entry, let index):
             exercises.insert(entry, at: min(index, exercises.count))
             session.deviations.removeAll { $0.exerciseId == entry.exercise.id && $0.kind == .skip }
@@ -2248,6 +2361,8 @@ final class SessionEngine {
             case autoWarmup(setId: UUID)
             /// "Go back", "I'm on flyes now", "one more set", "that's it for incline": the cursor as it was.
             case cursor(exercises: [Entry], exerciseIndex: Int, setIndex: Int, ended: Set<String>, entered: Bool, deviation: UUID? = nil)
+            /// A set moved to another lift ("that was another set of laterals"): the set as it was, and the plan's cursor.
+            case movedSet(was: LoggedSet, exercises: [Entry], exerciseIndex: Int, setIndex: Int, entered: Bool, ended: Set<String>)
         }
 
         var action: Action

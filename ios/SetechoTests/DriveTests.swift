@@ -170,3 +170,76 @@ private func logSet(_ engine: SessionEngine, reps: Int) -> SessionEngine.Outcome
     engine.apply(say(.undo, "undo"))
     #expect(!engine.session.sets[0].isWarmup && engine.setNumber == 2)
 }
+
+// MARK: Oct 30: the extra set, and "what do I got for the rest of this lift?"
+
+private func range(_ min: Int, _ max: Int, _ load: Double) -> PlannedSet {
+    PlannedSet(reps: nil, repsMin: min, repsMax: max, loadLb: load, rpe: nil, rir: nil)
+}
+
+private let shoulders = ProgramDay(id: "d5", name: "Day 5", exercises: [
+    PlannedExercise(id: "laterals", name: "Cable lateral raises", sets: [range(12, 15, 12.5), range(12, 15, 12.5)], restSeconds: 90, notes: nil),
+    PlannedExercise(id: "pushdowns", name: "Triceps pushdowns", sets: Array(repeating: range(10, 12, 27.5), count: 4), restSeconds: 90, notes: nil),
+])
+
+@Test @MainActor func anExtraSetLoggedOnTheNextLiftMovesBackWhenHeSaysSo() {
+    let engine = SessionEngine(day: shoulders, weekNumber: 1)
+    logSet(engine, reps: 15)
+    logSet(engine, reps: 13)
+    logSet(engine, reps: 12) // his third set of laterals, logged as pushdowns set 1
+    #expect(engine.session.sets.last?.exerciseId == "pushdowns" && engine.setNumber == 2)
+    let moved = engine.apply(say(.addSet, "that was another set of laterals", text: "laterals"), now: clock)
+    #expect(moved.speech == "Moved it: set 3 of cable lateral raises, 12.5 for 12. Triceps pushdowns is still up.")
+    let set = engine.session.sets.last
+    #expect(set?.exerciseId == "laterals" && set?.setIndex == 2 && set?.loadLb == 12.5 && set?.reps == 12)
+    #expect(engine.currentExercise?.id == "pushdowns" && engine.setNumber == 1 && !engine.exerciseEntered)
+    #expect(engine.exercises[0].exercise.sets.count == 3)
+    engine.apply(say(.undo, "undo"))
+    #expect(engine.session.sets.last?.exerciseId == "pushdowns" && engine.session.sets.last?.loadLb == 27.5)
+    #expect(engine.exercises[0].exercise.sets.count == 2 && engine.setNumber == 2)
+}
+
+@Test @MainActor func oneMoreSetOfANamedLiftIsOneToComeAndMovesNothing() {
+    let engine = SessionEngine(day: shoulders, weekNumber: 1)
+    logSet(engine, reps: 15)
+    logSet(engine, reps: 13)
+    logSet(engine, reps: 12)
+    let more = engine.apply(say(.addSet, "let's do one more set of laterals", text: "laterals"), now: clock)
+    #expect(more.speech == "One more set of cable lateral raises. Set 3.")
+    #expect(engine.session.sets.last?.exerciseId == "pushdowns")
+    #expect(engine.currentExercise?.id == "laterals" && engine.setNumber == 3)
+}
+
+@Test @MainActor func midSetThisIsAnotherSetOfLateralsLogsItThere() {
+    let engine = SessionEngine(day: shoulders, weekNumber: 1)
+    logSet(engine, reps: 15)
+    logSet(engine, reps: 13)
+    engine.setStarted(at: clock)
+    let heard = engine.apply(say(.addSet, "this is an extra set of laterals", text: "laterals"), now: clock)
+    #expect(heard.speech == "Got it, set 3 of cable lateral raises.")
+    #expect(engine.state == .recording)
+    engine.apply(say(.endSet, "done, 12", number: 12), now: clock.addingTimeInterval(40))
+    let set = engine.session.sets.last
+    #expect(set?.exerciseId == "laterals" && set?.setIndex == 2 && set?.loadLb == 12.5 && set?.reps == 12)
+    #expect(engine.currentExercise?.id == "pushdowns" && engine.setNumber == 1)
+}
+
+@Test @MainActor func theRestOfThisLiftIsItsSetsAtTheirLoadsThenWhatsNext() {
+    let engine = SessionEngine(day: shoulders, weekNumber: 1)
+    #expect(engine.setsLeftLine == "Two more, 12.5 for 12–15. Then triceps pushdowns.")
+    engine.setStarted(at: clock)
+    #expect(engine.setsLeftLine == "One more after this, 12.5 for 12–15. Then triceps pushdowns.")
+    let next = engine.apply(say(.question, "what weight for my next set", topic: .load), now: clock)
+    #expect(next.speech == "Next set's 12.5 for 12–15.")
+    engine.apply(say(.endSet, "done, 15", number: 15), now: clock.addingTimeInterval(40))
+    logSet(engine, reps: 13)
+    #expect(engine.setsLeftLine == "That's all the cable lateral raises. Triceps pushdowns next, four sets, 27.5 for 10–12.")
+    engine.setStarted(at: clock)
+    for _ in 0..<2 {
+        clock = clock.addingTimeInterval(180)
+        engine.apply(say(.endSet, "done, 12", number: 12), now: clock)
+        engine.setStarted(at: clock)
+    }
+    #expect(engine.setNumber == 3)
+    #expect(engine.setsLeftLine == "One more after this, 27.5 for 10–12. Then that's the session.")
+}
