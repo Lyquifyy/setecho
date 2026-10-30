@@ -1,7 +1,7 @@
 import Foundation
 
 /// Set detection from the body's movement (HANDOFF.md §7). Seven channels, each normalized and
-/// smoothed with a 5-sample median: the mean y of both wrists, each wrist's y (one-arm lifts), the
+/// smoothed with a 3-sample median: the mean y of both wrists, each wrist's y (one-arm lifts), the
 /// gap between the wrists across the frame (flyes, whose hands sweep sideways and barely change
 /// height: Oct 29, the camera started none of his cable flye sets), and the height of the
 /// shoulders, the head and the hips (push-ups, sit-ups and squats, where the hands stay planted or
@@ -10,7 +10,9 @@ import Foundation
 /// synchronous, fed with real video timestamps (iPhone video has a variable frame rate).
 struct WristSignal {
     struct Config: Equatable {
-        var medianWindow = 5
+        /// 3, not 5 (Oct 29): with his wrists seen in a third of the frames, a rep left 2–3 samples
+        /// and a 5-sample median erased its top and bottom. 3 still drops a single wild frame.
+        var medianWindow = 3
         var startWindowSeconds = 2.0
         var startRange = 0.08
         var minReversals = 1

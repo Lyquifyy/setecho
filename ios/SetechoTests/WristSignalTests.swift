@@ -174,3 +174,23 @@ private func atRest(_ t: Double) -> (left: (x: Double, y: Double), right: (x: Do
     guard case .end(_, let stillSince)? = events.first else { Issue.record("no end event"); return }
     #expect(stillSince > 12.5 && stillSince < 14.5)
 }
+
+/// Oct 29, his home shoulder press: the first 8 s after "go", as the camera saw his wrists (seconds
+/// after the arm, mean y). His hands likely left the top of the picture, so they showed in about a
+/// third of the frames, and a 5-sample median erased the reps. The 3-sample median starts the set.
+@Test func aShoulderPressSeenInAThirdOfTheFramesStartsTheSet() {
+    let seen: [(Double, Double)] = [
+        (1.067, 0.568), (1.333, 0.487), (1.467, 0.486), (1.733, 0.438), (1.867, 0.423), (2.667, 0.559), (2.8, 0.562),
+        (3.333, 0.482), (3.467, 0.483), (3.867, 0.482), (4.0, 0.48), (4.134, 0.485), (5.067, 0.49), (5.6, 0.451),
+        (6.934, 0.482), (7.6, 0.477), (7.734, 0.493), (7.867, 0.486),
+    ]
+    func firstStart(_ config: WristSignal.Config) -> Double? {
+        var signal = WristSignal(config: config)
+        for (t, y) in seen { if case .start(let at, _)? = signal.add(y: y, at: t) { return at } }
+        return nil
+    }
+    #expect(firstStart(WristSignal.Config()) == 2.8)
+    var before = WristSignal.Config()
+    before.medianWindow = 5
+    #expect(firstStart(before) == nil)
+}

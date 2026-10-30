@@ -352,7 +352,7 @@ final class SetDetector: NSObject {
             "wrist": ["columns": ["t"] + Self.debugChannels.map(\.rawValue), "rows": debugWrist],
             "events": debugEvents,
             "sets": debugSetWindows,
-            "config": ["startRange": signal.config.startRange, "endRange": signal.config.endRange,
+            "config": ["medianWindow": signal.config.medianWindow, "startRange": signal.config.startRange, "endRange": signal.config.endRange,
                        "startWindowSeconds": signal.config.startWindowSeconds, "endSeconds": signal.config.endSeconds],
         ]
         if let clockAnchor { json["clock"] = ["t": clockAnchor.t, "epoch": clockAnchor.epoch] }
