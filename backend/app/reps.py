@@ -2,7 +2,9 @@
 
 The pipeline, numbered as in the handoff:
 1. SAM tracks the equipment ("weight plate", "dumbbell", "weight stack", "person"). Keep the
-   object tracked on the most frames; under 80% of frames tracked means no count.
+   object that moves furthest among those tracked on at least half the frames; a dumbbell in his
+   hand is hidden by it, while the racked ones sit in plain view on every frame. Under half of the
+   frames tracked means no count, and the share lowers the confidence (step 6).
 2. One centroid per frame, with the frame's own timestamp from the file (never index / fps).
 3. Project onto the main direction of motion (first principal component), bridge gaps up to
    0.5 s, smooth with Savitzky-Golay (window 5, order 2).
@@ -45,6 +47,10 @@ SAM_PROMPTS: dict[str, str] = {
 
 # Tuned constants. Change them here and in RepCounter.swift together.
 MIN_TRACK_SHARE = 0.80
+# A SAM object needs only this share to count, if it moves: the dumbbell in his hand is behind his
+# hand and head for part of every rep (Oct 30: SAM kept a still dumbbell seen on all 490 frames and
+# counted 0 on his seated press). The phone's joints keep MIN_TRACK_SHARE, as RepCounter.swift does.
+MIN_MOVING_TRACK_SHARE = 0.50
 # Motion smaller than this is jitter, never a rep: 0.05 of the frame for the phone's normalized
 # joints (and the shared fixtures), a tenth of the tracked object's own size for SAM pixels.
 MIN_AMPLITUDE_NORMALIZED = 0.05
@@ -215,28 +221,33 @@ def _max_step(centroids: np.ndarray) -> float:
 
 
 def track_from_boxes(boxes: Boxes, frame_times: list[float]) -> Track:
-    """The plate that moves. A gym has many plates in frame, so among the objects tracked on at
-    least MIN_TRACK_SHARE of the frames, keep the one whose centroid travels furthest along its
-    main axis, after dropping tracks that hop between plates (a step over MAX_STEP_SIZES sizes).
-    Falls back to the object seen on the most frames when nothing qualifies."""
+    """The plate or dumbbell that moves. A gym has many in frame, so among the objects tracked on
+    at least MIN_MOVING_TRACK_SHARE of the frames, keep the one whose centroid travels furthest
+    along its main axis, after dropping tracks that hop between objects (a step over MAX_STEP_SIZES
+    sizes). One that never moves past the jitter floor is only kept when nothing moves, and then
+    only if it was tracked on MIN_TRACK_SHARE of the frames. Falls back to the object seen on the
+    most frames when nothing qualifies."""
     times = np.asarray(frame_times, dtype=float)
     n = len(frame_times)
     if not boxes:
         return Track(times, np.full((n, 2), np.nan))
-    best: tuple[float, np.ndarray, float] | None = None
+    best: tuple[bool, float, np.ndarray, float] | None = None
     for frames in boxes.values():
-        if len(frames) < MIN_TRACK_SHARE * n:
+        if len(frames) < MIN_MOVING_TRACK_SHARE * n:
             continue
         centroids, size = _object_track(frames, n)
         if size > 0 and _max_step(centroids) > MAX_STEP_SIZES * size:
             continue
         motion = Track(times, centroids, size).motion_range
-        if best is None or motion > best[0]:
-            best = (motion, centroids, size)
+        moves = motion >= MIN_AMPLITUDE_OBJECT_FRACTION * size
+        if not moves and len(frames) < MIN_TRACK_SHARE * n:
+            continue
+        if best is None or (moves, motion) > (best[0], best[1]):
+            best = (moves, motion, centroids, size)
     if best is None:
         centroids, size = _object_track(max(boxes.values(), key=len), n)
         return Track(times, centroids, size, len(boxes))
-    return Track(times, best[1], best[2], len(boxes))
+    return Track(times, best[2], best[3], len(boxes))
 
 
 def track_from_raw(raw: str, frame_times: list[float]) -> Track:
@@ -415,11 +426,11 @@ def _result(
 
 
 def count(track: Track, set_role: str | None = None) -> RepResult:
-    """The full pipeline on a centroid track."""
+    """The full pipeline on a SAM centroid track."""
     frames = len(track.times)
     tracked = int(track.tracked.sum())
     share = track.share
-    if frames == 0 or share < MIN_TRACK_SHARE:
+    if frames == 0 or share < MIN_MOVING_TRACK_SHARE:
         return RepResult(None, [], 0.0, False, frames, tracked)
     peaks, d = count_series(track.times, project(track), MIN_AMPLITUDE_OBJECT_FRACTION * track.object_size)
     return _result(track.times, peaks, d, share, frames, tracked, set_role)

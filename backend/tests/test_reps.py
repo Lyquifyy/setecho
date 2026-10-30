@@ -145,12 +145,13 @@ def test_two_dimensional_track_projects_onto_the_motion_axis():
     assert result.rep_times[0] > 1.0 and result.rep_times[-1] < series.t[-1]
 
 
-def test_untracked_frames_below_80_percent_give_no_count():
+def test_a_sam_track_on_under_half_the_frames_gives_no_count():
     series = _series(FIXTURES / "clean_8.json")
     centroids = np.stack([series.y * 100, series.y * 100], axis=1)
-    centroids[: len(centroids) // 3] = np.nan
+    hidden = len(centroids) * 3 // 5
+    centroids[:hidden] = np.nan
     result = reps.count(reps.Track(series.t, centroids))
-    assert result == reps.RepResult(None, [], 0.0, False, len(series.t), len(series.t) - len(series.t) // 3)
+    assert result == reps.RepResult(None, [], 0.0, False, len(series.t), len(series.t) - hidden)
     assert reps.count(reps.Track(np.array([]), np.zeros((0, 2)))).frames == 0
 
 
@@ -298,3 +299,38 @@ def test_parse_boxes_is_fast_enough_for_a_set():
     boxes = reps.parse_boxes(raw)
     assert len(boxes) == 15 and len(boxes["0"]) == 400
     assert time.time() - t0 < 1.0
+
+
+def test_the_phones_joints_still_need_80_percent():
+    series = _series(FIXTURES / "clean_8.json")
+    y = series.y.copy()
+    y[: len(y) // 3] = np.nan
+    assert reps.count_1d(reps.Series(series.t, y)).reps is None
+
+
+def test_the_dumbbell_in_his_hand_beats_the_racked_ones():
+    """Oct 30, seated DB shoulder press: SAM kept a dumbbell seen on all 490 frames that never moved
+    and counted 0. The pressing one is hidden by his hands on part of each rep."""
+    n = 12 + 8 * 15 + 12  # a second at his shoulders, 8 presses, a second at his shoulders
+    times = [i / 12 for i in range(n)]
+    records = []
+    for i in range(n):
+        records.append(_mask_record("rack", i, 900, 600, 960, 640))  # still, every frame
+        k = i - 12
+        y = 350 - int(150 * (1 - np.cos(2 * np.pi * k / 15)) / 2) if 0 <= k < 120 else 350  # 150 px up
+        if not (0 <= k < 120 and k % 15 in (6, 7, 8, 9)):  # hidden at the top of each rep: 78% of frames
+            records.append(_mask_record("pressing", i, 300, y, 360, y + 40))
+    track = reps.centroid_track(SimpleNamespace(records=records), times)
+    assert track.motion_range > 100
+    result = reps.count(track)
+    assert result.reps == 8 and result.track_found
+    assert result.confidence <= round(track.share, 3)  # the hidden frames lower it
+
+
+def test_a_still_object_on_most_frames_is_kept_only_when_nothing_moves():
+    n = 40
+    times = [i / 10 for i in range(n)]
+    records = [_mask_record("rack", i, 900, 600, 960, 640) for i in range(n)]
+    records += [_mask_record("blip", i, 100, 100, 160, 140) for i in range(n // 2 + 2)]  # still, 55%
+    track = reps.centroid_track(SimpleNamespace(records=records), times)
+    assert track.share == 1.0 and reps.count(track).reps == 0
