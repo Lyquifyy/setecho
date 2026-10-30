@@ -163,7 +163,7 @@ sans_path = HERE / "fonts/SourceSans3-Semibold.ttf"
 sans_hash = "a3f4f8dcf343a8f24dc61951de93f3ba1558b15cd250ba24af8a40e957081b7d"
 if hashlib.sha256(sans_path.read_bytes()).hexdigest() != sans_hash:
     raise SystemExit("Source Sans font hash differs; check provenance before rebuilding.")
-tagline, tw, th = glyph_word(TTFont(sans_path), "The prep that logs itself.", sloped=False, tracking=0, pairs={})
+tagline, tw, th = glyph_word(TTFont(sans_path), "Your workout, logged hands-free.", sloped=False, tracking=0, pairs={})
 ls = 970 / lw
 ts = 785 / tw
 og = svg(f'<path fill="{COBALT}" d="M0 0H1200V630H0Z"/>'

@@ -1,26 +1,31 @@
 <p><img src="ios/Setecho/Assets.xcassets/Lockup.imageset/Lockup.svg" alt="Setecho" width="320"></p>
 
-**The prep that logs itself.**
+**Your workout, logged hands-free.**
 
-Setecho takes the manual work out of a coached bodybuilding prep. Import your coach's spreadsheet and check-in form once. After that:
-- your sets log themselves while you train hands-free: SAM counts every rep from the video and measures how much the reps slowed, and your coach's own written rules suggest your next weight
-- the two videos your coach asks for each week are the sets you flag ("flag that"), cropped to just the reps
-- your check-in photos take themselves, four poses in your coach's order, hands-free
-- your check-in is half written from Apple Health before you answer the rest by voice, in one hands-free conversation
-- your coach's reply, a text or a voice note, updates the plan once you approve it
+Setecho is an iPhone app for bodybuilding athletes who follow a human coach's training plan. It records workouts, takes progress photos hands-free and prepares updates to send the coach on WhatsApp.
 
-I built it for my own natural Classic Physique prep. The first real check-in went to my coach through Setecho on Thursday, Oct 29.
+A **check-in** is that regular progress update: answers to the coach's questionnaire, health and workout data, photos and selected exercise videos. A **rep** is one repetition of an exercise; a **set** is a group of repetitions.
 
-## How Setecho differs from a sports analyzer or coach
+Import your coach's training spreadsheet and check-in questionnaire once. After that:
+- **Record workouts hands-free.** With the phone on a tripod, SAM tracks movement in video so code can count repetitions and measure their speed. Away from the camera, say the weight and repetitions you completed.
+- **Use your coach's rules for the next weight.** Code applies the coach's confirmed adjustment rules. You decide whether to accept a suggestion.
+- **Select exercise videos for review.** Say "flag that" to mark a recorded set for your coach. The two selected videos are trimmed to the exercise repetitions.
+- **Take progress photos hands-free.** The phone captures four poses in your coach's order, keeping the photos exactly as taken.
+- **Prepare your progress update.** Apple Health and your workout log fill parts of the questionnaire. Answer the remaining questions by voice, then review the message and photos before sending them through WhatsApp.
+- **Apply your coach's changes after reviewing them.** Import a text or voice message, see each proposed change beside the coach's exact words, and approve what goes into the plan.
 
-Setecho is a spotter for a human coach's plan. It measures, logs and does the paperwork. The coaching stays with the coach.
+I built it while preparing for a bodybuilding competition in the natural Classic Physique category. The first real progress update went to my coach through Setecho on Thursday, Oct 29.
+
+## Your coach makes the decisions
+
+Setecho records training and handles the paperwork around a human coach's plan. The coach decides what the athlete should do.
 
 - **It never writes a plan.** The program, the check-in form and the rules for changing loads all come from the coach, imported once from his own spreadsheet, form and messages.
 - **It never judges form or posing, and never gives nutrition advice.** The videos the coach asks for go to him cropped to the reps, with no verdict attached. The photos go to him exactly as taken.
-- **It never coaches on its own authority.** A next-set weight is only ever the coach's own written rule applied to a measured set ("Back-off at 145, his rule: 20 to 25% lighter"), and only a rule the athlete confirmed. The athlete decides, and the coach sees every adjustment in the next check-in. A swap when a machine is taken stays within the same lift or the coach's own alternates.
-- **It's engine-backed, not one prompt:**
+- **Weight suggestions follow the coach's rules.** A next-set weight comes only from a confirmed rule, such as "make the next set 20 to 25% lighter." The athlete decides, and the coach sees every adjustment in the next check-in. If equipment is occupied, any suggested substitute stays within the same movement family or the coach's own alternatives.
+- **Code calculates and checks the numbers:**
   - **SAM 3.1** tracks the weight plates through each set's video. Code turns the track into a rep count, each rep's speed, and how much the reps slowed.
-  - **A deterministic rule engine**, in code, applies the coach's written rules to that measurement: his rounding, his load steps, his limits.
+  - **A rule engine**, written in code, applies the coach's written rules to that measurement: how to round weights, how much to change them and which limits to respect.
   - **Muse Spark** reads the coach's material into structured data and holds the conversation. Every number it says is checked against the facts code computed before the line is used.
   - **Muse Voice Transcribe** hears the athlete hands-free in the gym and during the check-in.
 - **It's used for real:** a real coach, a real program, a real week of training and a real check-in sent on WhatsApp.
@@ -29,7 +34,7 @@ Setecho is a spotter for a human coach's plan. It measures, logs and does the pa
 
 | Model | What it does in Setecho |
 |---|---|
-| **Muse Spark 1.3** | Reads the coach's spreadsheet, check-in form and rules into the plan; drafts the check-in with every number traced to its source; turns each coach reply into plan changes next to his exact words; understands what the athlete says between sets and during the check-in; gives the spotter its words. |
+| **Muse Spark 1.3** | Reads the coach's spreadsheet, questionnaire and rules; drafts progress updates with numbers traced to their sources; proposes plan changes from the coach's replies; understands spoken requests and phrases the app's responses. |
 | **Muse Voice Transcribe 1.0** | Hears the athlete hands-free during sessions and the check-in (realtime), and transcribes the coach's voice notes. |
 | **SAM 3.1** | Tracks the weight plates in each measured set's video, so code can count the reps and measure how much they slowed. |
 

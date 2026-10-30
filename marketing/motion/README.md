@@ -1,6 +1,6 @@
 # Setecho demo motion
 
-Reusable 1920 × 1080, 30 fps motion graphics for the hackathon edit. The 28-second montage is a graphics preview, **not the three-minute product demo or evidence of a live gym session**. It contains no athlete data, simulated app screenshots, voice synthesis or product model calls. The pipeline represents the intended workflow and explicitly waits for athlete approval before a coach reply updates the plan.
+Reusable 1920 × 1080, 30 fps motion graphics for the hackathon edit. The 40-second montage is a graphics preview, **not the three-minute product demo or evidence of a live gym session**. It contains no athlete data, simulated app screenshots, voice synthesis or product model calls. The pipeline represents the intended workflow and explicitly waits for athlete approval before a coach reply updates the plan.
 
 ## Build and render
 
@@ -22,10 +22,10 @@ Run the repository's brand generator first if `brand/dist` is absent. `sync-asse
 
 All render outputs are under ignored `out/`:
 
-- `setecho-demo-graphics.mp4`: 28-second preview combining all four scenes.
-- `TitleCard.mp4`: 4-second SVG logo draw, wordmark and tagline.
-- `Pipeline.mp4`: 12 seconds, voice → log → WhatsApp check-in → coach reply → plan update. The final link activates only after a visible approval pause.
-- `MetaStack.mp4`: 7-second tooling slide with correct model responsibilities and on-device speech attribution.
+- `setecho-demo-graphics.mp4`: 40-second preview combining all four scenes.
+- `TitleCard.mp4`: 5-second SVG logo draw, wordmark and tagline.
+- `Pipeline.mp4`: 14 seconds, speak → workout log → progress update via WhatsApp → coach reply → plan update. The final link activates only after a visible approval pause.
+- `MetaStack.mp4`: 14-second tooling slide with correct model responsibilities and on-device speech attribution.
 - `lower-third-logging.mov`, `lower-third-check-in.mov`, `lower-third-coach-reply.mov`: 5-second transparent ProRes 4444 overlays. Place over real footage in the editor; they are transparent full-frame, with the graphic inside the bottom safe area.
 - `TitleCard.png`, `Pipeline.png`, `MetaStack.png`: review frames (`npm run stills`).
 
@@ -41,11 +41,15 @@ Keep titles short (about 45 characters) and details to one line (about 80 charac
 
 | Montage time | Asset |
 | --- | --- |
-| 00:00–00:04 | Title / logo reveal |
-| 00:04–00:09 | Lower-third example on a neutral preview background |
-| 00:09–00:21 | Pipeline |
-| 00:21–00:28 | Meta tooling |
+| 00:00–00:05 | Title / logo reveal |
+| 00:05–00:12 | Voice-logging explanation with a fictional example |
+| 00:12–00:26 | Pipeline |
+| 00:26–00:40 | Meta tooling |
 
 Use the individual exports in the final edit and let real product footage do the demonstrating. No custom-domain availability, App Store release or hackathon acceptance is implied by these graphics. Motion is for prerecorded video; the app and landing page handle Reduce Motion separately.
 
 Renderer API: [Remotion rendering](https://www.remotion.dev/docs/cli/render), [Composition](https://www.remotion.dev/docs/composition), [Sequence](https://www.remotion.dev/docs/sequence).
+
+## Copy for judges
+
+Use “Your workout, logged hands-free.” for the title. Explain a check-in as a progress update sent to the coach, and a rep as one repetition of an exercise. The overview includes a fictional voice-logging example instead of editor instructions. Keep these explanations in the final edit; see `../COPY.md` for consistent terminology.

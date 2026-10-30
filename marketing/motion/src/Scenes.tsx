@@ -28,8 +28,8 @@ export const TitleCard: React.FC = () => {
       <LogoDraw size={176}/>
       <Img src={staticFile('brand/wordmark.svg')} style={{width: 630, opacity: appear(frame, 22)}}/>
     </div>
-    <div style={{fontSize: 91, fontWeight: 650, letterSpacing: '-3px', opacity: appear(frame, 36), transform: `translateY(${rise(frame, 36)}px)`}}>The prep that logs itself.</div>
-    <div style={{...labelStyle, marginTop: 34, opacity: appear(frame, 48)}}>Your coach’s plan. Less paperwork between you and it.</div>
+    <div style={{fontSize: 91, fontWeight: 650, letterSpacing: '-3px', opacity: appear(frame, 36), transform: `translateY(${rise(frame, 36)}px)`}}>Your workout, logged hands-free.</div>
+    <div style={{...labelStyle, marginTop: 34, opacity: appear(frame, 48)}}>Record workouts. Share progress with your coach.</div>
     <div style={{position: 'absolute', bottom: 66, fontSize: 24, color: t.secondary, opacity: appear(frame, 52)}}>getsetecho.com</div>
   </AbsoluteFill>;
 };
@@ -43,8 +43,9 @@ export const LowerThird: React.FC<LowerThirdProps> = ({title, detail, preview}) 
   return <AbsoluteFill style={{...baseStyle, background: preview ? t.page : 'transparent'}}>
     {preview && <div style={{position: 'absolute', left: 112, top: 106}}>
       {logo()}
-      <h1 style={{fontSize: 82, maxWidth: 1030, lineHeight: 1.05, marginTop: 105, fontWeight: 650}}>Make room for<br/>the real demo.</h1>
-      <p style={{...labelStyle, maxWidth: 900}}>A reusable overlay for your gym footage,<br/>check-in recording and coach reply walkthrough.</p>
+      <h1 style={{fontSize: 82, maxWidth: 1500, lineHeight: 1.05, marginTop: 105, fontWeight: 650}}>“Eight reps at eighty pounds.”</h1>
+      <p style={{...labelStyle, maxWidth: 1100}}>That’s eight repetitions of an exercise at 80 pounds.<br/>Setecho saves the workout record from your voice.</p>
+      <p style={{...labelStyle, fontSize: 22, marginTop: 26}}>Illustrative example · no app or gym footage</p>
     </div>}
     <div style={{position: 'absolute', left: 112, bottom: 92, maxWidth: 1450, display: 'flex', alignItems: 'center', gap: 28,
       padding: '30px 42px 30px 30px', borderRadius: t.radius, background: t.surface,
@@ -58,10 +59,10 @@ export const LowerThird: React.FC<LowerThirdProps> = ({title, detail, preview}) 
 };
 
 const stages = [
-  {name: 'Voice', detail: 'You say the set.', icon: 'voice'},
-  {name: 'Log', detail: 'The set is saved.', icon: 'log'},
-  {name: 'WhatsApp\ncheck-in', detail: 'Review, then share.', icon: 'message'},
-  {name: 'Coach reply', detail: 'Your coach decides.', icon: 'reply'},
+  {name: 'Speak', detail: 'Say weight and reps.', icon: 'voice'},
+  {name: 'Workout log', detail: 'Setecho saves them.', icon: 'log'},
+  {name: 'Progress\nupdate', detail: 'Send via WhatsApp.', icon: 'message'},
+  {name: 'Coach reply', detail: 'Review the changes.', icon: 'reply'},
   {name: 'Plan update', detail: 'Only after you approve.', icon: 'plan'},
 ] as const;
 
@@ -85,8 +86,8 @@ export const Pipeline: React.FC = () => {
   const completed = frame >= 282;
   return <AbsoluteFill style={{...baseStyle, background: t.page, padding: '82px 100px'}}>
     {logo()}
-    <h1 style={{fontSize: 80, fontWeight: 650, letterSpacing: '-2.4px', lineHeight: 1.06, margin: '76px 0 22px'}}>One less thing to carry.</h1>
-    <p style={{...labelStyle, fontSize: 31, margin: 0}}>From the set you just finished to the next plan your coach writes.</p>
+    <h1 style={{fontSize: 80, fontWeight: 650, letterSpacing: '-2.4px', lineHeight: 1.06, margin: '76px 0 22px'}}>From workout to coach to updated plan.</h1>
+    <p style={{...labelStyle, fontSize: 31, margin: 0}}>A check-in is the progress update you send your coach.</p>
     <div style={{position: 'relative', display: 'flex', gap: 24, marginTop: 85}}>
       {stages.map((stage, i) => {
         const isCurrent = selected === i;
@@ -111,7 +112,7 @@ export const Pipeline: React.FC = () => {
       {approval ? <div style={{background: t.yellow, padding: '18px 26px', borderRadius: 16, fontSize: 30, fontWeight: 600}}>Waiting for your approval</div>
         : completed ? <div style={{background: t.cobaltTint, color: t.cobalt, padding: '18px 26px', borderRadius: 16, fontSize: 30, fontWeight: 600}}>Approved · plan updated</div>
         : <div style={{fontSize: 30, color: t.secondary}}>Your coach stays in charge.</div>}
-      {(approval || completed) && <div style={{fontSize: 26, color: t.secondary}}>His exact words. Changes you can review and revert.</div>}
+      {(approval || completed) && <div style={{fontSize: 26, color: t.secondary}}>Your coach’s exact words. Changes you can review and undo.</div>}
     </div>
   </AbsoluteFill>;
 };
@@ -119,13 +120,13 @@ export const Pipeline: React.FC = () => {
 export const MetaStack: React.FC = () => {
   const frame = useCurrentFrame();
   const models = [
-    ['Muse Spark 1.3', 'Understands commands, imports the coach’s material and drafts the check-in.'],
-    ['Voice Transcribe 1.0', 'Turns the athlete’s speech and the coach’s voice note into text.'],
-    ['SAM 3.1', 'Tracks the set; code counts reps and measures how they slow.'],
+    ['Muse Spark 1.3', 'Reads plans, understands requests and drafts progress updates.'],
+    ['Voice Transcribe 1.0', 'Turns your speech and your coach’s voice messages into text.'],
+    ['SAM 3.1', 'Tracks workout movement so code can count repetitions.'],
   ];
   return <AbsoluteFill style={{...baseStyle, background: t.page, padding: '82px 112px'}}>
     {logo()}
-    <h1 style={{fontSize: 80, lineHeight: 1.05, fontWeight: 650, letterSpacing: '-2.4px', margin: '65px 0 48px'}}>Built on Meta AI.</h1>
+    <h1 style={{fontSize: 80, lineHeight: 1.05, fontWeight: 650, letterSpacing: '-2.4px', margin: '65px 0 48px'}}>What each Meta AI model does.</h1>
     <div style={{background: t.surface, borderRadius: t.radius, padding: '10px 44px'}}>
       {models.map(([name, description], i) => <div key={name} style={{display: 'flex', alignItems: 'center', gap: 50, padding: '35px 0', borderBottom: i < 2 ? `1px solid ${t.border}` : undefined,
         opacity: appear(frame, i * 12), transform: `translateY(${rise(frame, i * 12)}px)`}}>
@@ -133,14 +134,14 @@ export const MetaStack: React.FC = () => {
         <div style={{fontSize: 28, color: t.secondary, lineHeight: 1.35, maxWidth: 850}}>{description}</div>
       </div>)}
     </div>
-    <div style={{fontSize: 29, lineHeight: 1.5, marginTop: 44, color: t.secondary}}>Numbers from code, Apple Health and the athlete.<br/>Spoken output from Apple’s on-device voice. Your coach makes the decisions.</div>
+    <div style={{fontSize: 29, lineHeight: 1.5, marginTop: 44, color: t.secondary}}>Numbers from code, Apple Health and you.<br/>Apple’s on-device voice speaks the responses. Your coach sets the plan.</div>
     <div style={{position: 'absolute', bottom: 45, right: 112, fontSize: 20, color: t.secondary}}>Motion graphics · illustrative workflow, no athlete data</div>
   </AbsoluteFill>;
 };
 
 export const DemoGraphics: React.FC = () => <AbsoluteFill>
-  <Sequence from={0} durationInFrames={120}><TitleCard/></Sequence>
-  <Sequence from={120} durationInFrames={150}><LowerThird title="Hands-free set logging" detail="Say it once. Keep your hands on the workout." preview/></Sequence>
-  <Sequence from={270} durationInFrames={360}><Pipeline/></Sequence>
-  <Sequence from={630} durationInFrames={210}><MetaStack/></Sequence>
+  <Sequence from={0} durationInFrames={150}><TitleCard/></Sequence>
+  <Sequence from={150} durationInFrames={210}><LowerThird title="Record your workout by voice" detail="Say the weight and repetitions. Setecho saves them." preview/></Sequence>
+  <Sequence from={360} durationInFrames={420}><Pipeline/></Sequence>
+  <Sequence from={780} durationInFrames={420}><MetaStack/></Sequence>
 </AbsoluteFill>;

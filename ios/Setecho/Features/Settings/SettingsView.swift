@@ -44,12 +44,12 @@ struct SettingsView: View {
                     .textContentType(.givenName)
                 Note("Setecho uses your first name now and then.")
                 CardDivider()
-                SettingToggle("In prep for a show", isOn: inPrep)
+                SettingToggle("Preparing for a competition", isOn: inPrep)
                 if inPrep.wrappedValue {
-                    DatePicker("Show day", selection: showDay, in: Date.now..., displayedComponents: .date)
+                    DatePicker("Competition date", selection: showDay, in: Date.now..., displayedComponents: .date)
                         .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)
                 } else {
-                    Note("Weeks out goes to the coach as N/A.")
+                    Note("Weeks until the competition is sent to your coach as N/A.")
                 }
             }
 

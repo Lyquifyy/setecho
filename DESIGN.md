@@ -277,4 +277,4 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 ## Open design questions
 - **Spreadsheet delivery:** decided Oct 26, a Google Sheets link. The Import screen's first step takes a pasted link, with a file or screenshot as the fallback.
 - **Change rows checked by default?** The default is checked, with the Apply tap as the approval. If that makes rubber-stamping too easy, start them unchecked.
-- **Tagline:** decided: "The prep that logs itself."
+- **Tagline:** "Your workout, logged hands-free." (clarity pass, Oct 29). Explain a check-in as a progress update sent to the coach. Public titles should make sense without bodybuilding knowledge; use "preparing for a bodybuilding competition" when that context matters.
