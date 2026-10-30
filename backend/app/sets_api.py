@@ -1,6 +1,7 @@
 """POST /sets/count: one set's small silent clip -> the measured rep count (HANDOFF.md §5).
 
-SAM 3.1 tracks the equipment; `app.reps` turns the track into a count. The clip goes to Meta
+SAM 3.1 tracks the equipment, and his hands when the equipment shows nothing moving; `app.reps`
+turns the track into a count. The clip goes to Meta
 on the Standard tier, is deleted from Meta's file store afterwards, and is never kept here.
 """
 
@@ -109,16 +110,16 @@ async def count_clip(data: bytes, context: CountContext) -> CountResponse:
         t1 = time.monotonic()
         file_id = await run_in_threadpool(meta.upload_video, path)
         timings["upload"] = round(time.monotonic() - t1, 2)
-    t2 = time.monotonic()
     try:
-        raw = await meta.segment_video_raw(file_id, prompt)
+        track, counted = await _segment_and_count(file_id, prompt, times, context, timings, "")
+        if not counted.reps and prompt != reps.SAM_FALLBACK_PROMPT:
+            # Nothing moving under the equipment's prompt: one more look, at his hands. The better count wins.
+            hands = await _segment_and_count(file_id, reps.SAM_FALLBACK_PROMPT, times, context, timings, "2")
+            if hands[1].reps:
+                prompt = reps.SAM_FALLBACK_PROMPT
+                track, counted = hands
     finally:
         await run_in_threadpool(meta.delete_file, file_id)
-    timings["segment"] = round(time.monotonic() - t2, 2)
-    t3 = time.monotonic()
-    track = await run_in_threadpool(reps.track_from_raw, raw, times)
-    counted = reps.count(track, context.setRole)
-    timings["track"] = round(time.monotonic() - t3, 2)
     return CountResponse(
         reps=counted.reps,
         repTimes=counted.rep_times,
@@ -134,6 +135,24 @@ async def count_clip(data: bytes, context: CountContext) -> CountResponse:
         motionRangePx=round(track.motion_range, 1),
         timings=timings,
     )
+
+
+async def _segment_and_count(
+    file_id: str,
+    prompt: str,
+    times: list[float],
+    context: CountContext,
+    timings: dict[str, float],
+    suffix: str,
+) -> tuple[reps.Track, reps.RepResult]:
+    t0 = time.monotonic()
+    raw = await meta.segment_video_raw(file_id, prompt)
+    timings[f"segment{suffix}"] = round(time.monotonic() - t0, 2)
+    t1 = time.monotonic()
+    track = await run_in_threadpool(reps.track_from_raw, raw, times)
+    counted = reps.count(track, context.setRole)
+    timings[f"track{suffix}"] = round(time.monotonic() - t1, 2)
+    return track, counted
 
 
 HEARTBEAT_SECONDS = 5.0

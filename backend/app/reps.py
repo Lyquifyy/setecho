@@ -45,6 +45,11 @@ SAM_PROMPTS: dict[str, str] = {
     "bodyweight": "person",
 }
 
+# When the equipment's prompt finds nothing that moves (no track, or a count of 0): his hands, which
+# carry the weight on almost every lift. The racked dumbbell, a home cable with no stack in view, a
+# machine filmed from the side (Oct 30: "I need to track any lift on video").
+SAM_FALLBACK_PROMPT = "hand"
+
 # Tuned constants. Change them here and in RepCounter.swift together.
 MIN_TRACK_SHARE = 0.80
 # A SAM object needs only this share to count, if it moves: the dumbbell in his hand is behind his

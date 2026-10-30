@@ -140,6 +140,28 @@ def test_no_track_gives_no_count(client, fake_sam, monkeypatch):
     body = r.json()
     assert body["reps"] is None and body["trackFound"] is False and body["repTimes"] == []
     assert body["repSpeeds"] == [] and body["velocityLossPct"] is None
+    assert fake_sam["deleted"] == ["file_1"]
+
+
+def test_nothing_moving_under_the_equipment_looks_at_his_hands(client, fake_sam, monkeypatch):
+    """Oct 30: the dumbbell prompt found only racked ones. The hands carry the count, and its speeds."""
+    original = meta.segment_video_raw
+
+    async def only_hands(file_id, prompt):
+        fake_sam["prompts"].append(prompt)
+        return await original(file_id, prompt) if prompt == "hand" else ""
+
+    monkeypatch.setattr(meta, "segment_video_raw", only_hands)
+    r = _post(client, context={"exerciseId": "x", "equipment": "dumbbell"})
+    body = r.json()
+    assert [p for p in fake_sam["prompts"] if p in ("dumbbell", "hand")][:2] == ["dumbbell", "hand"]
+    assert body["reps"] == 8 and body["prompt"] == "hand" and body["velocityLossPct"] == 0.0
+    assert "segment2" in body["timings"] and fake_sam["deleted"] == ["file_1"]
+
+
+def test_a_count_under_the_equipment_needs_no_second_look(client, fake_sam):
+    r = _post(client, context={"exerciseId": "x", "equipment": "cable"})
+    assert r.json()["reps"] == 8 and fake_sam["prompts"] == ["weight stack"]
 
 
 def test_context_model_defaults():
