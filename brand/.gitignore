@@ -1,0 +1,3 @@
+# These are deterministic brand exports, not athlete photos.
+!dist/*.png
+!dist/icons/*.png
