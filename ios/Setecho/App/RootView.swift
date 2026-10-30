@@ -69,6 +69,8 @@ struct RootView: View {
 extension RootView {
     /// Check-in morning with no tap on the due morning (MorningStart), once per day.
     fileprivate func startMorningIfDue() {
+        // First launch belongs to setup, even when today is the check-in day.
+        guard store.currentTemplate != nil else { return }
         let settings = Settings.shared
         let schedule = CheckInSchedule(plan: store.plan, lastSentAt: store.lastSentCheckIn?.sentAt)
         guard MorningStart.shouldStart(schedule: schedule, lastSentAt: store.lastSentCheckIn?.sentAt,

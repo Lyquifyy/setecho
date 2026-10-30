@@ -125,7 +125,7 @@ struct TodayView: View {
                     Reminders.scheduleMorningStart(schedule: schedule, wakeTime: Settings.shared.checkInWakeTime)
                 }
             }
-            if Reminders.deadlinePassed(schedule: schedule), store.lastSentCheckIn.map({ !Calendar.current.isDateInToday($0.sentAt ?? .distantPast) }) ?? true {
+            if store.currentTemplate != nil, Reminders.deadlinePassed(schedule: schedule), store.lastSentCheckIn.map({ !Calendar.current.isDateInToday($0.sentAt ?? .distantPast) }) ?? true {
                 AppRouter.shared.tab = .checkIn
                 NotificationCenter.default.post(name: .checkInDeadline, object: nil)
             }
