@@ -14,20 +14,12 @@ The walkthrough uses fixed synthetic examples. Clicking Plan update before appro
 
 ## Hosting
 
-Private review deployed successfully:
-https://setecho-prep.zander-erwin.chatgpt.site
+The production source repository is https://github.com/Lyquifyy/setecho-site, owned by Lyquifyy. Its dedicated local checkout is `../github-site/` (ignored in the app repository).
 
-Site identity is tracked in `.openai/hosting.json`. The source-only deployment checkout is `/tmp/setecho-site-publish`; it contains only this directory, never the app repository or local design materials. Use the Sites source workflow with a fresh credential for subsequent publication. Credentials are not saved here.
+The approved public target is https://getsetecho.com, with Cloudflare Pages deploying from GitHub `main`. The site repo contains only the landing page, its assets, package scripts and documentation. App source, local design references, athlete data and secrets are excluded. The source repo is private; the website is intended to be public.
 
-## getsetecho.com
+Cloudflare Pages configuration: build command `npm run check`, output `dist`, production branch `main`. The site repo is the source of truth for future website edits. This directory retains the launch snapshot and canonical-brand sync script.
 
-Custom domain registered with Sites; pending DNS validation. Cloudflare is signed out in the available browser and CLI. Add these records after authenticating, inspecting existing records before changing them:
+Setup status: source pushed to `Lyquifyy/setecho-site`; Cloudflare's GitHub installation is scoped to that repository and approved by the owner. GitHub requires owner reauthentication before installation can complete. Deployment and custom-domain DNS are still pending.
 
-| Type | Name | Content |
-| --- | --- | --- |
-| A | `@` | `162.159.143.30` |
-| A | `@` | `172.66.3.26` |
-| TXT | `_openai-site-verification` | `openai-site-verification=MHIVggOHvV5Eqsl1R8Xf1jd6-689lhYA-WSlnp1X5jY` |
-| TXT | `_cf-custom-hostname` | `1fa8e2fe-1af9-49c2-b35d-a45066a5bfd4` |
-
-Use DNS-only records for the routing entries unless the hosting provider specifies otherwise. Do not change mail records. Refresh custom-domain status through Sites after propagation. Public Site access still requires the owner's choice; the current preview is private. Once the custom domain is verified, update `og:url` and `og:image` in `dist/index.html` to `https://getsetecho.com/` and republish. Until then they correctly name the working review origin.
+The earlier ChatGPT Sites review remains private and is not the production host. Its pending getsetecho.com registration was removed when the owner chose GitHub + Cloudflare. No Sites validation DNS records need to be added.

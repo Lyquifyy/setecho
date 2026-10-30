@@ -4,7 +4,7 @@ Built October 29, 2026, using the app's cobalt-card design and canonical outline
 
 - `../brand/`: fonttools source, licensed fonts, sloped-e wordmark, mark, full icon exports, favicon, OG image and SVG reveal.
 - `motion/`: editable Remotion compositions and render instructions. Rendered clips are in ignored `motion/out/`; the 28-second montage previews the graphics, not the three-minute product demo.
-- `site/`: buildless responsive landing page, interactive synthetic walkthrough, real SwiftUI screenshots and deployment manifest.
+- `site/`: buildless responsive landing page, interactive synthetic walkthrough, real SwiftUI screenshots and GitHub/Cloudflare hosting instructions.
 - `explorations/`: local-only generated lifestyle, device mockup and pitch-background images. The generated device mockup is exploratory; its screen rendering is not pixel-exact evidence. The website uses untouched simulator renders in CSS device frames.
 
 ## App motion

@@ -3,4 +3,5 @@
 !site/dist/assets/*.jpg
 !site/dist/assets/*.webp
 explorations/
+github-site/
 site/.openai/local/
