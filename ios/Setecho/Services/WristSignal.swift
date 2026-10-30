@@ -70,6 +70,17 @@ struct WristSignal {
             let first = series.lastIndex { $0.t < t0 }.map { $0 + 1 } ?? series.startIndex
             return series[first...]
         }
+
+        /// The last `seconds` of samples and the one just before them, if it's under twice that old:
+        /// when the pose comes and goes, the window still spans the whole stillness (Oct 30: his body
+        /// was seen in 1 frame of 10 after his flyes, and no window ever reached back 4 s). Empty when
+        /// nothing of this channel was seen in the last `seconds`.
+        func reachingBack(_ seconds: Double, now t: Double) -> ArraySlice<Sample> {
+            let window = since(t - seconds)
+            guard !window.isEmpty, window.startIndex > series.startIndex,
+                  t - series[window.startIndex - 1].t <= seconds * 2 else { return window }
+            return series[(window.startIndex - 1)...]
+        }
     }
 
     let config: Config
@@ -120,10 +131,10 @@ struct WristSignal {
             // Still means every hand: one arm of an alternating lift keeps the set open.
             var stillLongEnough = false
             for track in tracks.values {
-                let window = track.since(t - config.endSeconds)
+                let window = track.reachingBack(config.endSeconds, now: t)
                 guard let first = window.first else { continue }
                 if range(of: window) >= config.endRange { return nil }
-                if t - first.t >= config.endSeconds - 0.05 { stillLongEnough = true }
+                if window.count >= 3, t - first.t >= config.endSeconds - 0.05 { stillLongEnough = true }
             }
             guard stillLongEnough else { return nil }
             isActive = false

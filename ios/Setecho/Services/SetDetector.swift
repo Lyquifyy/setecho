@@ -67,7 +67,8 @@ final class SetDetector: NSObject {
     private let sessionId: UUID
     private var clipIndex = 0
     private var segmentIndex = 0
-    private var recordingDelegate: RecordingDelegate?
+    /// One per file until it finishes: the movie output's callback for each file must outlive the next file's start.
+    private var recordingDelegates: [URL: RecordingDelegate] = [:]
     private var lastFrameT: Double?
     private var currentSetStart: Double?
     /// When the file now being written started, in capture-clock seconds.
@@ -224,10 +225,13 @@ final class SetDetector: NSObject {
         if !movieOutput.isRecording, !stopping { startSegment(at: sample.t) }
 
         let readings = WristSignal.readings(joints: sample.joints, wristX: sample.wristX)
-        guard !readings.isEmpty else { return }
-        lastWristY = readings[.wrists]
-        // -1: that part of him unseen in this frame.
-        debugWrist.append([sample.t] + Self.debugChannels.map { readings[$0] ?? -1 })
+        // A frame without him still moves the clock on: stillness seen in a few frames ends the set
+        // (Oct 30: after his flyes the pose found him in 1 frame of 10, and the set never ended).
+        if !readings.isEmpty {
+            lastWristY = readings[.wrists]
+            // -1: that part of him unseen in this frame.
+            debugWrist.append([sample.t] + Self.debugChannels.map { readings[$0] ?? -1 })
+        }
         // Between rest-pause rounds: 75 s still ends the set where the last round stopped.
         if let pausedAt = restPausePausedAt, let start = currentSetStart, sample.t - pausedAt >= Self.restPauseStillSeconds {
             restPausePausedAt = nil
@@ -286,27 +290,27 @@ final class SetDetector: NSObject {
         let delegate = RecordingDelegate { [weak self] url, ok in
             Task { @MainActor in self?.segmentFinished(url, ok: ok) }
         }
-        recordingDelegate = delegate
+        let url = segmentURL()
+        recordingDelegates[url] = delegate
         segmentStartT = t
-        movieOutput.startRecording(to: segmentURL(), recordingDelegate: delegate)
+        movieOutput.startRecording(to: url, recordingDelegate: delegate)
         isRecording = true
     }
 
-    /// Close the current file on this set's end and open the next one right away.
+    /// Close the current file on this set's end; the next pose frame opens the next one. Switching
+    /// files with a new `startRecording` is macOS-only (Apple's header): until Oct 30 it was done here,
+    /// and no set ever got its clip or its count.
     private func rotateSegment(for set: (start: Double, end: Double), crop: CGRect?) {
         guard movieOutput.isRecording, let url = movieOutput.outputFileURL, let segmentStart = segmentStartT else {
             onClipsReady?(Clips(setStart: set.start, clipFile: nil, countFile: nil))
             return
         }
         pendingSets[url] = (set.start, set.end, segmentStart, crop)
-        if stopping {
-            movieOutput.stopRecording()
-        } else if let t = lastFrameT {
-            startSegment(at: t) // AVCaptureMovieFileOutput finishes the previous file and keeps writing
-        }
+        movieOutput.stopRecording()
     }
 
     private func segmentFinished(_ url: URL, ok: Bool) {
+        recordingDelegates[url] = nil
         if !movieOutput.isRecording { isRecording = false }
         guard let set = pendingSets.removeValue(forKey: url) else {
             try? FileManager.default.removeItem(at: url) // no set in this segment: pre-roll only
