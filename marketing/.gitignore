@@ -1,0 +1,6 @@
+# Only the reviewed site exports may contain committed raster assets.
+!site/dist/assets/*.png
+!site/dist/assets/*.jpg
+!site/dist/assets/*.webp
+explorations/
+site/.openai/local/

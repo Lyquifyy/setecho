@@ -1,0 +1,10 @@
+{
+  "name": "setecho-landing",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "sync-brand": "node scripts/sync-brand.mjs",
+    "preview": "python3 -m http.server 4173 --bind 127.0.0.1 --directory dist"
+  }
+}
