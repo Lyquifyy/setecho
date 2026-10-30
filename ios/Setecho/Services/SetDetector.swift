@@ -22,6 +22,8 @@ final class SetDetector: NSObject {
         /// His boxes over the set plus room for the bar, normalized in the upright frame: the
         /// backend crops the count clip to it before SAM. The clip for his coach stays whole.
         var cropBox: CGRect?
+        /// Seconds from the set's end until the count clip was written, for the debug record.
+        var countReadySeconds: Double?
     }
 
     private(set) var isRunning = false
@@ -87,6 +89,11 @@ final class SetDetector: NSObject {
     static let debugChannels: [WristSignal.Channel] = [.wrists, .gap, .shoulders, .head, .hips]
     static let preRollSeconds = 3.0
     static let postRollSeconds = 1.0
+    /// The count clip's own window, tighter than the coach's: every second cut is about 1 s less of
+    /// SAM (15 frames at ~0.07 s each). The set's start is where the movement began, so 1.5 s still
+    /// gives `reps.py` its rest position before the first rep (HANDOFF.md §5, step 4).
+    static let countPreRollSeconds = 1.5
+    static let countPostRollSeconds = 0.5
     /// A rest-pause set ends after its third round, after this long still, or on "done" (§13).
     static let restPauseRounds = 3
     static let restPauseStillSeconds = 75.0
@@ -325,13 +332,17 @@ final class SetDetector: NSObject {
         let index = clipIndex
         let window = (start: max(0, set.start - Self.preRollSeconds - set.segmentStart),
                       end: set.end + Self.postRollSeconds - set.segmentStart)
+        let countWindow = (start: max(0, set.start - Self.countPreRollSeconds - set.segmentStart),
+                           end: set.end + Self.countPostRollSeconds - set.segmentStart)
+        let endedAt = lastFrameT.map { Date.now.addingTimeInterval(set.end - $0) } ?? .now
         Task { [weak self] in
             guard let self else { return }
-            let clips = await ClipExporter.export(segment: url, window: window, into: self.mediaDirectory,
+            let clips = await ClipExporter.export(segment: url, window: window, countWindow: countWindow, into: self.mediaDirectory,
                                                   name: "set-\(self.sessionId.uuidString.prefix(8))-\(index)")
             try? FileManager.default.removeItem(at: url)
             if let error = clips.error { self.lastError = error }
-            self.onClipsReady?(Clips(setStart: set.start, clipFile: clips.clipFile, countFile: clips.countFile, cropBox: set.crop))
+            self.onClipsReady?(Clips(setStart: set.start, clipFile: clips.clipFile, countFile: clips.countFile, cropBox: set.crop,
+                                     countReadySeconds: clips.countReadyAt.map { $0.timeIntervalSince(endedAt) }))
         }
     }
 
@@ -366,47 +377,54 @@ final class SetDetector: NSObject {
     }
 }
 
-/// Trims one set out of a recorded segment: a full-quality MOV for History, and a 720p, 15 fps,
-/// silent MP4 for /sets/count (rep speed needs the extra frames). Both exports run off the main actor.
+/// Trims one set out of a recorded segment: a 720p, 15 fps, silent MP4 for /sets/count (rep speed
+/// needs the extra frames) over the set's tight window, written first because the count waits on it,
+/// then a full-quality MOV for History with the full pre-roll. Both exports run off the main actor.
 enum ClipExporter {
     struct Exported: Sendable {
         var clipFile: String?
         var countFile: String?
         var error: String?
+        /// When the count clip was written.
+        var countReadyAt: Date?
     }
 
-    static func export(segment: URL, window: (start: Double, end: Double), into directory: URL, name: String) async -> Exported {
+    static func export(segment: URL, window: (start: Double, end: Double), countWindow: (start: Double, end: Double)? = nil,
+                       into directory: URL, name: String) async -> Exported {
         let asset = AVURLAsset(url: segment)
         var out = Exported()
         guard let duration = try? await asset.load(.duration).seconds, duration > 0 else {
             out.error = "Clip: empty recording"
             return out
         }
-        let start = min(window.start, duration)
-        let end = min(max(window.end, start + 0.5), duration)
-        let range = CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 600),
-                                end: CMTime(seconds: end, preferredTimescale: 600))
-
-        let clipURL = directory.appendingPathComponent("\(name).mov")
-        do {
-            try await run(asset: asset, preset: AVAssetExportPresetPassthrough, range: range, composition: nil, to: clipURL, type: .mov)
-            out.clipFile = clipURL.lastPathComponent
-        } catch {
-            out.error = "Clip export: \(error.localizedDescription)"
+        func range(_ w: (start: Double, end: Double)) -> CMTimeRange {
+            let start = min(w.start, duration)
+            let end = min(max(w.end, start + 0.5), duration)
+            return CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 600), end: CMTime(seconds: end, preferredTimescale: 600))
         }
 
         let countURL = directory.appendingPathComponent("\(name)-count.mp4")
+        let countRange = range(countWindow ?? window)
         do {
             let composition = try await countComposition(for: asset)
-            try await run(asset: asset, preset: AVAssetExportPreset1280x720, range: range, composition: composition, to: countURL, type: .mp4)
+            try await run(asset: asset, preset: AVAssetExportPreset1280x720, range: countRange, composition: composition, to: countURL, type: .mp4)
             out.countFile = countURL.lastPathComponent
         } catch {
             // Without the frame-rate composition the backend still counts; it just gets more frames.
-            if (try? await run(asset: asset, preset: AVAssetExportPreset1280x720, range: range, composition: nil, to: countURL, type: .mp4)) != nil {
+            if (try? await run(asset: asset, preset: AVAssetExportPreset1280x720, range: countRange, composition: nil, to: countURL, type: .mp4)) != nil {
                 out.countFile = countURL.lastPathComponent
             } else {
                 out.error = "Count export: \(error.localizedDescription)"
             }
+        }
+        out.countReadyAt = .now
+
+        let clipURL = directory.appendingPathComponent("\(name).mov")
+        do {
+            try await run(asset: asset, preset: AVAssetExportPresetPassthrough, range: range(window), composition: nil, to: clipURL, type: .mov)
+            out.clipFile = clipURL.lastPathComponent
+        } catch {
+            out.error = "Clip export: \(error.localizedDescription)"
         }
         return out
     }

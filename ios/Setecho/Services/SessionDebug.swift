@@ -15,6 +15,11 @@ enum SessionDebug {
         var secondsAfterSetEnd: Double?
         var response: CountResponse?
         var error: String?
+        /// Where the time went: set end to the count clip written, the clip's size, and the request
+        /// (upload, SAM, the math) as the phone timed it. The backend's own split is in `response.timings`.
+        var clipReadySeconds: Double?
+        var clipBytes: Int?
+        var requestSeconds: Double?
     }
 
     /// One utterance heard in a session: when, how long, what it was read as, what was said back,

@@ -28,6 +28,8 @@ struct CountResponse: Codable, Equatable {
     var frames: Int
     var trackedFrames: Int
     var prompt: String
+    /// Seconds per backend phase (crop, probe, upload, segment, track; segment2 and track2 for the hands).
+    var timings: [String: Double] = [:]
 
     init(reps: Int?, repTimes: [Double], repSpeeds: [Double] = [], velocityLossPct: Double? = nil, confidence: Double,
          trackFound: Bool, frames: Int, trackedFrames: Int, prompt: String) {
@@ -43,7 +45,7 @@ struct CountResponse: Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case reps, repTimes, repSpeeds, velocityLossPct, confidence, trackFound, frames, trackedFrames, prompt
+        case reps, repTimes, repSpeeds, velocityLossPct, confidence, trackFound, frames, trackedFrames, prompt, timings
     }
 
     /// A backend from before step 8 sends no speeds; the count still lands.
@@ -58,6 +60,7 @@ struct CountResponse: Codable, Equatable {
         frames = try c.decode(Int.self, forKey: .frames)
         trackedFrames = try c.decode(Int.self, forKey: .trackedFrames)
         prompt = try c.decode(String.self, forKey: .prompt)
+        timings = try c.decodeIfPresent([String: Double].self, forKey: .timings) ?? [:]
     }
 }
 

@@ -336,6 +336,7 @@ final class SessionCoordinator {
     private func clipsReady(_ clips: SetDetector.Clips) {
         guard let setId = setsAwaitingClips.removeValue(forKey: clips.setStart) else { return }
         if let crop = clips.cropBox { cropBoxes[setId] = crop }
+        if let seconds = clips.countReadySeconds { countReadySeconds[setId] = seconds }
         if let clip = clips.clipFile { engine.attachClip(setId: setId, file: clip) }
         guard let countFile = clips.countFile else {
             show(engine.countFailed(setId: setId))
@@ -354,6 +355,8 @@ final class SessionCoordinator {
     private var countFilesHeld: [UUID: String] = [:]
     /// His station per set: the count clip is cut to it before SAM.
     private var cropBoxes: [UUID: CGRect] = [:]
+    /// Seconds from each set's end to its count clip being written, for the debug record.
+    private var countReadySeconds: [UUID: Double] = [:]
 
     /// A warm-up reclassified by voice uploads then (HANDOFF.md §7).
     private func uploadReclassified() {
@@ -384,18 +387,20 @@ final class SessionCoordinator {
         for (attempt, delay) in ([0.0] + Self.uploadRetryDelays).enumerated() {
             if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
             guard !didSave || attempt == 0 else { break } // the session is over: stop retrying
+            let sent = Date.now
+            let timing = { (setId, Date.now.timeIntervalSince(sent), data.count) }
             do {
                 let response = try await api.countSet(mp4: data, context: context)
-                logCount(setId: setId, attempt: attempt, response: response, error: nil)
+                logCount(setId: setId, attempt: attempt, response: response, error: nil, timing: timing())
                 let outcome = engine.measured(setId: setId, response, now: .now)
                 show(outcome)
                 if didSave { save() }
                 return
             } catch let error as APIError where (400..<500).contains(error.status) {
-                logCount(setId: setId, attempt: attempt, response: nil, error: String(describing: error))
+                logCount(setId: setId, attempt: attempt, response: nil, error: String(describing: error), timing: timing())
                 break // a bad clip will not get better with retries
             } catch {
-                logCount(setId: setId, attempt: attempt, response: nil, error: String(describing: error))
+                logCount(setId: setId, attempt: attempt, response: nil, error: String(describing: error), timing: timing())
                 continue
             }
         }
@@ -404,11 +409,13 @@ final class SessionCoordinator {
     }
 
     /// Every answer and failure, with its latency, for the session's debug JSON (HANDOFF.md §9, P5).
-    private func logCount(setId: UUID, attempt: Int, response: CountResponse?, error: String?) {
+    private func logCount(setId: UUID, attempt: Int, response: CountResponse?, error: String?,
+                          timing: (setId: UUID, seconds: Double, bytes: Int)? = nil) {
         let endedAt = engine.session.sets.first { $0.id == setId }?.endedAt
         let record = SessionDebug.CountAttempt(setId: setId, attempt: attempt, at: .now,
                                                secondsAfterSetEnd: endedAt.map { Date.now.timeIntervalSince($0) },
-                                               response: response, error: error)
+                                               response: response, error: error, clipReadySeconds: countReadySeconds[setId],
+                                               clipBytes: timing?.bytes, requestSeconds: timing.map { ($0.seconds * 100).rounded() / 100 })
         SessionDebug.append(record, sessionId: engine.session.id, in: store.mediaDirectory)
     }
 
