@@ -791,7 +791,33 @@ final class SessionEngine {
         return applyMeasured(setId: setId, response, now: now, late: false)
     }
 
+    /// The count, then the effort it brought: SAM is the only measure of how much the reps slowed on a
+    /// set the phone couldn't follow, and it answers after "That was eight reps" or after the 60 s
+    /// fallback. Oct 30: his dumbbell press's slowdown came back 111 s after the set, and nothing said it.
     private func applyMeasured(setId: UUID, _ response: CountResponse, now: Date, late: Bool) -> Outcome {
+        let count = applyMeasuredCount(setId: setId, response, now: now, late: late)
+        var effort = effortIfDue(setId: setId)
+        if count.echo != nil { effort.echo = nil } // the screen keeps the count's line, with its undo
+        return count.merged(with: effort)
+    }
+
+    /// Sets whose effort line has been said: it's said once.
+    private var effortSaid: Set<UUID> = []
+
+    /// The effort and his rule's ask for the set just logged, when a measure arrived after its rest
+    /// line and nothing was said or suggested from it yet. Never mid-set, never over an open question,
+    /// and not when SAM's count is more than a rep off the count he said (the slowdown would be of
+    /// some other reps).
+    private func effortIfDue(setId: UUID) -> Outcome {
+        guard state != .recording, state != .ended, pendingAsk == nil, let i = session.sets.indices.last, session.sets[i].id == setId,
+              !session.sets[i].isWarmup, !effortSaid.contains(setId), session.sets[i].repCount.velocityLossPct != nil,
+              !session.suggestions.contains(where: { $0.setId == setId })
+        else { return .none }
+        if let measured = session.sets[i].repCount.measured, abs(measured - session.sets[i].reps) > 1 { return .none }
+        return settle(at: i, mode: .askOnly)
+    }
+
+    private func applyMeasuredCount(setId: UUID, _ response: CountResponse, now: Date, late: Bool) -> Outcome {
         guard let i = session.sets.firstIndex(where: { $0.id == setId }) else { return .none }
         let late = late || session.sets.last?.id != setId
         var set = session.sets[i]
@@ -947,6 +973,7 @@ final class SessionEngine {
         let rule = suggestion.flatMap { s in rules.first { $0.id == s.ruleId } }
         let shortBy = planned?.isRestPause == true ? 0 : max(0, (planned?.minimumReps ?? 0) - set.reps)
         let line = Callout.restLine(set: set, role: planned?.role, shortBy: shortBy, effort: effort, targetRIR: target, suggestion: suggestion, rule: rule)
+        if line.effort != nil { effortSaid.insert(set.id) }
         let facts = SpotterFacts(
             exercise: exercise.name, setNumber: set.setIndex + 1, setCount: exercise.sets.count, reps: set.reps,
             repSource: set.repCount.source.rawValue, loadLb: set.loadLb > 0 ? set.loadLb : nil,

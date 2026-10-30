@@ -269,7 +269,8 @@ private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(engine.tick(now: t0.addingTimeInterval(81)) == .none)             // never twice
     // SAM lands later with a different count: the log changes and the change is mentioned.
     let late = engine.measured(setId: id, measured(7, confidence: 0.9), now: t0.addingTimeInterval(95))
-    #expect(late.speech == "Set 1 updated: 7, measured.")
+    // ...and the slowdown it measured is said now: nothing said it at 60 s (Oct 30).
+    #expect(late.speech == "Set 1 updated: 7, measured. Slowed 38 percent, about 1 left by the measure.")
     #expect(late.echo == "Set 1 updated: 7 reps (measured). Say undo to revert.")
     #expect(engine.session.sets[0].reps == 7 && engine.session.sets[0].repCount.source == .measured && engine.pendingCounts.isEmpty)
     #expect(engine.countLatencies == [75])
@@ -280,8 +281,32 @@ private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), phone: phone(8), willMeasure: true)
     engine.tick(now: t0.addingTimeInterval(80))
     let out = engine.measured(setId: engine.session.sets[0].id, measured(8, confidence: 0.9), now: t0.addingTimeInterval(90))
-    #expect(out == .none)
+    #expect(out.speech == "Slowed 38 percent, about 1 left by the measure.")   // the count stands; the effort is new
     #expect(engine.session.sets[0].repCount.source == .measured && engine.session.sets[0].repCount.status == .done)
+    // Said once.
+    #expect(engine.measured(setId: engine.session.sets[0].id, measured(8, confidence: 0.9), now: t0.addingTimeInterval(95)) == .none)
+}
+
+@Test @MainActor func afterHeSaysTheCountSamsSlowdownIsStillSaid() {
+    // Oct 30: "That was eight reps." on his dumbbell press, then SAM; the slowdown was never said.
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), willMeasure: true)
+    engine.apply(intent(.reps, 8, transcript: "that was eight reps"), now: t0.addingTimeInterval(25))
+    let id = engine.session.sets[0].id
+    let out = engine.measured(setId: id, measured(8, confidence: 0.9), now: t0.addingTimeInterval(60))
+    #expect(out.speech == "Slowed 38 percent, about 1 left by the measure.")
+    #expect(engine.session.sets[0].reps == 8 && engine.session.sets[0].repCount.source == .spoken)
+}
+
+@Test @MainActor func samsSlowdownIsNotSaidWhenItsCountIsOffFromHisOrASetHasStarted() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), willMeasure: true)
+    engine.apply(intent(.reps, 8, transcript: "that was eight"), now: t0.addingTimeInterval(25))
+    // SAM saw 5: its slowdown is of some other reps.
+    #expect(engine.measured(setId: engine.session.sets[0].id, measured(5, confidence: 0.9), now: t0.addingTimeInterval(60)) == .none)
+    engine.setStarted(at: t0.addingTimeInterval(200)); engine.setEnded(at: t0.addingTimeInterval(220), willMeasure: true)
+    engine.setStarted(at: t0.addingTimeInterval(400))
+    #expect(engine.measured(setId: engine.session.sets[1].id, measured(8, confidence: 0.9), now: t0.addingTimeInterval(410)) == .none)
 }
 
 @Test @MainActor func samLowConfidenceAsksAndYesLogsItAsMeasured() {
@@ -371,7 +396,9 @@ private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     let fallback = engine.tick(now: t0.addingTimeInterval(80))
     #expect(fallback.speech == "Next, 225 for 8." && fallback.echo == "Set 1: 8 reps (Plan)")
     let sam = engine.measured(setId: engine.session.sets[0].id, measured(7, confidence: 0.9), now: t0.addingTimeInterval(90))
-    #expect(sam.speech == "Set 1 updated: 7, measured." && engine.session.sets[0].repCount.source == .measured)
+    // His Oct 30 dumbbell press: no phone count, SAM after 60 s. The slowdown is said with the update.
+    #expect(sam.speech == "Set 1 updated: 7, measured. Slowed 38 percent, about 1 left by the measure."
+        && engine.session.sets[0].repCount.source == .measured)
 }
 
 @Test @MainActor func voiceOnlySetKeepsTheFullSetEndLine() {
