@@ -1213,6 +1213,9 @@ final class SessionEngine {
             return decideSuggestion(.accepted, spoken: true)
         case .keepLoad:
             return decideSuggestion(.kept, spoken: true)
+        case .lastSetLoad:
+            guard let n = intent.number else { return say("Which load?") }
+            return correctLastLoad(n, transcript: response.transcript, now: now)
         case .loadDelta:
             guard let n = intent.number, let ex = currentExercise, let base = targetLoadLb else { return say("Which load?") }
             let old = loadOverrides[ex.id]
@@ -1438,7 +1441,7 @@ final class SessionEngine {
     /// A question, a note or an RPE leaves the open ask standing ("what's the back-off?", then "go with it").
     private static func lapsesAsk(_ kind: VoiceIntent.Kind) -> Bool {
         switch kind {
-        case .question, .note, .rpe, .flagSet, .replayCue, .pause, .resume, .logbook, .chatter, .unknown, .yes, .no, .choose: false
+        case .question, .note, .rpe, .lastSetLoad, .flagSet, .replayCue, .pause, .resume, .logbook, .chatter, .unknown, .yes, .no, .choose: false
         default: true
         }
     }
@@ -1580,6 +1583,27 @@ final class SessionEngine {
         loadOverrides[ex.id] = n
         undoStack.append(UndoEntry(action: .load(exerciseId: ex.id, old: old), description: "load \(Format.number(n))"))
         return echo("\(ex.name) → \(Format.number(n)) lb", speech: Callout.loadChanged(to: n))
+    }
+
+    /// "That was at 235": the weight on the set he just finished, as he lifted it. The next set's load
+    /// doesn't change (he says that himself). A suggestion his rule made from the old weight is
+    /// withdrawn and his rule asked again with the weight he lifted.
+    private func correctLastLoad(_ n: Double, transcript: String, now: Date) -> Outcome {
+        guard state != .recording, let i = session.sets.indices.last else { return say("No set to fix yet.") }
+        let id = session.sets[i].id
+        let old = session.sets[i].loadLb
+        session.sets[i].loadLb = n
+        session.sets[i].edits.append(SetEdit(at: now, field: "load", from: Format.number(old), to: Format.number(n), transcript: transcript))
+        var withdrawn: LoadSuggestion?
+        if let suggestion = pendingSuggestion, suggestion.setId == id {
+            clearAsk()
+            session.suggestions.removeAll { $0.id == suggestion.id }
+            withdrawn = suggestion
+        }
+        undoStack.append(UndoEntry(action: .lastSetLoad(setId: id, old: old, suggestion: withdrawn), description: "\(Format.number(n)) lb"))
+        let setNumber = session.sets[i].setIndex + 1
+        let outcome = echo("Set \(setNumber) → \(Format.number(n)) lb", speech: Callout.setLoadLogged(n, setNumber: setNumber))
+        return withdrawn == nil ? outcome : outcome.merged(with: settle(at: i, mode: .askOnly))
     }
 
     // MARK: Moving through the plan
@@ -2061,6 +2085,15 @@ final class SessionEngine {
             }
         case .load(let exerciseId, let old):
             loadOverrides[exerciseId] = old
+        case .lastSetLoad(let id, let old, let suggestion):
+            if let i = session.sets.firstIndex(where: { $0.id == id }) { session.sets[i].loadLb = old }
+            // The suggestion asked again from the new weight goes; the one made from the old weight returns.
+            if let suggestion {
+                if let pending = pendingSuggestion, pending.setId == id { clearAsk() }
+                session.suggestions.removeAll { $0.setId == id }
+                session.suggestions.append(suggestion)
+                open(.suggestion(suggestion), Callout.suggestionAsk(suggestion))
+            }
         case .skip(let exercise, let set):
             exerciseIndex = exercise
             setIndex = set
@@ -2157,6 +2190,8 @@ final class SessionEngine {
             case reps(setId: UUID, old: Int, oldSource: RepSource)
             case measured(setId: UUID, oldReps: Int, oldSource: RepSource)
             case load(exerciseId: String, old: Double?)
+            /// "That was at 235": the set's weight as it was, and any suggestion withdrawn for it.
+            case lastSetLoad(setId: UUID, old: Double, suggestion: LoadSuggestion?)
             case skip(exercise: Int, set: Int)
             case note(id: UUID)
             case flag(setId: UUID)

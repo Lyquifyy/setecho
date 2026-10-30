@@ -413,19 +413,21 @@ final class AudioService {
     /// bringing it back only changes the options on the active session, with no second activation
     /// (that reactivation is what threw "can't interrupt others" at the gym, Oct 28). A failure is
     /// logged, the mixable configuration put back, and after two the per-line lowering stops.
-    /// With the AirPods recording at high quality, nothing is lowered: the AirPods are on a call-style
-    /// link (BluetoothHFP at full bandwidth), every category change sets it up again, and his music
-    /// app pauses as if the headphones were unplugged (Oct 29). Lines play over his music instead.
+    /// With the AirPods recording at high quality, the AirPods are on a call-style link (BluetoothHFP
+    /// at full bandwidth), a category change can set it up again, and his music app pauses as if the
+    /// headphones were unplugged (Oct 29). There the Developer setting decides: no lowering (lines over
+    /// his music), per line with the option alone, or per line with an activation as on A2DP.
     func lowerMusic(_ lowered: Bool) {
         guard !holdsDucking else { return }
-        if lowered, !perLineDuckingOff, AirPodsMic.shared.isRecordingHighQuality(session) {
+        let method = AirPodsMic.shared.isRecordingHighQuality(session) ? Settings.shared.airPodsLowering : nil
+        if lowered, !perLineDuckingOff, method == .off || method == .wholeSession {
             perLineDuckingOff = true
             logAudio("per-line lowering off: the AirPods mic is at high quality", lowered: false, error: nil)
         }
         if lowered ? perLineDuckingOff : !musicLowered { return }
         do {
             try AirPodsMic.shared.apply(to: session, ducking: lowered)
-            if lowered { try session.setActive(true) }
+            if lowered, method != .optionOnly { try session.setActive(true) }
             musicLowered = lowered
             logAudio(lowered ? "lower" : "restore", lowered: lowered, error: nil)
         } catch {

@@ -43,6 +43,13 @@ def test_parse_number(said, expected):
         ("Add 5.", "loadDelta", 5),
         ("take off ten", "loadDelta", -10),
         ("Drop 5", "loadDelta", -5),
+        ("That was at 235.", "lastSetLoad", 235),
+        ("actually that was with two thirty five", "lastSetLoad", 235),
+        ("It was 235 pounds", "lastSetLoad", 235),
+        ("I used 235 on that one", "lastSetLoad", 235),
+        ("I did that at 235", "lastSetLoad", 235),
+        ("I did 235 pounds on the last set", "lastSetLoad", 235),
+        ("the last set was at 185", "lastSetLoad", 185),
         ("skip this set", "skipSet", None),
         ("Next exercise", "nextExercise", None),
         ("Undo.", "undo", None),
@@ -82,6 +89,13 @@ def test_rules_cover_the_plain_commands(transcript, intent, number):
     assert result.intent == intent
     assert result.number == number
     assert result.confidence >= 0.7
+
+
+def test_a_count_is_never_read_as_the_last_sets_weight():
+    # "That was at 235" fixes the logged weight; a number without a load word stays a count.
+    for transcript in ("that was 8", "I did 8 on that one", "it was 12"):
+        result = voice.classify_by_rules(transcript)
+        assert result is None or result.intent != "lastSetLoad", transcript
 
 
 def test_add_on_commands_carry_the_block_name():

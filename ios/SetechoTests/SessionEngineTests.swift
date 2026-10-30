@@ -784,6 +784,33 @@ private let topRest = RestRule(after: .top, minSeconds: 180, maxSeconds: 240, qu
     #expect(cue.speech == "Ready when you are." && engine.state == .rest(remaining: 60))
 }
 
+/// "That was at 235" (Oct 29): he lifted another weight than the plan's and said so after the set.
+@Test @MainActor func theLastSetsWeightIsFixedByVoiceAndUndone() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted()
+    engine.setEnded()
+    let out = engine.apply(intent(.lastSetLoad, 235, transcript: "that was at 235"))
+    #expect(engine.session.sets[0].loadLb == 235 && out.speech == "Set 1, 235.")
+    #expect(engine.session.sets[0].edits.last?.field == "load" && engine.session.sets[0].edits.last?.from == "225")
+    #expect(engine.targetLoadLb == 225)   // the next set's load is his to change
+    engine.apply(intent(.undo, transcript: "undo"))
+    #expect(engine.session.sets[0].loadLb == 225)
+}
+
+/// His rule's suggestion made from the old weight is asked again from the weight he lifted.
+@Test @MainActor func aSuggestionFromTheOldWeightIsAskedAgain() {
+    let engine = SessionEngine(day: day1, weekNumber: 1, rules: [backOffRule], roleTargets: failureTargets, lastSets: ["incline|top": LastSet(loadLb: 80, reps: 9)])
+    engine.apply(intent(.skipSet))
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(30), phone: phone(10), willMeasure: true)
+    engine.measured(setId: engine.session.sets[0].id, measured(10, confidence: 0.9, velocityLoss: 40), now: t0.addingTimeInterval(60))
+    #expect(engine.pendingSuggestion?.toLb == 60)
+    engine.apply(intent(.lastSetLoad, 90, transcript: "that was at 90"))
+    #expect(engine.session.sets[0].loadLb == 90 && engine.session.suggestions.count == 1)
+    #expect((engine.pendingSuggestion?.toLb ?? 0) > 60 && engine.pendingSuggestion?.fromLb == 90)
+    engine.apply(intent(.undo, transcript: "undo"))
+    #expect(engine.session.sets[0].loadLb == 80 && engine.pendingSuggestion?.toLb == 60 && engine.session.suggestions.count == 1)
+}
+
 @Test @MainActor func keepItAndAWeightOfHisOwnAndNoAnswerAreAllLogged() {
     let engine = SessionEngine(day: day1, weekNumber: 1, rules: [backOffRule], roleTargets: failureTargets, lastSets: ["incline|top": LastSet(loadLb: 80, reps: 9)])
     engine.apply(intent(.skipSet))

@@ -173,6 +173,8 @@ final class SessionCoordinator {
             SessionDebug.append(event, sessionId: self.engine.session.id, in: self.store.mediaDirectory)
         }
         let musicBefore = audio.isMusicPlaying
+        // Developer → "Lower music on the AirPods mic" → Whole session: lowered from the start, one setup.
+        audio.holdsDucking = AirPodsMic.shared.isActive && settings.airPodsLowering == .wholeSession
         audio.configure()
         audio.detectorConfig = { VoiceDetector.Config.session(sampleRate: $0) }
         audio.allowsBargeIn = true

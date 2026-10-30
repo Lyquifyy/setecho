@@ -44,11 +44,25 @@ struct DeveloperView: View {
                 Text("Noise suppression and gain control on the session mic. It never runs while your music plays: iOS turns it into a phone call, which stops the music and the AirPods' full quality. Each utterance in the session data says whether it was on.")
                     .font(.footnote).secondaryText()
                 CardDivider()
+                HStack {
+                    Text("Lower music on the AirPods mic").font(.subheadline).foregroundStyle(Theme.navy)
+                    Spacer(minLength: Theme.Space.s)
+                    Picker("Lower music on the AirPods mic", selection: $settings.airPodsLowering) {
+                        ForEach(AirPodsLowering.allCases) { Text($0.label).tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .tint(Theme.cobalt)
+                }
+                .frame(minHeight: 44)
+                Text("While the AirPods mic records at full quality, lowering your music can pause it. Run the test below, then pick a way that dipped your music and kept it playing. Don't lower: lines play over your music.")
+                    .font(.footnote).secondaryText()
+                CardDivider()
                 LinkButton(title: mixingProbe.running ? "Testing…" : "Test music with each mic setting") {
                     Task { await mixingProbe.run() }
                 }
                 .disabled(mixingProbe.running)
-                Text("Play music on your AirPods first. It starts a session one piece at a time (audio, mic, camera, a spoken line), then lowers and restores the music under three mic settings, about 35 seconds in all. Each line says whether your music was still playing and which mic listened; the first line that says NOT playing is the culprit. If your music pauses when the AirPods mic comes on, press play on your AirPods within 15 seconds and the test carries on. The last setting is the old call-quality one and may stop your music on purpose.")
+                Text("Play music on your AirPods first. It starts a session one piece at a time (audio, mic, camera, a spoken line), tries each way of lowering your music on the AirPods mic (listen: did it dip, and did it keep playing?), then lowers and restores the music under three mic settings, about a minute in all. Each line says whether your music was still playing and which mic listened; the first line that says NOT playing is the culprit. If your music pauses when the AirPods mic comes on, press play on your AirPods within 15 seconds and the test carries on. The last setting is the old call-quality one and may stop your music on purpose.")
                     .font(.footnote).secondaryText()
                 ForEach(mixingProbe.summary, id: \.self) { line in
                     Text(line).font(.footnote).foregroundStyle(line.contains("ok · music playing") ? Theme.textSecondary : Theme.navy)

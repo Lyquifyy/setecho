@@ -58,6 +58,7 @@
           "phrases": [
             { "say": "go with it", "does": "Takes the weight your coach's rule suggests.", "state": "rest", "intent": "acceptSuggestion" },
             { "say": "keep it", "does": "Keeps the weight you're on.", "state": "rest", "intent": "keepLoad" },
+            { "say": "that was at 235", "does": "Fixes the weight on the set you just did.", "state": "rest", "intent": "lastSetLoad" },
             { "say": "skip this set", "does": "Skips the next set.", "state": "rest", "intent": "skipSet" },
             { "say": "next exercise", "does": "Moves on, and asks about any sets left.", "state": "rest", "intent": "nextExercise" },
             { "say": "skip the flyes", "does": "Skips an exercise still ahead today.", "state": "rest", "intent": "skipExercise", "exercisesAhead": ["Cable incline flyes"] },

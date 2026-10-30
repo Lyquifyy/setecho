@@ -26,6 +26,7 @@ Intent = Literal[
     "reps",
     "setLoad",
     "loadDelta",
+    "lastSetLoad",
     "skipSet",
     "nextExercise",
     "note",
@@ -134,7 +135,8 @@ SYSTEM_PROMPT = (
     'reps: a rep count for a set ("that was 8", "got 12"). His coach uses no RPE, so a bare number is '
     'reps. rpe: only with "felt like", "RPE", "a/an N" or "out of ten" ("felt like a 9" is rpe 9). '
     'setLoad: a new load in pounds ("drop to 215"). loadDelta: a change in pounds ("add 5" is +5, '
-    '"take off 10" is -10). skipSet. nextExercise. starting: the set is about to begin. endSet: the set '
+    '"take off 10" is -10). lastSetLoad: the weight he actually lifted on the set just logged, when it '
+    'differs from the plan ("that was at 235", "I used 235 on that one": number 235). skipSet. nextExercise. starting: the set is about to begin. endSet: the set '
     'just finished ("done", "done, 12" has number 12). undo. pause. resume. endSession: he is finished '
     "for the day. note: a remark for his coach about how something felt or went, with the words in "
     '`text` verbatim ("left shoulder pinched on the last rep", "slept terribly", "the Smith felt heavy '
@@ -443,6 +445,20 @@ _CHANGE_DAY = re.compile(r"\b(doing|do|make it|switch to|change to|it'?s)\s+day\
 _SET_LOAD = re.compile(
     r"\b(drop|go|move|change|set( the)? (load|weight))\s+(it\s+)?(to|at)\s+(?P<n>[\w .]+?)(\s*(pounds?|lbs?))?\s*$"
 )
+# "That was at 235", "I used 235 on that one": the weight on the set just logged. A load word ("at",
+# "with", "pounds", or a verb only a weight takes) sets it apart from "that was 8", a rep count.
+_LAST_ONE = r"(?:\s+on\s+(?:that|it|the last)(?:\s+(?:one|set))?)?"
+_LAST_SET_LOAD = re.compile(
+    _LEAD
+    + r"(?:(?:that|it|that set|the last(?: one| set)?)\s+was\s+(?:at|with)\s+(?P<a>[\w .]+?)(?:\s*(?:pounds?|lbs?))?"
+    r"|(?:that|it|that set|the last(?: one| set)?)\s+was\s+(?P<b>[\w .]+?)\s*(?:pounds?|lbs?)"
+    r"|(?:i\s+)?(?:actually\s+)?(?:did|lifted|had)\s+(?:that|it)\s+(?:at|with)\s+(?P<c>[\w .]+?)(?:\s*(?:pounds?|lbs?))?"
+    r"|(?:i\s+)?(?:actually\s+)?(?:used|lifted|went with)\s+(?P<d>[\w .]+?)(?:\s*(?:pounds?|lbs?))?"
+    + _LAST_ONE
+    + r"|(?:i\s+)?(?:actually\s+)?(?:did|had)\s+(?P<e>[\w .]+?)\s*(?:pounds?|lbs?)"
+    + _LAST_ONE
+    + r")$"
+)
 _DELTA_UP = re.compile(
     r"\b(add|plus|up|go up|bump( it)? up|increase( by)?)\s+(?P<n>[\w .]+?)(\s*(pounds?|lbs?))?\s*$"
 )
@@ -577,6 +593,8 @@ def classify_by_rules(transcript: str, context: SessionContext | None = None) ->
         return intent("goTo", text=named, confidence=0.9)
     if _IM_DONE.match(t):
         return intent("endSet" if recording else "endSession")
+    if (m := _LAST_SET_LOAD.match(t)) and (n := _number(m, "a", "b", "c", "d", "e")) is not None:
+        return intent("lastSetLoad", n, confidence=0.9)
     if (
         (m := _NAMED_SET.match(t))
         and (n := _number(m, "n")) is not None

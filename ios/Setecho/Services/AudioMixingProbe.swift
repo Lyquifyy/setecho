@@ -101,11 +101,7 @@ final class AudioMixingProbe {
         try? await Task.sleep(for: .seconds(1))
         // Oct 29: his music paused right here, as the AirPods became the mic. Does it carry on once
         // he presses play again? Up to 15 s for him to, then the rest of the start with it playing.
-        if musicBefore, !session.isOtherAudioPlaying {
-            await step(setup, "your music paused: press play now") {}
-            for _ in 0..<30 where !session.isOtherAudioPlaying { try? await Task.sleep(for: .milliseconds(500)) }
-            await step(setup, "after you pressed play") {}
-        }
+        if musicBefore { await waitForMusic(setup) }
         await step(setup, "mic open") { audio.startListening() }
         try? await Task.sleep(for: .seconds(2))
         let camera = SetDetector(mediaDirectory: FileManager.default.temporaryDirectory, sessionId: UUID())
@@ -117,9 +113,41 @@ final class AudioMixingProbe {
         await step(setup, "a line spoken") {}
         try? await Task.sleep(for: .seconds(1.5))
         await step(setup, "1.5 s later") {}
+        await loweringTests()
         camera.stop()
         audio.stopListening()
         try? await Task.sleep(for: .seconds(1))
+    }
+
+    /// With the AirPods recording at high quality and his music on: each way a line could lower it
+    /// (Developer → "Lower music on the AirPods mic"). He listens for the dip; the rows say whether the
+    /// music kept playing. Paused music gets 15 s for him to press play before the next way.
+    private func loweringTests() async {
+        let setup = "Lowering"
+        guard AirPodsMic.shared.isRecordingHighQuality(session) else {
+            await step(setup, "skipped: the AirPods aren't recording at high quality") {}
+            return
+        }
+        for method in [AirPodsLowering.optionOnly, .withActivation] {
+            await waitForMusic(setup)
+            await step(setup, "\(method.label): lower") {
+                try AirPodsMic.shared.apply(to: self.session, ducking: true)
+                if method == .withActivation { try self.session.setActive(true) }
+            }
+            try? await Task.sleep(for: .seconds(2.5))
+            await step(setup, "\(method.label): 2.5 s lowered") {}
+            await step(setup, "\(method.label): restore") { try AirPodsMic.shared.apply(to: self.session, ducking: false) }
+            try? await Task.sleep(for: .seconds(2))
+            await step(setup, "\(method.label): 2 s restored") {}
+        }
+    }
+
+    /// His music paused: up to 15 s for him to press play.
+    private func waitForMusic(_ setup: String) async {
+        guard !session.isOtherAudioPlaying else { return }
+        await step(setup, "your music paused: press play now") {}
+        for _ in 0..<30 where !session.isOtherAudioPlaying { try? await Task.sleep(for: .milliseconds(500)) }
+        await step(setup, "after you pressed play") {}
     }
 
     private func step(_ setup: String, _ name: String, _ action: () throws -> Void) async {

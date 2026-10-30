@@ -145,3 +145,28 @@ final class AirPodsMic {
         return names.filter { options.contains($0.0) }.map(\.1)
     }
 }
+
+/// How a session lowers his music for a line while the AirPods record at high quality. Every way is
+/// a category change on the AirPods' call-style link, which can set it up again and pause his music
+/// (Oct 29), so the music test tries each one and the Developer setting picks.
+enum AirPodsLowering: String, CaseIterable, Identifiable {
+    /// Lines play over his music at full volume.
+    case off
+    /// `.duckOthers` added for the line and taken off after, with no activation.
+    case optionOnly
+    /// `.duckOthers` added with an activation, as on A2DP (the old way).
+    case withActivation
+    /// `.duckOthers` from the session's start to its end: the music lower throughout, no changes mid-session.
+    case wholeSession
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .off: "Don't lower"
+        case .optionOnly: "Per line, option only"
+        case .withActivation: "Per line, with activation"
+        case .wholeSession: "Whole session"
+        }
+    }
+}

@@ -4,6 +4,8 @@ import Foundation
 struct VoiceIntent: Codable, Equatable {
     enum Kind: String, Codable {
         case rpe, reps, setLoad, loadDelta, skipSet, nextExercise, note, undo, pause, resume
+        // "That was at 235": the weight he actually lifted on the set just logged.
+        case lastSetLoad
         case endSession, starting, endSet, replayCue, yes, no, answer, unknown
         // The real sheet (HANDOFF.md §7): warm-ups, add-ons, the day, and a set flagged for the coach.
         case topSet, warmup, addAddOn, skipAddOn, changeDay, flagSet

@@ -79,6 +79,9 @@ final class Settings {
     /// Developer → "Apple voice processing" (off until the gym data says it hears more): noise
     /// suppression and gain control on the session mic, recorded with every utterance.
     var voiceProcessing: Bool { didSet { defaults.set(voiceProcessing, forKey: "voiceProcessing") } }
+    /// Developer → "Lower music on the AirPods mic" (don't lower): on the AirPods' high-quality link
+    /// a lowering can pause his music (Oct 29), so which way, if any, is his to try.
+    var airPodsLowering: AirPodsLowering { didSet { defaults.set(airPodsLowering.rawValue, forKey: "airPodsLowering") } }
     /// Sessions started (rehearsals don't count): the spoken intro before the first, and "Say go
     /// when you lift." at the end of each rest for the first three.
     var sessionsStarted: Int { didSet { defaults.set(sessionsStarted, forKey: "sessionsStarted") } }
@@ -121,6 +124,7 @@ final class Settings {
         useAirPodsMic = defaults.object(forKey: "useAirPodsMic") as? Bool ?? true
         cameraStartsSets = defaults.bool(forKey: "cameraStartsSets")
         voiceProcessing = defaults.bool(forKey: "voiceProcessing")
+        airPodsLowering = defaults.string(forKey: "airPodsLowering").flatMap(AirPodsLowering.init(rawValue:)) ?? .off
         frontCameraInSessions = defaults.bool(forKey: "frontCameraInSessions")
         sessionsStarted = defaults.integer(forKey: "sessionsStarted")
         checkInWakeTime = defaults.string(forKey: "checkInWakeTime") ?? "06:30"

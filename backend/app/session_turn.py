@@ -46,7 +46,17 @@ ACTION_KINDS = tuple(k for k in voice.INTENTS if k not in ("chatter", "unknown",
 ActionKind = Literal[*ACTION_KINDS]  # type: ignore[valid-type]
 
 # The fast path: the rule layer's reading is used as is, with the engine's template as the reply.
-FAST_INTENTS = {"starting", "topSet", "endSet", "reps", "acceptSuggestion", "keepLoad", "undo", "flagSet"}
+FAST_INTENTS = {
+    "starting",
+    "topSet",
+    "endSet",
+    "reps",
+    "lastSetLoad",
+    "acceptSuggestion",
+    "keepLoad",
+    "undo",
+    "flagSet",
+}
 # These only when they answer something the app asked (a bare number is a count either way).
 FAST_WHEN_ASKED = {"yes", "no", "choose"}
 
@@ -166,7 +176,8 @@ SYSTEM = (
     "actions, empty reply.\n"
     "Actions are the app's own: starting (he's about to lift), endSet (a set just ended, number = reps if he "
     "said them), reps (a count for a set: setNumber when he names one, else the last set), rpe (only with "
-    "'felt like', 'RPE' or 'out of ten'), setLoad (pounds), loadDelta (+/- pounds), acceptSuggestion, "
+    "'felt like', 'RPE' or 'out of ten'), setLoad (pounds), loadDelta (+/- pounds), lastSetLoad (the weight he "
+    "actually lifted on the set just logged: 'that was at 235', number = pounds), acceptSuggestion, "
     "keepLoad, undo, note (a remark for his coach, his words in text), flagSet (the last set's video for his "
     "coach), skipSet, nextExercise, skipExercise (text = the name), addAddOn / skipAddOn (text = the name), "
     "changeDay (number = day), equipmentTaken (text = what's taken, as he said it), swapTo (text = what he's "

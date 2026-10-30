@@ -180,6 +180,10 @@ enum Callout {
         "Set \(setNumber), \(reps) reps."
     }
 
+    static func setLoadLogged(_ load: Double, setNumber: Int) -> String {
+        "Set \(setNumber), \(Format.number(load))."
+    }
+
     static func loadChanged(to load: Double) -> String {
         "Load \(Format.number(load))."
     }
