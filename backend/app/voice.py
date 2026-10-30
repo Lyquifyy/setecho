@@ -411,6 +411,9 @@ _END_SET = re.compile(
     r"\b(end|done|finished|that'?s|stop)( the| this| that| with this| with the| with that)? (set|rep)s?\b|\bset done\b"
     r"|^(i'?m )?(done|finished)$|\bdone$"
 )
+# A bare "stop" while a set or hold runs (Oct 29: mid-set it was ignored). Elsewhere it is too
+# vague to log a set on, and Spark reads it.
+_STOP = re.compile(r"^(?:ok |okay |alright |and )?(?:stop|stopping|stop there|stop it|stop now)$")
 _RPE = re.compile(
     r"\b(?:felt like|feels like|felt|rpe|rated?)\s+(?:an?\s+)?(?P<n>[\w .]+?)(?:\s+(?:rpe|out of ten))?$"
     r"|\b(?:that was|that'?s|it was)\s+an?\s+(?P<m>[\w .]+?)(?:\s+(?:rpe|out of ten))?$"
@@ -626,6 +629,8 @@ def classify_by_rules(transcript: str, context: SessionContext | None = None) ->
     if _SKIP_SET.search(t):
         return intent("skipSet")
     if _END_SET.search(t):
+        return intent("endSet")
+    if _STOP.match(t) and context is not None and context.state in ("recording", "hold"):
         return intent("endSet")
     if _STARTING.search(t):
         return intent("starting")

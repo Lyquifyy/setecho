@@ -16,7 +16,8 @@ struct DeveloperView: View {
     var body: some View {
         @Bindable var settings = settings
         let takes = FilmingRecorder.takes(in: store.mediaDirectory)
-        let sessions = store.sessions.filter { !$0.sets.isEmpty }.sorted { $0.startedAt > $1.startedAt }
+        // Every session, sets or not: a test whose sets were undone still has its camera and voice record (Oct 29).
+        let sessions = store.sessions.sorted { $0.startedAt > $1.startedAt }
         ScreenScaffold(onClose: onClose) {
             LinkButton(title: "Settings", chevron: .leading) { dismiss() }
             TitleBlock(title: "Developer", subtitle: "For testing and tuning. Everything here stays on the phone unless you share it.")

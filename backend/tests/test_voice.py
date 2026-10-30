@@ -129,6 +129,10 @@ def test_add_on_rules_match_only_the_sessions_names():
         ("done, 12", "ready", "endSet", 12),
         ("twelve", "ready", "answer", 12),
         ("five,Five,", "rest", "answer", 5),  # Oct 29: logged as 505 reps
+        # Oct 29: a bare "stop" mid-set was ignored.
+        ("Stop.", "recording", "endSet", None),
+        ("okay, stop", "recording", "endSet", None),
+        ("stop there", "hold", "endSet", None),
         ("I'm done", "recording", "endSet", None),
         ("I'm done with this set", "rest", "endSet", None),
         ("I'm done", "rest", "endSession", None),
@@ -151,6 +155,17 @@ def test_between_set_phrases(transcript, state, intent, number):
     result = voice.classify_by_rules(transcript, CONTEXT.model_copy(update={"state": state}))
     assert result is not None, transcript
     assert (result.intent, result.number) == (intent, number)
+
+
+@pytest.mark.parametrize("state", ["ready", "rest", "paused"])
+def test_a_bare_stop_outside_a_set_is_not_a_set(state):
+    # Out of a set "stop" could mean anything; Spark reads it rather than logging a set.
+    assert voice.classify_by_rules("stop", CONTEXT.model_copy(update={"state": state})) is None
+
+
+def test_a_bare_stop_mid_set_ends_it_through_the_turn_route():
+    ruled, by = voice.route("Stop!", CONTEXT.model_copy(update={"state": "recording"}))
+    assert (ruled.intent, by) == ("endSet", "rules")
 
 
 @pytest.mark.parametrize(
