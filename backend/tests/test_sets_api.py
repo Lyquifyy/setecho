@@ -77,7 +77,7 @@ def test_rest_pause_set_gets_no_velocity_loss(client, fake_sam):
 def test_equipment_picks_the_prompt(client, fake_sam):
     r = _post(client, context={"exerciseId": "x", "equipment": "dumbbell"})
     assert r.status_code == 200 and r.json()["prompt"] == "dumbbell"
-    assert fake_sam["prompts"] == ["dumbbell"]
+    assert sorted(fake_sam["prompts"]) == ["dumbbell", "hand"]  # the hands looked at alongside
 
 
 def test_bad_equipment_is_422(client, fake_sam):
@@ -160,8 +160,16 @@ def test_nothing_moving_under_the_equipment_looks_at_his_hands(client, fake_sam,
 
 
 def test_a_count_under_the_equipment_needs_no_second_look(client, fake_sam):
+    r = _post(client, context={"exerciseId": "x", "equipment": "barbell"})
+    assert r.json()["reps"] == 8 and fake_sam["prompts"] == ["weight plate"]
+
+
+def test_dumbbells_and_cables_look_at_the_hands_at_the_same_time(client, fake_sam):
+    """Both looks run together; the equipment's count wins when it has one."""
     r = _post(client, context={"exerciseId": "x", "equipment": "cable"})
-    assert r.json()["reps"] == 8 and fake_sam["prompts"] == ["weight stack"]
+    body = r.json()
+    assert sorted(fake_sam["prompts"]) == ["hand", "weight stack"]
+    assert body["reps"] == 8 and body["prompt"] == "weight stack" and fake_sam["deleted"] == ["file_1"]
 
 
 def test_context_model_defaults():

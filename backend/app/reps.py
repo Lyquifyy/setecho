@@ -49,6 +49,9 @@ SAM_PROMPTS: dict[str, str] = {
 # carry the weight on almost every lift. The racked dumbbell, a home cable with no stack in view, a
 # machine filmed from the side (Oct 30: "I need to track any lift on video").
 SAM_FALLBACK_PROMPT = "hand"
+# Where the hands are looked at alongside the equipment, not after it: the equipment's look fails most
+# often here, and doing both at once keeps the count near 30 s. Plates and bodies track well (G7).
+HANDS_ALONGSIDE = ("dumbbell", "cable", "machine")
 
 # Tuned constants. Change them here and in RepCounter.swift together.
 MIN_TRACK_SHARE = 0.80

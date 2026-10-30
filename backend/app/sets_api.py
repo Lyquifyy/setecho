@@ -111,13 +111,25 @@ async def count_clip(data: bytes, context: CountContext) -> CountResponse:
         file_id = await run_in_threadpool(meta.upload_video, path)
         timings["upload"] = round(time.monotonic() - t1, 2)
     try:
-        track, counted = await _segment_and_count(file_id, prompt, times, context, timings, "")
-        if not counted.reps and prompt != reps.SAM_FALLBACK_PROMPT:
-            # Nothing moving under the equipment's prompt: one more look, at his hands. The better count wins.
-            hands = await _segment_and_count(file_id, reps.SAM_FALLBACK_PROMPT, times, context, timings, "2")
-            if hands[1].reps:
-                prompt = reps.SAM_FALLBACK_PROMPT
-                track, counted = hands
+        if context.equipment in reps.HANDS_ALONGSIDE:
+            # Dumbbells and cables, where the equipment's look most often finds nothing moving: both looks
+            # at once, so the hands cost no extra wait. The equipment's count wins when it has one.
+            first, hands = await asyncio.gather(
+                _segment_and_count(file_id, prompt, times, context, timings, ""),
+                _segment_and_count(file_id, reps.SAM_FALLBACK_PROMPT, times, context, timings, "2"),
+            )
+        else:
+            first = await _segment_and_count(file_id, prompt, times, context, timings, "")
+            hands = None
+            if not first[1].reps:
+                # Nothing moving under the equipment's prompt: one more look, at his hands.
+                hands = await _segment_and_count(
+                    file_id, reps.SAM_FALLBACK_PROMPT, times, context, timings, "2"
+                )
+        track, counted = first
+        if not counted.reps and hands is not None and hands[1].reps:
+            prompt = reps.SAM_FALLBACK_PROMPT
+            track, counted = hands
     finally:
         await run_in_threadpool(meta.delete_file, file_id)
     return CountResponse(
