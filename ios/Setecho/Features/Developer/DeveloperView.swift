@@ -55,14 +55,14 @@ struct DeveloperView: View {
                     .tint(Theme.cobalt)
                 }
                 .frame(minHeight: 44)
-                Text("While the AirPods mic records at full quality, lowering your music can pause it. Whole session lowers it from start to end. Apple's speech session lowers it only while a line plays, in Apple's voice without the Voice tone settings. Run the test below, then pick a way that dipped your music and kept it playing. Don't lower: lines play over your music.")
+                Text("While the AirPods mic records at full quality, lowering your music can pause it. Whole session lowers it from start to end. Apple's speech session lowers it only while a line plays, in Apple's voice without the Voice tone settings. Run the test below to hear it. Don't lower: lines play over your music.")
                     .font(.footnote).secondaryText()
                 CardDivider()
-                LinkButton(title: mixingProbe.running ? "Testing…" : "Test music with each mic setting") {
+                LinkButton(title: mixingProbe.running ? "Testing…" : "Test music with the AirPods mic") {
                     Task { await mixingProbe.run() }
                 }
                 .disabled(mixingProbe.running)
-                Text("Play music on your AirPods first. It starts a session one piece at a time (audio, mic, camera, a spoken line), says a line with each way of lowering your music on the AirPods mic (listen: did the music dip under the line, was the line still loud, and did the music keep playing?), then lowers and restores the music under three mic settings, about a minute in all. Each line says whether your music was still playing and which mic listened; the first line that says NOT playing is the culprit. If your music pauses when the AirPods mic comes on, press play on your AirPods within 15 seconds and the test carries on. The last setting is the old call-quality one and may stop your music on purpose.")
+                Text("Play music on your AirPods first. About 40 seconds: it starts a session one piece at a time (audio, mic, camera, a spoken line), then says a line on Apple's speech session two ways, each followed by 6 quiet seconds. Listen: does your music dip under each line and come back up after? If your music pauses, press play within 15 seconds.")
                     .font(.footnote).secondaryText()
                 ForEach(mixingProbe.summary, id: \.self) { line in
                     Text(line).font(.footnote).foregroundStyle(line.contains("ok · music playing") ? Theme.textSecondary : Theme.navy)

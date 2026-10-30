@@ -2,15 +2,12 @@ import AVFoundation
 import Foundation
 import Observation
 
-/// Developer → Hearing → "Test music with each mic setting" (Oct 28 gym test: with the AirPods mic on
-/// and music playing, restoring the music failed with '!int', "can't interrupt others"). With his
-/// music playing, it runs the session's lower-and-restore under three configurations, the mic open
-/// the whole time as in a session: the phone mic only, iOS 26's high-quality recording alone (the
-/// app's AirPods setting), and the old call-quality HFP last, as it can stop his music (Oct 29). Each
-/// step records the options iOS applied, the mic that listened, whether his music was still playing,
-/// and any error, so the one that makes the session non-mixable is found on the device. First, a
-/// session start step by step (Oct 29: the music still stopped there with the mic at full quality):
-/// the app's own audio with the mic open, then the camera, then a spoken line.
+/// Developer → Hearing → "Test music with the AirPods mic" (Oct 28–29: with the AirPods mic and his
+/// music, the music paused at a session start and at every line). With his music playing: a session
+/// start one piece at a time (audio, mic, camera, a spoken line), then a line on Apple's speech session
+/// both ways (one synthesizer kept for every line, and a fresh one released after each), each followed
+/// by 6 quiet seconds so he can hear whether his music comes back up. Each step records whether his
+/// music was still playing and which mic listened. About 40 seconds.
 @MainActor
 @Observable
 final class AudioMixingProbe {
@@ -29,65 +26,12 @@ final class AudioMixingProbe {
 
     private let session = AVAudioSession.sharedInstance()
 
-    static let setups: [(String, AVAudioSession.CategoryOptions)] = [
-        ("Phone mic only", [.mixWithOthers, .allowBluetoothA2DP, .defaultToSpeaker]),
-        ("AirPods mic, high quality", [.mixWithOthers, .allowBluetoothA2DP, .defaultToSpeaker, .bluetoothHighQualityRecording]),
-        ("AirPods mic, call quality (old)", [.mixWithOthers, .allowBluetoothA2DP, .defaultToSpeaker, .allowBluetoothHFP, .bluetoothHighQualityRecording]),
-    ]
-
     func run() async {
         guard !running else { return }
         running = true
         rows = []
         defer { running = false }
         await sessionStart()
-        for (name, base) in Self.setups {
-            let engine = AVAudioEngine()
-            await step(name, "set up and activate") {
-                try self.session.setCategory(.playAndRecord, mode: .default, options: base)
-                let highQuality = base.contains(.bluetoothHighQualityRecording)
-                    ? self.session.availableInputs?.first { $0.bluetoothMicrophoneExtension?.highQualityRecording.isSupported == true } : nil
-                try? self.session.setPreferredInput(highQuality)
-                try self.session.setActive(true)
-            }
-            // The mic open, as in a session: HFP and high-quality recording only engage while recording.
-            let input = engine.inputNode
-            let format = input.outputFormat(forBus: 0)
-            if format.sampleRate > 0, format.channelCount > 0 {
-                // @Sendable so the closure is not main-actor isolated: the tap runs on the realtime
-                // audio thread, and a main-actor tap crashed this test on the first buffer (Oct 29).
-                input.installTap(onBus: 0, bufferSize: 2048, format: format) { @Sendable _, _ in }
-                try? engine.start()
-            } else {
-                rows.append(Row(setup: name, step: "open the mic", applied: [], musicPlaying: session.isOtherAudioPlaying,
-                                mic: "no mic", error: "the input has no format"))
-            }
-            try? await Task.sleep(for: .seconds(1))
-            await step(name, "lower the music") {
-                try self.session.setCategory(.playAndRecord, mode: .default, options: base.union(.duckOthers))
-                try self.session.setActive(true)
-            }
-            try? await Task.sleep(for: .seconds(1.5))
-            await step(name, "restore, no reactivation") {
-                try self.session.setCategory(.playAndRecord, mode: .default, options: base)
-            }
-            try? await Task.sleep(for: .seconds(1))
-            await step(name, "lower again") {
-                try self.session.setCategory(.playAndRecord, mode: .default, options: base.union(.duckOthers))
-                try self.session.setActive(true)
-            }
-            try? await Task.sleep(for: .seconds(1.5))
-            await step(name, "restore with reactivation (the old way)") {
-                try self.session.setCategory(.playAndRecord, mode: .default, options: base)
-                try self.session.setActive(true)
-            }
-            try? await Task.sleep(for: .seconds(1))
-            input.removeTap(onBus: 0)
-            engine.stop()
-        }
-        // Back to the app's own configuration, and the input it would choose.
-        try? AirPodsMic.shared.apply(to: session, ducking: false)
-        try? session.setPreferredInput(AirPodsMic.shared.preferredInput(in: session))
     }
 
     /// A session start, one piece at a time, as SessionCoordinator does it: where his music stops.
@@ -109,7 +53,7 @@ final class AudioMixingProbe {
             await step(setup, "camera on") { camera.start() }
             try? await Task.sleep(for: .seconds(2.5))
         }
-        await audio.speak("Testing your music, one, two, three.")
+        await audio.speak("Testing your music, one, two, three.")   // the way his setting picks
         await step(setup, "a line spoken") {}
         try? await Task.sleep(for: .seconds(1.5))
         await step(setup, "1.5 s later") {}
@@ -119,45 +63,26 @@ final class AudioMixingProbe {
         try? await Task.sleep(for: .seconds(1))
     }
 
-    /// With the AirPods recording at high quality and his music on: each way a line could lower it
-    /// (Developer → "Lower music on the AirPods mic"), each with a spoken line. He listens: did the
-    /// music dip under the line, and was the line itself still loud? The rows say whether the music
-    /// kept playing. Paused music gets 15 s for him to press play before the next way.
+    /// With the AirPods recording at high quality and his music on: a line on Apple's speech session,
+    /// which lowers his music for the line by itself, then 6 quiet seconds. He listens: did the music
+    /// dip under the line, and come back up after? Kept: one synthesizer for every line. Released:
+    /// a fresh one per line, let go when it ends, so its session has to end too.
     private func loweringTests() async {
         let setup = "Lowering"
         guard AirPodsMic.shared.isRecordingHighQuality(session) else {
             await step(setup, "skipped: the AirPods aren't recording at high quality") {}
             return
         }
-        let settings = Settings.shared
-        let chosen = settings.airPodsLowering
-        defer { settings.airPodsLowering = chosen }
-        let ways: [(String, AirPodsLowering?)] = [
-            ("Apple's speech session", .appleSpeech),
-            ("Silent Apple session under the app's voice", nil),
-            ("Per line, option only", .optionOnly),
-            ("Per line, with activation", .withActivation),
-        ]
-        for (name, method) in ways {
+        let voice = AudioService.preferredVoice()
+        let tone = AudioService.currentTone
+        let kept = OwnSessionSpeaker(freshPerLine: false)
+        for (name, speaker) in [("Kept", kept), ("Released", OwnSessionSpeaker(freshPerLine: true))] {
             await waitForMusic(setup)
-            await step(setup, "\(name): before") {}
-            let line = "\(name). Your music should dip under this line, then come back."
-            if let method {
-                settings.airPodsLowering = method
-                await AudioService().speak(line)   // a fresh service: no lowering turned off by an earlier line
-            } else {
-                // The lowering from a silent line on Apple's own session, the voice from the app's chain.
-                let ducker = OwnSessionSpeaker()
-                ducker.holdSilence()
-                try? await Task.sleep(for: .milliseconds(400))
-                let voice = AudioService.preferredVoice()
-                let tone = AudioService.currentTone
-                let output = VoiceOutput()
-                await output.speak(SpokenText.utterance(line, voice: voice, tone: tone), tone: tone)
-                ducker.stop()
-            }
-            try? await Task.sleep(for: .seconds(2))
-            await step(setup, "\(name): 2 s after the line") {}
+            await step(setup, "\(name): before the line") {}
+            await speaker.speak(SpokenText.utterance("\(name). Your music should dip under this line.", voice: voice, tone: tone))
+            await step(setup, "\(name): line done. Listen: does your music come back up?") {}
+            try? await Task.sleep(for: .seconds(6))
+            await step(setup, "\(name): 6 s later") {}
         }
     }
 

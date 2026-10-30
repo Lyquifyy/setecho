@@ -146,16 +146,14 @@ final class AirPodsMic {
     }
 }
 
-/// How a session lowers his music for a line while the AirPods record at high quality. Every way is
-/// a category change on the AirPods' call-style link, which can set it up again and pause his music
-/// (Oct 29), so the music test tries each one and the Developer setting picks.
+/// How a session lowers his music while the AirPods record at high quality. The app's own session
+/// can't do it per line: `.duckOthers` lasts as long as the session is active, and lowering or raising
+/// it means an activation, a deactivation or a category change, each of which sets up the AirPods'
+/// call-style link again and pauses his music (Oct 29, on his phone: "option only" and "with
+/// activation" both failed). So: not at all, the whole session, or per line on Apple's speech session.
 enum AirPodsLowering: String, CaseIterable, Identifiable {
     /// Lines play over his music at full volume.
     case off
-    /// `.duckOthers` added for the line and taken off after, with no activation.
-    case optionOnly
-    /// `.duckOthers` added with an activation, as on A2DP (the old way).
-    case withActivation
     /// `.duckOthers` from the session's start to its end: the music lower throughout, no changes mid-session.
     case wholeSession
     /// Each line spoken on the synthesizer's own session, which lowers his music for the line by
@@ -167,8 +165,6 @@ enum AirPodsLowering: String, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .off: "Don't lower"
-        case .optionOnly: "Per line, option only"
-        case .withActivation: "Per line, with activation"
         case .wholeSession: "Whole session"
         case .appleSpeech: "Per line, Apple's speech session"
         }

@@ -299,21 +299,33 @@ private struct BufferBox: @unchecked Sendable {
 /// automatically". His music lowers for the line and comes back after it, and the app's recording
 /// session is never touched: on the AirPods' high-quality link every change to that session pauses
 /// his music, and only its own activation can lower it (Oct 29). Lines skip the EQ and compressor.
+/// `freshPerLine`: a new synthesizer for each line, released when it ends, so its session has to
+/// end and his music come back up (Oct 29: he couldn't tell it did with one kept for every line).
 @MainActor
 final class OwnSessionSpeaker: NSObject, AVSpeechSynthesizerDelegate {
-    private let synth = AVSpeechSynthesizer()
+    private let freshPerLine: Bool
+    private var synth: AVSpeechSynthesizer?
     private var current: ObjectIdentifier?
     private var finished: CheckedContinuation<Void, Never>?
 
-    override init() {
+    init(freshPerLine: Bool = true) {
+        self.freshPerLine = freshPerLine
         super.init()
+    }
+
+    private func synthesizer() -> AVSpeechSynthesizer {
+        if let synth, !freshPerLine { return synth }
+        let synth = AVSpeechSynthesizer()
         synth.usesApplicationAudioSession = false
         synth.delegate = self
+        self.synth = synth
+        return synth
     }
 
     /// Returns when the line has been spoken or stopped; a callback that never comes ends it after a minute.
     func speak(_ utterance: AVSpeechUtterance) async {
         stop()
+        let synth = synthesizer()
         let id = ObjectIdentifier(utterance)
         current = id
         Task { [weak self] in
@@ -326,17 +338,8 @@ final class OwnSessionSpeaker: NSObject, AVSpeechSynthesizerDelegate {
         }
     }
 
-    /// Silence for up to `seconds`, held until `stop()`: the lowering without a voice of its own.
-    func holdSilence(seconds: Int = 30) {
-        let breaks = String(repeating: "<break time=\"5s\"/>", count: max(1, seconds / 5))
-        guard let utterance = AVSpeechUtterance(ssmlRepresentation: "<speak>\(breaks)</speak>") else { return }
-        stop()
-        current = ObjectIdentifier(utterance)
-        synth.speak(utterance)
-    }
-
     func stop() {
-        if synth.isSpeaking { synth.stopSpeaking(at: .immediate) }
+        if let synth, synth.isSpeaking { synth.stopSpeaking(at: .immediate) }
         if let current { end(current) }
     }
 
@@ -345,6 +348,7 @@ final class OwnSessionSpeaker: NSObject, AVSpeechSynthesizerDelegate {
         current = nil
         finished?.resume()
         finished = nil
+        if freshPerLine { synth = nil }   // released: its session ends with it
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
