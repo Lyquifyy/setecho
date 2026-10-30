@@ -416,6 +416,51 @@ final class Store {
         write(chatHistory, "whatsapp.json")
     }
 
+    // MARK: Session recordings
+
+    /// What sessions leave in media: set clips and their count copies, the detector's segments, the
+    /// tuning records (`SessionDebug`). Photos, the check-in's cropped videos, cues and the WhatsApp
+    /// import are not recordings and stay.
+    nonisolated static let recordingPrefixes = ["set-", "segment-", "wrist-", "utterances-", "counts-", "audio-"]
+
+    /// The files and folders "Delete recordings" removes: the session files above and the filming takes.
+    var recordingFiles: [URL] {
+        let fm = FileManager.default
+        let names = (try? fm.contentsOfDirectory(atPath: mediaDirectory.path)) ?? []
+        var files = names.filter { name in Self.recordingPrefixes.contains { name.hasPrefix($0) } }
+            .map { mediaDirectory.appendingPathComponent($0) }
+        let filming = mediaDirectory.appendingPathComponent("filming", isDirectory: true)
+        if fm.fileExists(atPath: filming.path) { files.append(filming) }
+        return files
+    }
+
+    /// Bytes on disk under `recordingFiles`.
+    var recordingBytes: Int64 {
+        recordingFiles.reduce(0) { total, url in
+            let inside = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey])?.compactMap { $0 as? URL } ?? []
+            return total + ([url] + inside).reduce(0) { $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+        }
+    }
+
+    /// Free the space: every recording goes, the logged sets stay. Their clips are gone, so History
+    /// and the check-in's video picker stop offering them.
+    func deleteRecordings() {
+        for url in recordingFiles { try? FileManager.default.removeItem(at: url) }
+        guard sessions.contains(where: { $0.sets.contains { $0.clipFile != nil } }) else { return }
+        for i in sessions.indices {
+            for j in sessions[i].sets.indices { sessions[i].sets[j].clipFile = nil }
+        }
+        write(sessions, "sessions.json")
+    }
+
+    /// Every session goes from the training log as well: History, last time's loads and the check-in's
+    /// training facts start again from his imported history and paper logbook, which stay.
+    func deleteAllSessions() {
+        deleteRecordings()
+        sessions = []
+        write(sessions, "sessions.json")
+    }
+
     // MARK: Derived
 
     var lastPhotoSet: PhotoSet? { photoSets.max { $0.takenAt < $1.takenAt } }

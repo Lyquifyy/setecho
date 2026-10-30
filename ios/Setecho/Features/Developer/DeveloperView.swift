@@ -10,6 +10,10 @@ struct DeveloperView: View {
     @State private var exportError: String?
     @State private var rehearsingSession = false
     @State private var mixingProbe = AudioMixingProbe()
+    /// Bytes the recordings take, read on appear and after each delete.
+    @State private var recordingBytes: Int64 = 0
+    @State private var confirmDeleteRecordings = false
+    @State private var confirmDeleteSessions = false
     /// Closes the whole Settings sheet from here; "‹ Settings" goes back one screen.
     var onClose: (() -> Void)?
 
@@ -116,6 +120,20 @@ struct DeveloperView: View {
                 }
             }
 
+            SectionCard("Storage") {
+                Text("Set videos, the camera's recordings, each session's tuning record and the filming takes: \(Format.bytes(recordingBytes)).")
+                    .font(.subheadline).foregroundStyle(Theme.navy)
+                Button("Delete recordings", systemImage: "trash") { confirmDeleteRecordings = true }
+                    .buttonStyle(.setechoTonalWide)
+                    .disabled(recordingBytes == 0)
+                Text("Your logged sets stay in History and the check-in. Photos aren't touched.").font(.footnote).secondaryText()
+                CardDivider()
+                LinkButton(title: "Delete all sessions", chevron: .none) { confirmDeleteSessions = true }
+                    .disabled(store.sessions.isEmpty)
+                Text("The recordings and every logged session: History, last time's loads and the check-in's training start over. Your imported history and paper logbook stay.")
+                    .font(.footnote).secondaryText()
+            }
+
             SectionCard("Diagnostics") {
                 NavigationLink {
                     ProbeHomeView()
@@ -138,6 +156,23 @@ struct DeveloperView: View {
             let today = store.todayDay
             SessionView(day: today?.day, addOns: today.map { store.addOnsDue(on: $0.day.id).map(\.addOn) } ?? [],
                         weekNumber: today?.week.number ?? 1, store: store, rehearsal: true)
+        }
+        .onAppear { recordingBytes = store.recordingBytes }
+        .confirmationDialog("Delete recordings?", isPresented: $confirmDeleteRecordings, titleVisibility: .visible) {
+            Button("Delete \(Format.bytes(recordingBytes))", role: .destructive) {
+                store.deleteRecordings()
+                recordingBytes = store.recordingBytes
+            }
+        } message: {
+            Text("Set videos, tuning records and filming takes leave the phone. Share any you want to keep first.")
+        }
+        .confirmationDialog("Delete all sessions?", isPresented: $confirmDeleteSessions, titleVisibility: .visible) {
+            Button("Delete \(store.sessions.count) sessions", role: .destructive) {
+                store.deleteAllSessions()
+                recordingBytes = store.recordingBytes
+            }
+        } message: {
+            Text("Every logged set and recording leaves the phone. This can't be undone.")
         }
         .sheet(item: $exportFile) { file in
             ShareSheet(image: nil, text: nil, files: [file.url]) { _ in }

@@ -34,6 +34,11 @@ enum Format {
         return String(format: "%02d:%02d", s / 60, s % 60)
     }
 
+    /// Storage on the phone: 0 -> "Zero KB", 412_000_000 -> "412 MB"
+    static func bytes(_ count: Int64) -> String {
+        count.formatted(.byteCount(style: .file))
+    }
+
     /// "Oct 19"
     static func shortDate(_ date: Date) -> String {
         date.formatted(.dateTime.month(.abbreviated).day())
