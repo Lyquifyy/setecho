@@ -12,7 +12,7 @@ struct SourceChip: View {
         Text(source)
             .font(size == .hud ? .hudLabel.weight(.semibold) : .caption.weight(.semibold))
             .foregroundStyle(Theme.cobalt)
-            .lineLimit(1)
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, size == .hud ? Theme.Space.s : Theme.Space.xs)
             .padding(.vertical, Theme.Space.xxs)
             .background(Theme.cobaltTint, in: Capsule())
@@ -23,12 +23,16 @@ struct SourceChip: View {
 /// One check-in field: the coach's label, the answer, its source, and its state.
 /// Filled shows the chip; drafted adds a yellow "Confirm"; missing shows "Ask in wrap-up".
 struct FieldRow: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let field: FieldSpec
     let answer: FieldAnswer?
 
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.Space.s) {
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.s))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.Space.s))
+        layout {
             VStack(alignment: .leading, spacing: Theme.Space.xxs) {
                 Text(field.label).font(.subheadline).secondaryText()
                 if let answer, !answer.text.isEmpty {
@@ -47,7 +51,7 @@ struct FieldRow: View {
                     }
                 }
             }
-            Spacer(minLength: Theme.Space.xs)
+            if !typeSize.isAccessibilitySize { Spacer(minLength: Theme.Space.xs) }
             stateTag
         }
         .padding(.vertical, Theme.Space.xxs)

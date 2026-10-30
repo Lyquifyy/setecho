@@ -51,8 +51,13 @@ Read this before writing any UI in `ios/`. The design system (tokens, type, comp
 | `Theme.onStage` / `Theme.onStageSecondary` | #FFFFFF / #B4BCD8 | The big thing on the stage / secondary text on it (8.6:1) |
 | `Theme.onStageTrack` | #3A4263 | Upcoming segments on the stage (holds, steps) |
 | `Theme.Radius.sheet` | 28 pt | The top corners of a hands-free screen's white sheet |
-| Card radius / padding / gap | 16 / 16–18 / 16 pt | `SectionCard`, `Theme.gutter` |
-| Control radius | 12 pt | Buttons, fields |
+| Card radius / padding / gap | 22 / 20 / 16 pt | `SectionCard`, `Theme.gutter` |
+| Control radius | 16 pt | Buttons, fields |
+| `Theme.Surface.stroke` / `shadow` | #E0E6F1 / navy at 3.5% | Quiet card outline and depth; increased contrast uses `Theme.border` |
+| `Theme.Surface.shadowRadius` / `shadowY` | 12 / 4 pt | Soft, downward surface shadow |
+| `Theme.Control.minimum` / `primary` / `icon` | 44 / 56 / 36 pt | Minimum target, primary height, supporting icon tile |
+| `Theme.Control.pressedScale` | 0.98 | Touch feedback; disabled with Reduce Motion |
+| `Theme.Motion.press` / `change` / `fade` | 0.18 / 0.32 / 0.18 s | Smooth press, restrained spring, crossfade |
 
 **Type:** SF Pro everywhere except the wordmark image.
 - **Standard screens:** `.screenTitle`, `.sectionTitle`, `.metricXL` / `.metricL`.
@@ -278,3 +283,19 @@ Tabs: **Today / History / Check-in.** The More menu has two sections: from your 
 - **Spreadsheet delivery:** decided Oct 26, a Google Sheets link. The Import screen's first step takes a pasted link, with a file or screenshot as the fallback.
 - **Change rows checked by default?** The default is checked, with the Apply tap as the approval. If that makes rubber-stamping too easy, start them unchecked.
 - **Tagline:** "Your workout, logged hands-free." (clarity pass, Oct 29). Explain a check-in as a progress update sent to the coach. Public titles should make sense without bodybuilding knowledge; use "preparing for a bodybuilding competition" when that context matters.
+
+## App-wide finish pass (Oct 29)
+
+The cobalt notebook identity stays intact. Standard screens use quieter outlines, soft depth,
+roomier grouped cards, and headings without a redundant divider. Titles lead; dates and context
+sit below. A single footer action anchors each task. Buttons wrap their labels instead of shrinking
+instructions. Tabs scroll when larger text needs more width; Today tiles stack at accessibility sizes.
+
+First launch explains the program → logging → check-in flow. Import shows its three steps and
+labeled text fields. Empty states explain the next useful action. Check-in answers are accessible
+buttons, and voice actions use progressive disclosure. History clips open in the native video
+player; missing clips and failed message loads have explicit recovery states.
+
+Motion is small and purposeful: responsive button presses, sliding selection, progress changes,
+and existing hands-free answer transitions. Reduce Motion disables spatial control motion.
+The camera/photo pacing, athlete approval, source attribution and voice behavior remain product constraints.

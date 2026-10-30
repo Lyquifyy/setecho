@@ -50,18 +50,38 @@ enum Theme {
 
     // MARK: Corner radii (pt)
     enum Radius {
-        static let card: CGFloat = 16
-        static let control: CGFloat = 12
+        static let card: CGFloat = 22
+        static let control: CGFloat = 16
         static let tag: CGFloat = 8
         static let bubble: CGFloat = 14
         /// The white sheet across the bottom of a hands-free screen.
         static let sheet: CGFloat = 28
     }
 
-    /// Internal padding of a section card: 16 pt top, 18 pt sides and bottom.
-    static let cardPadding = EdgeInsets(top: 16, leading: 18, bottom: 18, trailing: 18)
+    /// Internal padding of a section card: 20 pt on every edge.
+    static let cardPadding = EdgeInsets(top: 20, leading: 20, bottom: 20, trailing: 20)
     /// Gap between cards and the page's side gutter.
     static let gutter: CGFloat = 16
+
+    enum Surface {
+        static let stroke = Color(hex: 0xE0E6F1)
+        static let shadow = Color(hex: 0x171D36, opacity: 0.035)
+        static let shadowRadius: CGFloat = 12
+        static let shadowY: CGFloat = 4
+    }
+
+    enum Control {
+        static let minimum: CGFloat = 44
+        static let primary: CGFloat = 56
+        static let icon: CGFloat = 36
+        static let pressedScale: CGFloat = 0.98
+    }
+
+    enum Motion {
+        static let press = Animation.smooth(duration: 0.18)
+        static let change = Animation.spring(duration: 0.32, bounce: 0.08)
+        static let fade = Animation.easeOut(duration: 0.18)
+    }
 }
 
 extension Color {

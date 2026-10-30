@@ -17,27 +17,31 @@ struct SectionCard<Content: View, Accessory: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.s) {
-            if let title {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(title)
-                        .font(.sectionTitle)
-                        .foregroundStyle(Theme.navy)
-                        .accessibilityAddTraits(.isHeader)
-                    Spacer(minLength: Theme.Space.xs)
-                    accessory
+            if title != nil {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline) {
+                        heading
+                        Spacer(minLength: Theme.Space.xs)
+                        accessory
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Space.xs) {
+                        heading
+                        accessory
+                    }
                 }
-                // A hairline under the title marks where the section's content begins.
-                CardDivider()
             }
             content
         }
         .padding(Theme.cardPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                .strokeBorder(Theme.border, lineWidth: 1)
-        )
+        .setechoSurface()
+    }
+
+    private var heading: some View {
+        Text(title ?? "")
+            .font(.sectionTitle)
+            .foregroundStyle(Theme.navy)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 

@@ -275,9 +275,13 @@ struct ReviewSendView: View {
                         Text("Tap one to change it before it goes out; the message is rewritten.").font(.footnote).secondaryText()
                         ForEach(Array(answered.enumerated()), id: \.element.id) { index, field in
                             if index > 0 { CardDivider() }
-                            FieldRow(field: field, answer: coordinator.answer(for: field))
-                                .contentShape(Rectangle())
-                                .onTapGesture { editing = field }
+                            Button { editing = field } label: {
+                                FieldRow(field: field, answer: coordinator.answer(for: field))
+                                    .multilineTextAlignment(.leading)
+                                    .frame(minHeight: Theme.Control.minimum)
+                            }
+                            .buttonStyle(QuietPressStyle())
+                            .accessibilityHint("Edit this answer")
                         }
                     }
                 }
@@ -289,9 +293,13 @@ struct ReviewSendView: View {
                         .font(.footnote).secondaryText()
                     ForEach(Array(open.enumerated()), id: \.element.id) { index, field in
                         if index > 0 { CardDivider() }
-                        FieldRow(field: field, answer: coordinator.answer(for: field))
-                            .contentShape(Rectangle())
-                            .onTapGesture { editing = field }
+                        Button { editing = field } label: {
+                                FieldRow(field: field, answer: coordinator.answer(for: field))
+                                    .multilineTextAlignment(.leading)
+                                    .frame(minHeight: Theme.Control.minimum)
+                            }
+                            .buttonStyle(QuietPressStyle())
+                            .accessibilityHint("Edit this answer")
                     }
                 }
             }

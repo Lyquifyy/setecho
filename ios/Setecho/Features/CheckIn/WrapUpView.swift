@@ -4,6 +4,7 @@ import SwiftUI
 /// at a time, spoken and shown in the same conversation layout as Check-in morning, with each
 /// answer stored under its check. Voice: "skip", "go back", "say that again". Ends on Review and send.
 struct WrapUpView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
     @Environment(Store.self) private var store
     let coordinator: CheckInCoordinator
@@ -43,7 +44,7 @@ struct WrapUpView: View {
         .fullScreenCover(isPresented: $showReview) {
             NavigationStack { ReviewSendView(coordinator: coordinator) }.environment(store)
         }
-        .animation(.snappy(duration: 0.3), value: model.isDone)
+        .animation(reduceMotion ? nil : Theme.Motion.change, value: model.isDone)
     }
 }
 

@@ -16,6 +16,14 @@ struct AddCoachReplyView: View {
             TitleBlock(title: "Add coach reply", subtitle: "His WhatsApp text or voice note. Nothing changes until you approve it.")
             SectionCard("Paste his text") {
                 TextEditor(text: $text)
+                    .accessibilityLabel("Coach’s message")
+                    .overlay(alignment: .topLeading) {
+                        if text.isEmpty {
+                            Text("Paste your coach’s message here…")
+                                .font(.body).secondaryText().padding(Theme.Space.xs)
+                                .allowsHitTesting(false).accessibilityHidden(true)
+                        }
+                    }
                     .font(.body)
                     .foregroundStyle(Theme.navy)
                     .scrollContentBackground(.hidden)

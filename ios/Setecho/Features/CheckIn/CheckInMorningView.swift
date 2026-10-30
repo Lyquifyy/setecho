@@ -5,6 +5,7 @@ import SwiftUI
 /// the voice bar saying whose turn it is. Full-screen and hands-free; the photo session runs
 /// inside it, and it ends on Review and send, the one tap of the morning.
 struct CheckInMorningView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
     @Environment(Store.self) private var store
     @State private var model: CheckInMorningModel
@@ -65,6 +66,6 @@ struct CheckInMorningView: View {
         }
         // Sent, or "done for now": the morning closes itself once its last line is said.
         .onChange(of: model.finished) { _, finished in if finished { dismiss() } }
-        .animation(.snappy(duration: 0.3), value: model.isDone)
+        .animation(reduceMotion ? nil : Theme.Motion.change, value: model.isDone)
     }
 }

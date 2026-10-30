@@ -4,6 +4,7 @@ import SwiftUI
 /// any add-on joining it, a morning add-on when one is due, and where the current check-in stands.
 struct TodayView: View {
     @Environment(Store.self) private var store
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showSession = false
     @State private var showMorning = false
     @State private var showPhotos = false
@@ -33,7 +34,9 @@ struct TodayView: View {
     var body: some View {
         // A rest day has nothing to start: no footer, not a disabled button (DESIGN.md, Today).
         ScreenScaffold(showsFooter: today?.day.isRest != true) {
-            TitleBlock(eyebrow: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()), title: "Today")
+            TitleBlock(eyebrow: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()),
+                       title: today == nil ? "Make room for training." : "Today",
+                       subtitle: today == nil ? "Your coach brings the plan. Setecho handles the logging." : nil)
             if let reply = store.pendingReply {
                 SectionCard("Coach reply", accessory: { TargetTag(text: "Review") }) {
                     Text(reply.summary(duration: reply.audioFile.flatMap { CoachReplyModel.duration(of: store.mediaDirectory.appendingPathComponent($0)) }))
@@ -72,18 +75,23 @@ struct TodayView: View {
                 }
             }
             sessionCard
-            HStack(alignment: .top, spacing: Theme.gutter) {
-                checkInTile
-                photosTile
+            if today != nil {
+                let layout = typeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.gutter))
+                    : AnyLayout(HStackLayout(alignment: .top, spacing: Theme.gutter))
+                layout {
+                    checkInTile
+                    photosTile
+                }
+                .fixedSize(horizontal: false, vertical: true)
             }
-            .fixedSize(horizontal: false, vertical: true)
         } footer: {
             if today == nil {
                 // First run: importing the program is the one thing to do.
-                Button("Import the program") { AppRouter.shared.showImport = true }.buttonStyle(.setechoPrimary)
+                Button("Set up with your coach’s plan", systemImage: "arrow.right") { AppRouter.shared.showImport = true }.buttonStyle(.setechoPrimary)
             } else {
                 // The only tap of a training day.
-                Button("Start session") {
+                Button("Start session", systemImage: "play.fill") {
                     if Settings.shared.hasSeenSessionIntro { showSession = true } else { showIntro = true }
                 }
                 .buttonStyle(.setechoPrimary)
@@ -109,6 +117,8 @@ struct TodayView: View {
         .onAppear {
             store.refreshCycle()
             Task {
+                // Ask for reminders only once there is a check-in to remind the athlete about.
+                guard store.currentTemplate != nil else { return }
                 if await Reminders.requestPermission() {
                     Reminders.scheduleEveReminder(schedule: schedule)
                     Reminders.scheduleDeadlineGuard(schedule: schedule)
@@ -167,7 +177,10 @@ struct TodayView: View {
                     }
                 }
                 CardDivider()
-                HStack(spacing: Theme.Space.xs) {
+                let actions = typeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.xs))
+                    : AnyLayout(HStackLayout(spacing: Theme.Space.xs))
+                actions {
                     changeDayMenu
                     if !next.day.isRest {
                         Button("What to say", systemImage: "text.bubble") { showGuide = true }
@@ -178,17 +191,37 @@ struct TodayView: View {
                 }
             }
         } else {
-            SectionCard("Today's session") {
-                Text("Import your coach's program to see today's session.")
-                    .font(.subheadline).secondaryText()
+            SectionCard("A little setup. A lot less admin.") {
+                setupRow("doc.text", title: "Bring your program", detail: "Paste your coach’s spreadsheet link or choose a file.")
+                CardDivider()
+                setupRow("waveform", title: "Lift. Say it. Logged.", detail: "Log sets by voice, with camera counting when you want it.")
+                CardDivider()
+                setupRow("checklist", title: "Check in with less effort", detail: "Your data, photos and answers, in your coach’s format.")
+            }
+            Label("Your coach’s plan. Always your call.", systemImage: "checkmark.shield")
+                .font(.subheadline).secondaryText()
+                .padding(.horizontal, Theme.Space.xxs)
+        }
+    }
+
+    private func setupRow(_ symbol: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: Theme.Space.m) {
+            Image(systemName: symbol).font(.title3).foregroundStyle(Theme.textSecondary)
+                .frame(width: Theme.Control.icon, height: Theme.Control.icon)
+                .background(Theme.page, in: RoundedRectangle(cornerRadius: Theme.Radius.tag))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: Theme.Space.xxs) {
+                Text(title).font(.headline).foregroundStyle(Theme.navy)
+                Text(detail).font(.subheadline).secondaryText().fixedSize(horizontal: false, vertical: true)
             }
         }
+        .padding(.vertical, Theme.Space.xs)
     }
 
     /// "5 exercises · 17 sets · tap one for its details".
     private func sessionOverview(_ day: ProgramDay) -> some View {
         let setCount = day.exercises.reduce(0) { $0 + $1.sets.count }
-        return Text("\(day.exercises.count) exercise\(day.exercises.count == 1 ? "" : "s") · \(setCount) sets · tap one for its details")
+        return Text("\(day.exercises.count) exercises · \(setCount) sets · Your coach’s plan")
             .font(.subheadline).monospacedDigit().secondaryText()
     }
 
@@ -212,8 +245,9 @@ struct TodayView: View {
             Label("Change day", systemImage: "arrow.left.arrow.right")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Theme.cobalt)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, minHeight: 44)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, Theme.Space.xs)
+                .frame(maxWidth: .infinity, minHeight: Theme.Control.minimum)
                 .background(Theme.cobaltTint, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
         }
     }

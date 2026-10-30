@@ -74,8 +74,8 @@ struct ConversationScreen<Footer: View>: View {
             }
         }
         .animation(reduceMotion ? .easeInOut(duration: 0.25) : .spring(duration: 0.45, bounce: 0.12), value: entries.count)
-        .animation(.snappy(duration: 0.3), value: phase)
-        .animation(.snappy(duration: 0.3), value: notice)
+        .animation(reduceMotion ? nil : Theme.Motion.change, value: phase)
+        .animation(reduceMotion ? nil : Theme.Motion.change, value: notice)
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
     }

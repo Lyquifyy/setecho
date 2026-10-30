@@ -8,6 +8,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var settings = Settings.shared
     @State private var personalVoiceNote: String?
+    @ScaledMetric(relativeTo: .subheadline) private var weekdayWidth = Theme.Control.minimum
     @State private var showGuide = false
     @State private var showIntro = false
 
@@ -37,7 +38,7 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var settings = settings
         ScreenScaffold(onClose: { dismiss() }) {
-            TitleBlock(title: "Settings", subtitle: "Only what the check-in can't read from Apple Health or the log.")
+            TitleBlock(title: "Make it yours", subtitle: "Your routine, your voice, your preferences.")
 
             SectionCard("You") {
                 SettingsField(placeholder: "First name", text: $settings.athleteFirstName)
@@ -55,7 +56,7 @@ struct SettingsView: View {
 
             SectionCard("Training") {
                 RowLabel("Training days")
-                HStack(spacing: Theme.Space.xs) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: weekdayWidth), spacing: Theme.Space.xxs / 2)], spacing: Theme.Space.xs) {
                     ForEach(weekdays, id: \.0) { day, name in
                         let on = settings.trainingWeekdays.contains(day)
                         Button(name) {

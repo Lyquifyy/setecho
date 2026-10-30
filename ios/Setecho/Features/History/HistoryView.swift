@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import AVKit
 
 /// History (DESIGN.md): tabs for Sessions (this week, previous, last time) · Sent check-ins · Photos · Plan changes.
 struct HistoryView: View {
@@ -33,7 +34,7 @@ struct HistoryView: View {
         let sessions = store.sessions.filter { !$0.sets.isEmpty }.sorted { $0.startedAt > $1.startedAt }
         let sent = store.checkIns.filter(\.isSent).sorted { $0.sentAt! > $1.sentAt! }
         ScreenScaffold {
-            TitleBlock(title: "History")
+            TitleBlock(title: "History", subtitle: "Your training, check-ins and progress, together.")
             SegmentTabs(items: [
                 .init(value: Section.sessions, title: "Sessions"),
                 .init(value: Section.checkIns, title: "Check-ins"),
@@ -68,7 +69,8 @@ struct HistoryView: View {
             Text("\(thisWeek.count) session\(thisWeek.count == 1 ? "" : "s")").font(.subheadline).monospacedDigit().secondaryText()
         }) {
             if thisWeek.isEmpty {
-                Text("No sessions yet this week.").font(.subheadline).secondaryText()
+                EmptyState(symbol: "dumbbell", title: "A fresh week", detail: "Your logged sessions will appear here. Start your next one from Today.")
+                Button("Go to Today", systemImage: "arrow.right") { AppRouter.shared.tab = .today }.buttonStyle(.setechoTonal)
             } else {
                 ForEach(Array(thisWeek.enumerated()), id: \.element.id) { index, session in
                     if index > 0 { CardDivider() }
@@ -136,7 +138,7 @@ struct HistoryView: View {
         }
         SectionCard("Sent check-ins") {
             if sent.isEmpty {
-                Text("Sent check-ins reopen here, read-only.").font(.subheadline).secondaryText()
+                EmptyState(symbol: "paperplane", title: "Your check-in record", detail: "After sending a check-in, come back here to read it alongside earlier weeks.")
             } else {
                 ForEach(Array(sent.enumerated()), id: \.element.id) { index, draft in
                     if index > 0 { CardDivider() }
@@ -173,7 +175,7 @@ struct HistoryView: View {
             }
         }) {
             if photoWeeks.isEmpty {
-                Text("Each week's four photos line up here.").font(.subheadline).secondaryText()
+                EmptyState(symbol: "photo.on.rectangle", title: "Progress, week by week", detail: "Take your first check-in photos from Today. Each week stays together, ready to compare.")
             } else {
                 Text("Tap a photo to see it full screen.").font(.footnote).secondaryText()
                 ForEach(Array(photoWeeks.enumerated()), id: \.element.id) { index, set in
@@ -188,7 +190,7 @@ struct HistoryView: View {
         SectionCard("Plan changes") {
             let applied = store.appliedReplies
             if applied.isEmpty {
-                Text("Applied coach replies appear here, with their changes.").font(.subheadline).secondaryText()
+                EmptyState(symbol: "text.bubble", title: "Your plan’s story", detail: "Changes you approve from your coach appear here, with the original words and an option to revert the latest update.")
             } else {
                 ForEach(Array(applied.enumerated()), id: \.element.id) { index, reply in
                     if index > 0 { CardDivider() }
@@ -248,6 +250,8 @@ struct SessionRow: View {
 
     /// Closed to its one-line summary; tap to see every set.
     @State private var expanded = false
+    @State private var clip: SessionClip?
+    @State private var missingClip = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Space.xs) {
@@ -270,7 +274,13 @@ struct SessionRow: View {
             if expanded { ForEach(session.sets) { set in
                 HStack(spacing: Theme.Space.s) {
                     if set.clipFile != nil {
-                        PlayButton(accessibilityLabel: "Play set \(set.setIndex + 1)") {}
+                        PlayButton(accessibilityLabel: "Play set \(set.setIndex + 1)") {
+                            guard let file = set.clipFile else { return }
+                            let url = store.mediaDirectory.appendingPathComponent(file)
+                            if FileManager.default.fileExists(atPath: url.path) {
+                                clip = SessionClip(url: url)
+                            } else { missingClip = true }
+                        }
                     }
                     Text(exerciseName(set)).font(.footnote).foregroundStyle(Theme.navy)
                     Spacer()
@@ -282,6 +292,12 @@ struct SessionRow: View {
             } }
         }
         .padding(.vertical, Theme.Space.xxs)
+        .sheet(item: $clip) { SessionClipPlayer(clip: $0) }
+        .alert("Video unavailable", isPresented: $missingClip) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("This clip is no longer on this phone. Your logged set is still saved.")
+        }
     }
 
     /// The cycle day, or the add-on a morning session is made of.
@@ -312,6 +328,7 @@ struct SentCheckInView: View {
     @Environment(Store.self) private var store
     let draft: CheckInDraft
     @State private var text: String?
+    @State private var loadError: String?
 
     var body: some View {
         ScreenScaffold(onClose: { dismiss() }) {
@@ -319,15 +336,48 @@ struct SentCheckInView: View {
             SectionCard("Message") {
                 if let text {
                     Text(text).font(.footnote).monospacedDigit().foregroundStyle(Theme.navy).textSelection(.enabled)
+                } else if let loadError {
+                    EmptyState(symbol: "wifi.exclamationmark", title: "Couldn’t open this check-in", detail: loadError)
+                    Button("Try again", systemImage: "arrow.clockwise") { Task { await load() } }.buttonStyle(.setechoTonal)
                 } else {
-                    ProgressView().tint(Theme.cobalt)
+                    LoadingRow(title: "Opening your check-in", detail: "Putting the saved answers in your coach’s format.")
                 }
             }
         }
-        .task {
-            if let template = store.currentTemplate {
-                text = try? await APIClient().checkInRender(template: template, draft: draft)
-            }
+        .task { await load() }
+    }
+
+    private func load() async {
+        loadError = nil
+        guard let template = store.currentTemplate else {
+            loadError = "Import your coach’s form to view this message. Your saved answers are still on this phone."
+            return
         }
+        do { text = try await APIClient().checkInRender(template: template, draft: draft) }
+        catch { loadError = "Check your connection and try again. Your saved check-in hasn’t changed." }
+    }
+}
+
+private struct SessionClip: Identifiable {
+    let url: URL
+    var id: URL { url }
+}
+
+private struct SessionClipPlayer: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer
+
+    init(clip: SessionClip) { _player = State(initialValue: AVPlayer(url: clip.url)) }
+
+    var body: some View {
+        NavigationStack {
+            VideoPlayer(player: player)
+                .background(Theme.cameraFill)
+                .navigationTitle("Set video")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+                .onDisappear { player.pause() }
+        }
+        .tint(Theme.cobalt)
     }
 }

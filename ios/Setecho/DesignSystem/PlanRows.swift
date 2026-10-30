@@ -89,6 +89,7 @@ struct AddOnRow: View {
 /// One exercise of today's session as a single line ("Bench press · 4 × 8") that opens to the sheet's details:
 /// load and intensity, equipment and rest, his "or" options and notes. Keeps a long day readable without scrolling.
 struct ExerciseDisclosureRow: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     let number: Int
     let exercise: PlannedExercise
     let expanded: Bool
@@ -102,11 +103,18 @@ struct ExerciseDisclosureRow: View {
                         .font(.footnote.weight(.semibold)).monospacedDigit()
                         .secondaryText()
                         .frame(width: 18, alignment: .leading)
-                    Text(exercise.name)
-                        .font(.body.weight(.semibold)).foregroundStyle(Theme.navy)
-                        .multilineTextAlignment(.leading)
-                    Spacer(minLength: Theme.Space.xs)
-                    Text(exercise.setsText).font(.subheadline.weight(.medium)).monospacedDigit().foregroundStyle(Theme.navy)
+                    let layout = typeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: Theme.Space.xxs))
+                        : AnyLayout(HStackLayout(spacing: Theme.Space.xs))
+                    layout {
+                        Text(exercise.name)
+                            .font(.body.weight(.semibold)).foregroundStyle(Theme.navy)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !typeSize.isAccessibilitySize { Spacer(minLength: Theme.Space.xs) }
+                        Text(exercise.setsText).font(.subheadline.weight(.medium)).monospacedDigit().foregroundStyle(Theme.navy)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     DisclosureChevron(expanded: expanded)
                 }
                 if expanded {

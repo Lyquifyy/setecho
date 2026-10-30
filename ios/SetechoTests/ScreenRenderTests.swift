@@ -188,6 +188,15 @@ enum ScreenShots {
                   view: { s in wrap(s, ConnectionsView(healthSources: ["Garmin Connect", "MacroFactor", "Withings"])) }))
         add(.init(name: "82-developer", group: "Settings", title: "Developer tools", tall: true,
                   view: { s in wrap(s, NavigationStack { DeveloperView(onClose: {}) }) }))
+        // Accessibility-sized text exercises the adaptive shared components.
+        add(.init(name: "90-large-today", group: "Accessibility", title: "Today · larger text", tall: true,
+                  view: { s in wrap(s, TabChrome(tab: .today) { TodayView() }.environment(\.dynamicTypeSize, .accessibility1)) }))
+        add(.init(name: "91-large-checkin", group: "Accessibility", title: "Check-in · larger text", tall: true,
+                  view: { s in wrap(s, TabChrome(tab: .checkIn) { CheckInView(store: s) }.environment(\.dynamicTypeSize, .accessibility1)) }))
+        add(.init(name: "92-large-welcome", group: "Accessibility", title: "First run · larger text", store: .firstRun, tall: true,
+                  view: { s in wrap(s, TabChrome(tab: .today) { TodayView() }.environment(\.dynamicTypeSize, .accessibility1)) }))
+        add(.init(name: "93-large-history", group: "Accessibility", title: "History · larger text", tall: true,
+                  view: { s in wrap(s, TabChrome(tab: .history) { HistoryView() }.environment(\.dynamicTypeSize, .accessibility1)) }))
         return shots
     }
 

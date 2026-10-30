@@ -22,10 +22,40 @@ struct CheckInView: View {
     }
 
     var body: some View {
-        ScreenScaffold {
+        ScreenScaffold(showsFooter: coordinator.template != nil) {
             TitleBlock(title: "Check-in", subtitle: "Due \(coordinator.due.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())) morning")
             if let template = coordinator.template {
                 headerCard
+                let readyIds = Set(template.orderedFields.filter { isReady($0) }.map(\.id))
+                let shown = template.orderedFields.filter {
+                    switch filter {
+                    case .all: true
+                    case .toDo: !readyIds.contains($0.id)
+                    case .ready: readyIds.contains($0.id)
+                    }
+                }
+                SegmentTabs(items: [
+                    .init(value: FieldFilter.all, title: "All"),
+                    .init(value: FieldFilter.toDo, title: "To do", badge: template.orderedFields.count - readyIds.count, highlight: true),
+                    .init(value: FieldFilter.ready, title: "Ready", badge: readyIds.count),
+                ], selection: $filter)
+                SectionCard("The coach's form") {
+                    if shown.isEmpty {
+                        EmptyState(symbol: filter == .toDo ? "checkmark.circle" : "tray",
+                                   title: filter == .toDo ? "You’re all caught up" : "Ready when you are",
+                                   detail: filter == .toDo ? "Every answer is ready for your review." : "Answers appear here as your check-in comes together.")
+                    }
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, field in
+                        if index > 0 { CardDivider() }
+                        Button { editing = field } label: {
+                            FieldRow(field: field, answer: coordinator.answer(for: field))
+                                .multilineTextAlignment(.leading)
+                                .frame(minHeight: Theme.Control.minimum)
+                        }
+                        .buttonStyle(QuietPressStyle())
+                        .accessibilityHint("Edit this answer")
+                    }
+                }
                 if !template.carriedBlocks.isEmpty {
                     SectionCard("Carried over from the coach", accessory: {
                         Button(showCarried ? "Hide" : "Show", systemImage: showCarried ? "chevron.up" : "chevron.down") {
@@ -42,32 +72,9 @@ struct CheckInView: View {
                         }
                     }
                 }
-                let readyIds = Set(template.orderedFields.filter { isReady($0) }.map(\.id))
-                let shown = template.orderedFields.filter {
-                    switch filter {
-                    case .all: true
-                    case .toDo: !readyIds.contains($0.id)
-                    case .ready: readyIds.contains($0.id)
-                    }
-                }
-                SegmentTabs(items: [
-                    .init(value: FieldFilter.all, title: "All"),
-                    .init(value: FieldFilter.toDo, title: "To do", badge: template.orderedFields.count - readyIds.count, highlight: true),
-                    .init(value: FieldFilter.ready, title: "Ready", badge: readyIds.count),
-                ], selection: $filter)
-                SectionCard("The coach's form") {
-                    if shown.isEmpty {
-                        Text(filter == .toDo ? "Nothing left to answer." : "Nothing ready yet.").font(.subheadline).secondaryText()
-                    }
-                    ForEach(Array(shown.enumerated()), id: \.element.id) { index, field in
-                        if index > 0 { CardDivider() }
-                        FieldRow(field: field, answer: coordinator.answer(for: field))
-                            .onTapGesture { editing = field }
-                    }
-                }
             } else {
-                SectionCard("No form yet") {
-                    Text("Import your coach's check-in form to see what fills itself.").font(.subheadline).secondaryText()
+                SectionCard {
+                    EmptyState(symbol: "checklist", title: "Your check-in starts here", detail: "Add your coach’s form once. Setecho brings together your data and leaves room for your words.")
                     Button("Import the form", systemImage: "square.and.arrow.down") { AppRouter.shared.showImport = true }
                         .buttonStyle(.setechoTonalWide)
                 }
@@ -139,14 +146,16 @@ struct CheckInView: View {
                     }
                     IconButton(systemImage: "arrow.clockwise", accessibilityLabel: "Refresh") { Task { await coordinator.buildDraft() } }
                 }
-                Button("Start 2-minute wrap-up", systemImage: "mic.fill") { showWrapUp = true }
-                    .buttonStyle(.setechoTonalWide)
-                    .disabled(coordinator.questions.isEmpty)
+                if !coordinator.questions.isEmpty {
+                    LinkButton(title: "Just answer the remaining questions", chevron: .none) { showWrapUp = true }
+                }
                 // Everything answered already: run the conversation again from the top. The spoken
                 // answers and today's photos start over; the data stays.
-                LinkButton(title: "Start over by voice", chevron: .none) {
-                    AppRouter.shared.morningFresh = true
-                    AppRouter.shared.showCheckInMorning = true
+                if coordinator.toAnswerCount == 0 {
+                    LinkButton(title: "Start over by voice", chevron: .none) {
+                        AppRouter.shared.morningFresh = true
+                        AppRouter.shared.showCheckInMorning = true
+                    }
                 }
             }
         }
@@ -174,6 +183,7 @@ struct FieldEditSheet: View {
             SectionCard("Answer", accessory: { if waitingOnAthlete { TargetTag(text: "Your answer") } }) {
                 TextEditor(text: $text)
                     .font(.body)
+                    .accessibilityLabel(field.label)
                     .foregroundStyle(Theme.navy)
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 100)

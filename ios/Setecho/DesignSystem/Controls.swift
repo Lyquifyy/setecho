@@ -5,19 +5,25 @@ import SwiftUI
 /// Full-width cobalt action. One per screen, in the footer.
 struct PrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
             .labelStyle(.titleAndIcon)
             .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 52)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, Theme.Space.m)
+            .padding(.vertical, Theme.Space.s)
+            .frame(maxWidth: .infinity, minHeight: Theme.Control.primary)
             .background(
                 configuration.isPressed ? Theme.cobaltPressed : Theme.cobalt,
                 in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
             )
             .opacity(isEnabled ? 1 : 0.45)
             .contentShape(Rectangle())
+            .scaleEffect(configuration.isPressed && !reduceMotion ? Theme.Control.pressedScale : 1)
+            .animation(reduceMotion ? nil : Theme.Motion.press, value: configuration.isPressed)
     }
 }
 
@@ -27,13 +33,13 @@ struct OutlineButtonStyle: ButtonStyle {
         configuration.label
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(Theme.cobalt)
-            .padding(.horizontal, 14)
+            .padding(.horizontal, Theme.Space.m)
             .frame(minHeight: 44)
             .background(
                 configuration.isPressed ? Theme.cobaltTint : Theme.surface,
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
             )
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.cobalt, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).strokeBorder(Theme.cobalt, lineWidth: 1))
     }
 }
 
@@ -41,6 +47,7 @@ struct OutlineButtonStyle: ButtonStyle {
 /// Use it where a card offers something to do, so the action reads as a button rather than a line of text.
 struct TonalButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var fullWidth = false
 
     func makeBody(configuration: Configuration) -> some View {
@@ -48,9 +55,9 @@ struct TonalButtonStyle: ButtonStyle {
             .font(.subheadline.weight(.semibold))
             .labelStyle(.titleAndIcon)
             .foregroundStyle(Theme.cobalt)
-            .lineLimit(1)
-            // Two wide ones share a row with an icon button (Today): shrink a little, never truncate.
-            .minimumScaleFactor(0.85)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, Theme.Space.xs)
             .padding(.horizontal, Theme.Space.s)
             .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: 44)
             .background(
@@ -59,6 +66,8 @@ struct TonalButtonStyle: ButtonStyle {
             )
             .opacity(isEnabled ? 1 : 0.45)
             .contentShape(Rectangle())
+            .scaleEffect(configuration.isPressed && !reduceMotion ? Theme.Control.pressedScale : 1)
+            .animation(reduceMotion ? nil : Theme.Motion.press, value: configuration.isPressed)
     }
 }
 
@@ -118,8 +127,8 @@ struct LinkButton: View {
                 }
             }
             .font(hud ? .hudLabel.weight(.medium) : .subheadline.weight(.medium))
-            .lineLimit(1)
-            .minimumScaleFactor(hud ? 0.8 : 1)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
             .foregroundStyle(Theme.cobalt)
             .frame(minHeight: 44)
             .contentShape(Rectangle())
@@ -159,8 +168,8 @@ struct TargetTag: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(Theme.navy)
             .multilineTextAlignment(.center)
-            .fixedSize()
-            .padding(.horizontal, 10)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, Theme.Space.s)
             .padding(.vertical, 6)
             .background(Theme.yellow, in: RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
     }
@@ -198,12 +207,15 @@ struct LoadRepsText: View {
 
 /// A single big number with a unit, e.g. "225 lb" or "8 reps".
 struct MetricText: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let value: String
     let unit: String
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(value).font(.metricXL)
+                .contentTransition(reduceMotion ? .opacity : .numericText())
+                .animation(reduceMotion ? nil : Theme.Motion.change, value: value)
             Text(unit).font(.metricUnitXL)
         }
         .foregroundStyle(Theme.navy)

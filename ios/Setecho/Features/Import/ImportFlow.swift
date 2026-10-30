@@ -71,8 +71,8 @@ private struct ImportInputView: View {
             if step > 1 {
                 LinkButton(title: "Back", chevron: .leading) { dismiss() }
             }
+            SetupProgress(current: step)
             TitleBlock(
-                eyebrow: "Import · step \(step) of 3",
                 title: isProgram ? "Coach's program" : isRules ? "His instructions" : "Check-in form",
                 subtitle: isProgram
                     ? "The spreadsheet, exactly as your coach sent it."
@@ -87,6 +87,16 @@ private struct ImportInputView: View {
             }
             SectionCard(isProgram ? "Or paste the sheet" : isRules ? "Paste his email" : "Paste the form") {
                 TextEditor(text: $model.text)
+                    .accessibilityLabel(isProgram ? "Program text" : isRules ? "Coach’s instructions" : "Check-in form")
+                    .overlay(alignment: .topLeading) {
+                        if model.text.isEmpty {
+                            Text(isProgram ? "Paste the rows from your coach’s sheet…" : isRules ? "Paste your coach’s instructions here…" : "Paste the questions your coach asks each week…")
+                                .font(.body).secondaryText()
+                                .padding(Theme.Space.xs)
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
+                        }
+                    }
                     .font(.body)
                     .foregroundStyle(Theme.navy)
                     .scrollContentBackground(.hidden)
@@ -123,7 +133,7 @@ private struct ImportInputView: View {
             }
             if model.isLoading {
                 LoadingCard(title: isProgram ? "Reading the spreadsheet" : isRules ? "Reading his rules" : "Reading the form",
-                            detail: isProgram ? "Muse Spark reads every tab. About half a minute." : "Muse Spark reads it once. About 20 seconds.")
+                            detail: "You’ll review everything before saving it.")
             } else if let error = model.error {
                 SectionCard("Couldn't read it") {
                     Text(error).font(.subheadline).foregroundStyle(Theme.navy)
@@ -137,7 +147,10 @@ private struct ImportInputView: View {
                 }
             } label: {
                 if model.isLoading {
-                    Label("Reading with Muse Spark…", systemImage: "sparkles")
+                    HStack(spacing: Theme.Space.s) {
+                        ProgressView().tint(Theme.surface)
+                        Text("Reading your material…")
+                    }
                 } else {
                     Text(isProgram ? "Read spreadsheet" : isRules ? "Read his rules" : "Read form")
                 }

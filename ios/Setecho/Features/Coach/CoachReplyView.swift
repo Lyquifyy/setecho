@@ -17,7 +17,10 @@ struct CoachReplyView: View {
             if let model {
                 content(model)
             } else {
-                ProgressView().tint(Theme.cobalt).frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.page)
+                ScreenScaffold(onClose: { dismiss() }) {
+                    TitleBlock(title: "Coach reply")
+                    LoadingCard(title: "Opening your coach’s reply", detail: "Getting the proposed changes ready for your review.")
+                }
             }
         }
         .task { if model == nil { model = CoachReplyModel(store: store, reply: reply) } }

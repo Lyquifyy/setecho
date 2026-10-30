@@ -13,19 +13,29 @@ struct SegmentTabs<Value: Hashable>: View {
     let items: [Item]
     @Binding var selection: Value
     @Namespace private var namespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            tabRow
+            ScrollView(.horizontal, showsIndicators: false) { tabRow.fixedSize(horizontal: true, vertical: false) }
+        }
+        .sensoryFeedback(.selection, trigger: selection)
+    }
+
+    private var tabRow: some View {
         HStack(spacing: Theme.Space.xxs) {
             ForEach(items, id: \.value) { item in
                 let selected = item.value == selection
                 Button {
-                    withAnimation(.snappy(duration: 0.25)) { selection = item.value }
+                    withAnimation(reduceMotion ? nil : Theme.Motion.change) { selection = item.value }
                 } label: {
                     HStack(spacing: 6) {
-                        Text(item.title).lineLimit(1).minimumScaleFactor(0.8)
+                        Text(item.title).lineLimit(1).fixedSize(horizontal: true, vertical: false)
                         if let badge = item.badge, badge > 0 {
                             Text("\(badge)")
                                 .font(.caption.weight(.bold)).monospacedDigit()
+                                .lineLimit(1).fixedSize()
                                 .foregroundStyle(Theme.navy)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -72,29 +82,26 @@ struct TileCard<Content: View>: View {
                         .foregroundStyle(Theme.cobalt)
                         .frame(width: 30, height: 30)
                         .background(Theme.cobaltTint, in: RoundedRectangle(cornerRadius: Theme.Radius.tag, style: .continuous))
-                    Text(title).font(.sectionTitle).foregroundStyle(Theme.navy).lineLimit(1)
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.cobalt)
                 }
+                Text(title).font(.sectionTitle).foregroundStyle(Theme.navy)
                 content
                 Spacer(minLength: 0)
             }
             .padding(Theme.cardPadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
-                    .strokeBorder(Theme.border, lineWidth: 1)
-            )
+            .setechoSurface()
             .contentShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(QuietPressStyle())
     }
 }
 
 /// How far along something is ("3 of 7 ready", or a fraction of a job): a thin cobalt bar on the
 /// field fill, which moves smoothly as the value changes.
 struct MeterBar: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let fraction: Double
     let label: String
 
@@ -115,7 +122,7 @@ struct MeterBar: View {
                 Capsule().fill(Theme.fieldFill)
                 Capsule().fill(Theme.cobalt)
                     .frame(width: geometry.size.width * CGFloat(fraction))
-                    .animation(.easeOut(duration: 0.25), value: fraction)
+                    .animation(reduceMotion ? nil : Theme.Motion.change, value: fraction)
             }
         }
         .frame(height: 6)

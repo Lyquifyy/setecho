@@ -87,11 +87,11 @@ struct TitleBlock: View {
     var subtitle: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.xxs) {
+        VStack(alignment: .leading, spacing: Theme.Space.xs) {
+            Text(title).screenTitleStyle().accessibilityAddTraits(.isHeader)
             if let eyebrow {
-                Text(eyebrow).font(.subheadline).secondaryText()
+                Text(eyebrow).font(.subheadline.weight(.medium)).monospacedDigit().secondaryText()
             }
-            Text(title).screenTitleStyle()
             if let subtitle {
                 Text(subtitle).font(.body).monospacedDigit().secondaryText()
             }
@@ -122,6 +122,7 @@ struct FooterBar<Content: View>: View {
 /// Standard screen: brand header, scrolling content of cards on the page color, optional footer.
 /// In a sheet or cover, pass `onClose` (usually `{ dismiss() }`) for the header's close button.
 struct ScreenScaffold<Content: View, Footer: View>: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let onClose: (() -> Void)?
     private let content: Content
     private let footer: Footer
@@ -149,6 +150,9 @@ struct ScreenScaffold<Content: View, Footer: View>: View {
             .padding(.bottom, Theme.gutter)
         }
         .scrollDismissesKeyboard(.interactively)
+        .transaction { transaction in
+            if reduceMotion { transaction.animation = nil; transaction.disablesAnimations = true }
+        }
         .background(Theme.page.ignoresSafeArea())
         // The page color under the status bar, so cards never scroll beneath the clock.
         .safeAreaInset(edge: .top, spacing: 0) {
