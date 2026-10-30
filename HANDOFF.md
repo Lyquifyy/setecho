@@ -571,9 +571,9 @@ A coach's sheet isn't always one tab per training day. The athlete's has a tab p
 
 ### Set detection (Session screen)
 - **Capture:** `AVCaptureSession` on the back 1× wide camera, 1080p. Run `VNDetectHumanBodyPoseRequest` on every 4th frame, about 15 fps.
-- **Signal:** the mean y of both wrists, normalized and smoothed with a 5-frame median.
-- **Start:** the wrist signal's range over the last 2 s exceeds 0.08, with at least one direction reversal. Set the state to Recording. The set's real start is the last moment before that when the signal was still (range under 0.03 for 1 s).
-- **End:** range under 0.03 for 4 s (a rest-pause set ends after its third round, after 75 s still, or on "done", so its pauses stay inside one set). The set's real end is the last moment the signal moved. Log the set (Rep counting, below).
+- **Signal:** four channels, each normalized and smoothed with a 5-frame median: the mean y of both wrists, each wrist's y (a one-arm lift moves the mean only half as far), and the gap between the wrists across the frame, |left x − right x| (Oct 29: the camera started none of his cable flye sets and every set was logged by voice; a flye sweeps the hands sideways at nearly one height, which the mean y alone barely sees).
+- **Start:** any channel's range over the last 2 s exceeds 0.08, with at least one direction reversal. Set the state to Recording. The set's real start is the last moment before that when the signal was still (range under 0.03 for 1 s).
+- **End:** every channel's range under 0.03 for 4 s, so one arm of an alternating lift keeps the set open (a rest-pause set ends after its third round, after 75 s still, or on "done", so its pauses stay inside one set). The set's real end is the last moment the signal moved. Log the set (Rep counting, below).
 - **Recording:** the camera records continuously, and each file runs from one set's end to the next set's end, so every set has pre-roll. At set end, stop the file and start the next one right away. Then export the window [start − 3 s, end + 1 s] twice: at full quality as the set's clip, and at 720p, 15 fps with no audio for `/sets/count` (`AVAssetExportSession` with a video composition, `frameDuration` 1/15 s). Delete the untrimmed file.
 - **Always available fallback:** the voice intents `starting` and `endSet`.
 - **Tune the thresholds on real footage.** Save the wrist series from each test session to a debug JSON file so it can be tuned offline.
@@ -587,7 +587,7 @@ A coach's sheet isn't always one tab per training day. The athlete's has a tab p
   - **Under 0.6:** ask "Set 3, was that 8?" A yes logs it as Measured, a number logs it as You said, and no answer keeps the phone's count.
   - **Arrives after the next set started:** log it quietly, and mention it at the next rest only if it changed the count: "Set 3 updated: 7, measured." Never speak during a set.
 - **The phone's count is a silent fallback** (`RepCounter.swift`, mirroring `reps.py` steps 4–5).
-  - Over the set window, use the joint (wrists, elbows, hips, knees, ankles, Vision confidence above 0.3) whose smoothed y has the largest range, and count the same way at 15 fps.
+  - Over the set window, use the joint (wrists, elbows, hips, knees, ankles, Vision confidence above 0.3) whose smoothed y has the largest range, or the wrist gap when it moved further (flyes), and count the same way at 15 fps.
   - It's never spoken while SAM is pending. If SAM fails, or hasn't answered 60 s after the set ended, say the phone's count ("8 reps") and log it as Phone. A later SAM result replaces it as above.
   - If no joint moves more than 0.05, there's no phone count and the set logs the plan's reps.
 - **Short of plan** is said as a fact: "6 reps, 2 short of plan."

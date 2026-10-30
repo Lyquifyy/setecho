@@ -230,6 +230,14 @@ struct JointSeries {
         var t: Double
         /// Normalized y per joint, only for joints seen with confidence above 0.3.
         var joints: [String: Double]
+        /// Each wrist's normalized x, seen the same way: the wrist gap for flyes.
+        var wristX: [String: Double] = [:]
+
+        /// |left x − right x|, when both wrists were seen.
+        var wristGap: Double? {
+            guard let l = wristX["left_wrist"], let r = wristX["right_wrist"] else { return nil }
+            return abs(l - r)
+        }
     }
 
     /// Joints that can carry a rep: wrists, elbows, hips, knees, ankles.
@@ -259,15 +267,16 @@ struct JointSeries {
         return Double(good) >= Double(recent.count) / 2
     }
 
-    /// The count over [from, to]: the joint whose smoothed y has the largest range, counted like
-    /// the backend. Nil when no joint moved enough or tracking dropped for over 20% of the set.
+    /// The count over [from, to]: the joint whose smoothed y has the largest range (or the wrist gap,
+    /// for a flye's sideways sweep), counted like the backend. Nil when nothing moved enough or
+    /// tracking dropped for over 20% of the set.
     func phoneCount(from: Double, to: Double) -> RepCounter.Result? {
         let window = samples.filter { $0.t >= from && $0.t <= to }
         guard window.count >= 3 else { return nil }
         let t = window.map(\.t)
         var best: (joint: String, range: Double, y: [Double?])?
-        for joint in Self.joints {
-            let y = window.map { $0.joints[joint] }
+        for joint in Self.joints + ["wrist_gap"] {
+            let y = window.map { joint == "wrist_gap" ? $0.wristGap : $0.joints[joint] }
             let tracked = y.filter { $0 != nil }.count
             guard Double(tracked) / Double(y.count) >= Self.minTrackedShare else { continue }
             let smoothed = RepCounter.smooth(RepCounter.fillGaps(t: t, y: y))

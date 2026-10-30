@@ -12,6 +12,8 @@ struct BodyTracker {
         var box: CGRect
         /// Each joint's normalized y (Vision, bottom-up), as `JointSeries` keeps them.
         var joints: [String: Double]
+        /// Each wrist's normalized x, for the wrist gap (flyes move the hands sideways).
+        var wristX: [String: Double] = [:]
     }
 
     /// The box being followed, and when it last matched a body.

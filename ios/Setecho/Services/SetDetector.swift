@@ -206,7 +206,7 @@ final class SetDetector: NSObject {
         }
         if let box = him?.box { boxes.append((frame.t, box)) }
         if trackedBox != him?.box { trackedBox = him?.box }
-        handle(JointSeries.Sample(t: frame.t, joints: him?.joints ?? [:]))
+        handle(JointSeries.Sample(t: frame.t, joints: him?.joints ?? [:], wristX: him?.wristX ?? [:]))
     }
 
     private func handle(_ sample: JointSeries.Sample) {
@@ -221,11 +221,11 @@ final class SetDetector: NSObject {
         if framesSeen % 15 == 0 { isOnDuty = joints.isOnDuty(now: sample.t) }
         if !movieOutput.isRecording, !stopping { startSegment(at: sample.t) }
 
-        let wrists = [sample.joints["left_wrist"], sample.joints["right_wrist"]].compactMap { $0 }
-        guard !wrists.isEmpty else { return }
-        let y = wrists.reduce(0, +) / Double(wrists.count)
+        let wrist = { (name: String) in sample.joints[name].map { (x: sample.wristX[name], y: $0) } }
+        let readings = WristSignal.readings(left: wrist("left_wrist"), right: wrist("right_wrist"))
+        guard let y = readings[.wrists] else { return }
         lastWristY = y
-        debugWrist.append([sample.t, y])
+        debugWrist.append([sample.t, y, readings[.gap] ?? -1]) // gap -1: one wrist unseen
         // Between rest-pause rounds: 75 s still ends the set where the last round stopped.
         if let pausedAt = restPausePausedAt, let start = currentSetStart, sample.t - pausedAt >= Self.restPauseStillSeconds {
             restPausePausedAt = nil
@@ -233,7 +233,7 @@ final class SetDetector: NSObject {
             endSet(realEnd: pausedAt, from: start)
             return
         }
-        switch signal.add(y: y, at: sample.t) {
+        switch signal.add(readings, at: sample.t) {
         case .start(_, let realStart):
             if !startsAllowed, currentSetStart == nil, restPausePausedAt == nil {
                 // Not armed: someone else, or him re-racking. Nothing starts, and the signal looks again next frame.
@@ -245,7 +245,7 @@ final class SetDetector: NSObject {
             } else {
                 currentSetStart = realStart
                 restPauseRound = 0
-                debugEvents.append(["kind": "start", "t": realStart])
+                debugEvents.append(["kind": "start", "t": realStart, "channel": signal.activeChannel?.rawValue ?? ""])
                 onSetStart?(realStart)
             }
         case .end(_, let stillSince):
@@ -347,7 +347,7 @@ final class SetDetector: NSObject {
     private func exportDebugSeries() {
         let url = mediaDirectory.appendingPathComponent(SessionDebug.detectorFile(sessionId: sessionId))
         var json: [String: Any] = [
-            "wrist": ["columns": ["t", "y"], "rows": debugWrist],
+            "wrist": ["columns": ["t", "y", "gap"], "rows": debugWrist],
             "events": debugEvents,
             "sets": debugSetWindows,
             "config": ["startRange": signal.config.startRange, "endRange": signal.config.endRange,
@@ -471,10 +471,14 @@ final class FrameProcessor: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                 for (name, joint) in Self.jointNames {
                     if let p = points[joint], p.confidence > 0.3 { joints[name] = Double(p.location.y) }
                 }
+                var wristX: [String: Double] = [:]
+                for (name, joint) in [("left_wrist", VNHumanBodyPoseObservation.JointName.leftWrist), ("right_wrist", .rightWrist)] {
+                    if let p = points[joint], p.confidence > 0.3 { wristX[name] = Double(p.location.x) }
+                }
                 // Vision's points are bottom-up; the box is top-left origin like the rest of UIKit.
                 let xs = seen.map { $0.location.x }, ys = seen.map { $0.location.y }
                 let box = CGRect(x: xs.min()!, y: 1 - ys.max()!, width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
-                bodies.append(BodyTracker.Body(box: box, joints: joints))
+                bodies.append(BodyTracker.Body(box: box, joints: joints, wristX: wristX))
             }
         }
         onPose(PoseFrame(t: t, bodies: bodies, brightness: Self.brightness(pixelBuffer)))

@@ -111,6 +111,24 @@ private func fixtures() throws -> [RepFixture] {
     #expect(!still.isOnDuty(now: 10))   // two joints is not a body in frame
 }
 
+/// Oct 29: a cable flye sweeps the hands together and apart at nearly one height. The wrist gap
+/// carries the reps; no joint's height moves enough.
+@Test func jointSeriesCountsAFlyeFromTheWristGap() {
+    var series = JointSeries()
+    let fps = 15.0
+    var t = 0.0
+    while t < 24 {
+        let rep = t > 1 && t < 21 ? (1 - cos(2 * .pi * (t - 1) / 2.5)) / 2 : 0
+        let half = 0.25 - 0.18 * rep   // 0.25 out from the centre, in to 0.07
+        series.add(JointSeries.Sample(t: t, joints: [
+            "left_wrist": 0.6 + 0.01 * rep, "right_wrist": 0.6 + 0.01 * rep,
+            "left_hip": 0.4, "right_hip": 0.4, "left_knee": 0.25, "right_knee": 0.25,
+        ], wristX: ["left_wrist": 0.5 - half, "right_wrist": 0.5 + half]))
+        t += 1 / fps
+    }
+    #expect(series.phoneCount(from: 0, to: 24)?.reps == 8)
+}
+
 @Test func jointSeriesNeedsTrackingOnMostFrames() {
     var series = JointSeries()
     let fps = 15.0
