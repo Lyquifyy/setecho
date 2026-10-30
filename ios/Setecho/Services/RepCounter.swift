@@ -240,9 +240,11 @@ struct JointSeries {
         }
     }
 
-    /// Joints that can carry a rep: wrists, elbows, hips, knees, ankles.
+    /// Joints that can carry a rep: wrists, elbows, hips, knees, ankles, and the shoulders and head
+    /// for push-ups and sit-ups, where the hands stay planted.
     static let joints = ["left_wrist", "right_wrist", "left_elbow", "right_elbow", "left_hip", "right_hip",
-                         "left_knee", "right_knee", "left_ankle", "right_ankle"]
+                         "left_knee", "right_knee", "left_ankle", "right_ankle",
+                         "left_shoulder", "right_shoulder", "nose", "neck"]
     /// A joint that moves less than this over the set is not the one doing the rep.
     static let minRange = 0.05
     /// Tracking must hold on at least this share of the set's frames.

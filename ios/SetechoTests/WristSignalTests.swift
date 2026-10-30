@@ -79,7 +79,8 @@ private func runWrists(_ wrists: (Double) -> (left: (x: Double, y: Double), righ
     var t = start
     while t < start + seconds {
         let w = wrists(t)
-        let readings = WristSignal.readings(left: (x: w.left.x, y: w.left.y), right: (x: w.right.x, y: w.right.y))
+        let readings = WristSignal.readings(joints: ["left_wrist": w.left.y, "right_wrist": w.right.y],
+                                            wristX: ["left_wrist": w.left.x, "right_wrist": w.right.x])
         if let e = signal.add(readings, at: t) { events.append(e) }
         t += 1 / fps
     }
@@ -134,11 +135,42 @@ private func atRest(_ t: Double) -> (left: (x: Double, y: Double), right: (x: Do
     #expect(stillSince > 22.5 && stillSince < 24.5)
 }
 
-@Test func readingsFromTheWristsSeen() {
-    let both = WristSignal.readings(left: (x: 0.3, y: 0.5), right: (x: 0.8, y: 0.7))
+@Test func readingsFromTheJointsSeen() {
+    let both = WristSignal.readings(joints: ["left_wrist": 0.5, "right_wrist": 0.7, "left_shoulder": 0.8, "right_shoulder": 0.9,
+                                             "nose": 0.95, "neck": 0.85, "root": 0.4],
+                                    wristX: ["left_wrist": 0.3, "right_wrist": 0.8])
     #expect(both[.wrists] == 0.6 && both[.leftWrist] == 0.5 && both[.rightWrist] == 0.7)
-    #expect(abs(both[.gap]! - 0.5) < 1e-9)
-    let one = WristSignal.readings(left: nil, right: (x: 0.8, y: 0.7))
-    #expect(one[.wrists] == 0.7 && one[.gap] == nil && one[.leftWrist] == nil)
-    #expect(WristSignal.readings(left: (x: nil, y: 0.5), right: (x: 0.8, y: 0.7))[.gap] == nil)
+    #expect(abs(both[.gap]! - 0.5) < 1e-9 && abs(both[.shoulders]! - 0.85) < 1e-9)
+    #expect(both[.head] == 0.95 && both[.hips] == 0.4)   // the nose before the neck; root when no hips
+    let one = WristSignal.readings(joints: ["right_wrist": 0.7, "neck": 0.85, "left_hip": 0.4, "root": 0.45], wristX: ["right_wrist": 0.8])
+    #expect(one[.wrists] == 0.7 && one[.gap] == nil && one[.leftWrist] == nil && one[.shoulders] == nil)
+    #expect(one[.head] == 0.85 && one[.hips] == 0.4)
+    #expect(WristSignal.readings(joints: ["left_wrist": 0.5, "right_wrist": 0.7], wristX: ["right_wrist": 0.8])[.gap] == nil)
+    #expect(WristSignal.readings(joints: [:]).isEmpty)
+}
+
+/// A push-up seen from the side: the hands stay planted, the shoulders and head go down and up.
+@Test func aPushUpStartsFromTheShouldersAndHoldingStillEndsIt() {
+    var signal = WristSignal()
+    let plank = { (t: Double, dip: Double) -> [WristSignal.Channel: Double] in
+        WristSignal.readings(joints: ["left_wrist": 0.12 + 0.002 * sin(t * 7), "right_wrist": 0.12,
+                                      "left_shoulder": 0.30 - dip, "right_shoulder": 0.30 - dip, "nose": 0.32 - dip,
+                                      "left_hip": 0.25 - dip * 0.6, "right_hip": 0.25 - dip * 0.6],
+                             wristX: ["left_wrist": 0.3, "right_wrist": 0.32])
+    }
+    var events: [WristSignal.Event] = []
+    var t = 0.0
+    while t < 3 { if let e = signal.add(plank(t, 0), at: t) { events.append(e) }; t += 1 / 15 }
+    #expect(events.isEmpty)
+    while t < 13 {
+        if let e = signal.add(plank(t, 0.12 * (1 - cos(2 * .pi * (t - 3) / 2)) / 2), at: t) { events.append(e) }
+        t += 1 / 15
+    }
+    guard case .start(let startAt, _)? = events.first else { Issue.record("no start event"); return }
+    #expect(startAt > 3 && startAt < 6)
+    #expect([.shoulders, .head, .hips].contains(signal.activeChannel))
+    events = []
+    while t < 19 { if let e = signal.add(plank(t, 0), at: t) { events.append(e) }; t += 1 / 15 }
+    guard case .end(_, let stillSince)? = events.first else { Issue.record("no end event"); return }
+    #expect(stillSince > 12.5 && stillSince < 14.5)
 }

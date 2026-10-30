@@ -1,12 +1,13 @@
 import Foundation
 
-/// Set detection from the wrists (HANDOFF.md §7). Four channels, each normalized and smoothed with
-/// a 5-sample median: the mean y of both wrists, each wrist's y (one-arm lifts), and the gap
-/// between the wrists across the frame (flyes, whose hands sweep sideways and barely change height:
-/// Oct 29, the camera started none of his cable flye sets). A set starts when any channel's range over the last
-/// 2 s exceeds 0.08 with at least one direction reversal, and ends when every channel's range stays
-/// under 0.03 for 4 s. Pure and synchronous, fed with real video timestamps (iPhone video has a
-/// variable frame rate).
+/// Set detection from the body's movement (HANDOFF.md §7). Seven channels, each normalized and
+/// smoothed with a 5-sample median: the mean y of both wrists, each wrist's y (one-arm lifts), the
+/// gap between the wrists across the frame (flyes, whose hands sweep sideways and barely change
+/// height: Oct 29, the camera started none of his cable flye sets), and the height of the
+/// shoulders, the head and the hips (push-ups, sit-ups and squats, where the hands stay planted or
+/// ride along). A set starts when any channel's range over the last 2 s exceeds 0.08 with at least
+/// one direction reversal, and ends when every channel's range stays under 0.03 for 4 s. Pure and
+/// synchronous, fed with real video timestamps (iPhone video has a variable frame rate).
 struct WristSignal {
     struct Config: Equatable {
         var medianWindow = 5
@@ -29,6 +30,12 @@ struct WristSignal {
         case rightWrist = "right_wrist"
         /// |left x − right x|: flyes and anything that brings the hands together and apart.
         case gap = "wrist_gap"
+        /// The body itself, for lifts whose hands don't travel: push-ups, sit-ups, squats.
+        case shoulders
+        /// The nose, or the neck when the face is turned away.
+        case head
+        /// The hips, or Vision's root point between them.
+        case hips
     }
 
     enum Event: Equatable {
@@ -76,14 +83,23 @@ struct WristSignal {
     /// The mean-wrists channel, as the HUD and the debug record show it.
     var series: [Sample] { tracks[.wrists]?.series ?? [] }
 
-    /// Each channel's reading from the wrists seen in one pose frame (normalized, upright frame).
-    static func readings(left: (x: Double?, y: Double)?, right: (x: Double?, y: Double)?) -> [Channel: Double] {
+    /// Each channel's reading from one pose frame: joint heights by name (as `JointSeries` keeps
+    /// them) and the wrists' x. Normalized, in the upright frame; a channel with nothing seen is absent.
+    static func readings(joints: [String: Double], wristX: [String: Double] = [:]) -> [Channel: Double] {
         var readings: [Channel: Double] = [:]
-        let ys = [left?.y, right?.y].compactMap { $0 }
-        if !ys.isEmpty { readings[.wrists] = ys.reduce(0, +) / Double(ys.count) }
-        if let left { readings[.leftWrist] = left.y }
-        if let right { readings[.rightWrist] = right.y }
-        if let lx = left?.x, let rx = right?.x { readings[.gap] = abs(lx - rx) }
+        func mean(_ names: String...) -> Double? {
+            let ys = names.compactMap { joints[$0] }
+            return ys.isEmpty ? nil : ys.reduce(0, +) / Double(ys.count)
+        }
+        readings[.wrists] = mean("left_wrist", "right_wrist")
+        readings[.leftWrist] = joints["left_wrist"]
+        readings[.rightWrist] = joints["right_wrist"]
+        if joints["left_wrist"] != nil, joints["right_wrist"] != nil, let lx = wristX["left_wrist"], let rx = wristX["right_wrist"] {
+            readings[.gap] = abs(lx - rx)
+        }
+        readings[.shoulders] = mean("left_shoulder", "right_shoulder")
+        readings[.head] = joints["nose"] ?? joints["neck"]
+        readings[.hips] = mean("left_hip", "right_hip") ?? joints["root"]
         return readings
     }
 

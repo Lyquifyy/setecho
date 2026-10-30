@@ -129,6 +129,23 @@ private func fixtures() throws -> [RepFixture] {
     #expect(series.phoneCount(from: 0, to: 24)?.reps == 8)
 }
 
+/// Push-ups: the hands stay planted; the shoulders and head carry the reps.
+@Test func jointSeriesCountsPushUpsFromTheShoulders() {
+    var series = JointSeries()
+    let fps = 15.0
+    var t = 0.0
+    while t < 22 {
+        let dip = t > 1 && t < 21 ? 0.12 * (1 - cos(2 * .pi * (t - 1) / 2)) / 2 : 0
+        series.add(JointSeries.Sample(t: t, joints: [
+            "left_wrist": 0.12, "right_wrist": 0.12, "left_elbow": 0.2 - dip * 0.4, "right_elbow": 0.2 - dip * 0.4,
+            "left_shoulder": 0.30 - dip, "right_shoulder": 0.30 - dip, "nose": 0.32 - dip,
+            "left_hip": 0.25 - dip * 0.6, "right_hip": 0.25 - dip * 0.6, "left_ankle": 0.1, "right_ankle": 0.1,
+        ]))
+        t += 1 / fps
+    }
+    #expect(series.phoneCount(from: 0, to: 22)?.reps == 10)
+}
+
 @Test func jointSeriesNeedsTrackingOnMostFrames() {
     var series = JointSeries()
     let fps = 15.0

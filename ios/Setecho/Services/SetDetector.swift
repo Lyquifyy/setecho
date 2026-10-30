@@ -82,6 +82,8 @@ final class SetDetector: NSObject {
     private var debugSetWindows: [[String: Any]] = []
     private var clockAnchor: (t: Double, epoch: Double)?
 
+    /// The signal's channels in the debug record, one column each.
+    static let debugChannels: [WristSignal.Channel] = [.wrists, .gap, .shoulders, .head, .hips]
     static let preRollSeconds = 3.0
     static let postRollSeconds = 1.0
     /// A rest-pause set ends after its third round, after this long still, or on "done" (§13).
@@ -221,11 +223,11 @@ final class SetDetector: NSObject {
         if framesSeen % 15 == 0 { isOnDuty = joints.isOnDuty(now: sample.t) }
         if !movieOutput.isRecording, !stopping { startSegment(at: sample.t) }
 
-        let wrist = { (name: String) in sample.joints[name].map { (x: sample.wristX[name], y: $0) } }
-        let readings = WristSignal.readings(left: wrist("left_wrist"), right: wrist("right_wrist"))
-        guard let y = readings[.wrists] else { return }
-        lastWristY = y
-        debugWrist.append([sample.t, y, readings[.gap] ?? -1]) // gap -1: one wrist unseen
+        let readings = WristSignal.readings(joints: sample.joints, wristX: sample.wristX)
+        guard !readings.isEmpty else { return }
+        lastWristY = readings[.wrists]
+        // -1: that part of him unseen in this frame.
+        debugWrist.append([sample.t] + Self.debugChannels.map { readings[$0] ?? -1 })
         // Between rest-pause rounds: 75 s still ends the set where the last round stopped.
         if let pausedAt = restPausePausedAt, let start = currentSetStart, sample.t - pausedAt >= Self.restPauseStillSeconds {
             restPausePausedAt = nil
@@ -347,7 +349,7 @@ final class SetDetector: NSObject {
     private func exportDebugSeries() {
         let url = mediaDirectory.appendingPathComponent(SessionDebug.detectorFile(sessionId: sessionId))
         var json: [String: Any] = [
-            "wrist": ["columns": ["t", "y", "gap"], "rows": debugWrist],
+            "wrist": ["columns": ["t"] + Self.debugChannels.map(\.rawValue), "rows": debugWrist],
             "events": debugEvents,
             "sets": debugSetWindows,
             "config": ["startRange": signal.config.startRange, "endRange": signal.config.endRange,
