@@ -169,3 +169,33 @@ private let liftoffSameDay = session("liftoff:2026-10-05 17:00:00", .liftoff, at
     // A rest-pause set on its own is the first set: its top set.
     #expect(sets["d5_shoulder_press|restPause"]?.loadLb == 100)
 }
+
+/// His usual reps per lift (the median of his last three top sets), for the count-far-from-usual ask
+/// (HANDOFF.md §7, Rep counting): from the imported history through the names he matched, and the app's log.
+@MainActor
+@Test func theStoreKnowsHisUsualRepsFromTheLogAndTheHistory() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("typical-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = Store(root: root)
+    store.saveProgram(Program(name: "P", weeks: [ProgramWeek(number: 1, days: [ProgramDay(id: "d1", name: "Day 1", exercises: [smith, fly])])],
+                              importedAt: .now, flags: []))
+    #expect(store.typicalReps.isEmpty)
+    store.mergeHistory([liftoffSep, garminOct], matches: ["Close Grip Bench Press": [smith.id], "Close Grip Barbell Bench Press": [smith.id],
+                                                          "Cable Fly": [fly.id]], liftoffUnit: .lb)
+    // Two top sets of 8 and 9: their mean, rounded. One cable fly top set: not enough to know.
+    #expect(store.typicalReps == [smith.id: 9])
+    // A top set logged in the app joins them: the median of the last three (8, 9, 6 → 8). A back-off set does not count.
+    func logged(_ reps: Int, role: SetRole, at: Date) -> LoggedSet {
+        LoggedSet(id: UUID(), exerciseId: smith.id, setIndex: 0, loadLb: 230, reps: reps, rpe: nil, role: role,
+                  startedAt: at, endedAt: at.addingTimeInterval(30), clipFile: nil, edits: [])
+    }
+    store.upsert(session: Session(id: UUID(), programDayId: "d1", startedAt: at(10, 12), endedAt: at(10, 12, 17),
+                                  sets: [logged(6, role: .top, at: at(10, 12)), logged(12, role: .backOff, at: at(10, 12, 17))], notes: []))
+    #expect(store.typicalReps[smith.id] == 8)
+    // A fourth drops the oldest (9, 6, 11 → 9); a warm-up never counts.
+    store.upsert(session: Session(id: UUID(), programDayId: "d1", startedAt: at(10, 19), endedAt: at(10, 19, 17),
+                                  sets: [logged(3, role: .warmup, at: at(10, 19)), logged(11, role: .top, at: at(10, 19, 17))], notes: []))
+    #expect(store.typicalReps[smith.id] == 9)
+    #expect(Store.typicalReps(of: []) == nil && Store.typicalReps(of: [(at(10, 1), 7)]) == nil)
+    #expect(Store.typicalReps(of: [(at(10, 1), 7), (at(10, 8), 8)]) == 8)   // 7.5 rounds up
+}

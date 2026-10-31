@@ -208,6 +208,35 @@ extension SessionHUDModel {
         }
         // The P1b latency report he reads off the screen: SAM's median from set end to count.
         if let median = engine.medianCountLatency { notes.append("Counted in \(Int(median.rounded())) s on average") }
-        return Summary(lines: lines, notes: notes)
+        return Summary(lines: lines, notes: notes, time: timeLine(for: engine.session))
+    }
+
+    /// "52 min · 13 min away": the session from its start to its end (the last set's end until it has
+    /// one), and the time away from the sets. Nil before the first set. Numbers from code.
+    static func timeLine(for session: Session) -> String? {
+        let sets = session.sets.sorted { $0.startedAt < $1.startedAt }
+        guard let end = session.endedAt ?? sets.last?.endedAt, end > session.startedAt else { return nil }
+        let minutes = Int((end.timeIntervalSince(session.startedAt) / 60).rounded())
+        let away = Int((awaySeconds(sets: sets.map { ($0.startedAt, $0.endedAt, $0.exerciseId) }) / 60).rounded())
+        let total = "\(Format.number(Double(minutes))) min"
+        return away > 0 ? "\(total) · \(Format.number(Double(away))) min away" : total
+    }
+
+    /// Seconds away from the sets, as `pacing()` in backend/scripts/evidence.py counts them: the gaps
+    /// between consecutive sets longer than max(2.5 × the session's median rest gap, 5 min), where a rest
+    /// gap is one between two sets of the same lift. No rest gap, nothing is away.
+    static func awaySeconds(sets: [(start: Date, end: Date, exerciseId: String)], awayFactor: Double = 2.5) -> TimeInterval {
+        var rest: [TimeInterval] = []
+        var gaps: [TimeInterval] = []
+        for (a, b) in zip(sets, sets.dropFirst()) {
+            let gap = b.start.timeIntervalSince(a.end)
+            gaps.append(gap)
+            if a.exerciseId == b.exerciseId { rest.append(gap) }
+        }
+        guard !rest.isEmpty else { return 0 }
+        let sorted = rest.sorted()
+        let median = sorted.count % 2 == 1 ? sorted[sorted.count / 2] : (sorted[sorted.count / 2 - 1] + sorted[sorted.count / 2]) / 2
+        let limit = max(awayFactor * median, 300)
+        return gaps.filter { $0 > limit }.reduce(0, +)
     }
 }

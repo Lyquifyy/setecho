@@ -1003,3 +1003,147 @@ private let topRest = RestRule(after: .top, minSeconds: 180, maxSeconds: 240, qu
     engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), phone: phone(8, confidence: 0.9), willMeasure: true)
     #expect(engine.tick(now: t0.addingTimeInterval(80)).speech == "8 reps. Next, 225 for 8.")
 }
+
+// MARK: - A rejected track's effort, and a count far from his usual (Oct 31)
+
+private let rowDay = ProgramDay(id: "pull", name: "Pull", exercises: [
+    PlannedExercise(id: "row", name: "Chest-supported row", sets: [
+        PlannedSet(reps: nil, repsMin: 6, repsMax: 8, loadLb: 90, rpe: nil, rir: nil, role: .top),
+        PlannedSet(reps: nil, repsMin: 8, repsMax: 10, loadLb: 70, rpe: nil, rir: nil, role: .backOff),
+    ], restSeconds: 150, notes: nil),
+])
+
+/// Oct 31: a 0.51 track counted 13 on his 6-rep row and was asked back, yet its 36% slowdown and "0 left"
+/// went on the record as his. A rejected track measured nothing about his set.
+@Test @MainActor func aRejectedTracksSlowdownIsNeverStoredOrListed() {
+    let engine = SessionEngine(day: rowDay, weekNumber: 1)
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), phone: phone(6), willMeasure: true)
+    let out = engine.measured(setId: engine.session.sets[0].id, measured(13, confidence: 0.511, velocityLoss: 35.9), now: t0.addingTimeInterval(60))
+    #expect(out.speech == "Set 1, was that 13?")
+    let set = engine.session.sets[0]
+    #expect(set.reps == 6 && set.repCount.source == .phone && set.repCount.measured == 13 && set.repCount.confidence == 0.511)
+    #expect(set.repCount.velocityLossPct == nil && set.repCount.estimatedRIR == nil)
+    // No answer: the phone's count stays, nothing about effort follows, and Review and send has no "Top sets, measured" line.
+    engine.apply(intent(.setLoad, 85, transcript: "drop to 85"))
+    #expect(engine.pendingQuestion == nil && engine.session.sets[0].repCount.velocityLossPct == nil && engine.session.sets[0].repCount.estimatedRIR == nil)
+    #expect(Effort.measuredTopSets(in: [engine.session], names: { _ in "Row" }).isEmpty)
+    // Within a rep of the logged reps, SAM's slowdown is of the same set: stored and listed.
+    let e2 = SessionEngine(day: rowDay, weekNumber: 1)
+    e2.setStarted(at: t0); e2.setEnded(at: t0.addingTimeInterval(20), phone: phone(6), willMeasure: true)
+    e2.measured(setId: e2.session.sets[0].id, measured(7, confidence: 0.5, velocityLoss: 30), now: t0.addingTimeInterval(60))
+    #expect(e2.session.sets[0].reps == 6 && e2.session.sets[0].repCount.velocityLossPct == 30)
+    e2.apply(intent(.no, transcript: "no"))
+    #expect(Effort.measuredTopSets(in: [e2.session], names: { _ in "Row" }).map(\.line) == ["Row 90 × 6, slowed 30%, about 1 left"])
+    // Yes to the far count: the count he kept is the record, with its slowdown.
+    let e3 = SessionEngine(day: rowDay, weekNumber: 1)
+    e3.setStarted(at: t0); e3.setEnded(at: t0.addingTimeInterval(20), phone: phone(6), willMeasure: true)
+    e3.measured(setId: e3.session.sets[0].id, measured(13, confidence: 0.511, velocityLoss: 35.9), now: t0.addingTimeInterval(60))
+    let yes = e3.apply(intent(.yes, transcript: "yes"))
+    #expect(yes.speech == "Set 1, 13 reps." && e3.session.sets[0].reps == 13 && e3.session.sets[0].repCount.source == .measured)
+    #expect(e3.session.sets[0].repCount.velocityLossPct == 35.9)
+    #expect(Effort.measuredTopSets(in: [e3.session], names: { _ in "Row" }).map(\.line) == ["Row 90 × 13, slowed 36%, about 1 left"])
+}
+
+@Test @MainActor func hisNumberMoreThanARepOffTheCountClearsItsSlowdown() {
+    let engine = SessionEngine(day: rowDay, weekNumber: 1)
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), phone: phone(6), willMeasure: true)
+    engine.measured(setId: engine.session.sets[0].id, measured(13, confidence: 0.9, velocityLoss: 35.9), now: t0.addingTimeInterval(60))
+    #expect(engine.session.sets[0].reps == 13 && engine.session.sets[0].repCount.velocityLossPct == 35.9 && engine.session.sets[0].repCount.estimatedRIR == 1)
+    engine.apply(intent(.reps, 6, transcript: "that was 6"), now: t0.addingTimeInterval(70))
+    let set = engine.session.sets[0]
+    #expect(set.reps == 6 && set.repCount.source == .spoken && set.repCount.measured == 13)
+    #expect(set.repCount.velocityLossPct == nil && set.repCount.estimatedRIR == nil)
+    // A correction within a rep keeps it.
+    let e2 = SessionEngine(day: rowDay, weekNumber: 1)
+    e2.setStarted(at: t0); e2.setEnded(at: t0.addingTimeInterval(20), phone: phone(6), willMeasure: true)
+    e2.measured(setId: e2.session.sets[0].id, measured(7, confidence: 0.9, velocityLoss: 30), now: t0.addingTimeInterval(60))
+    e2.apply(intent(.reps, 8, transcript: "that was 8"), now: t0.addingTimeInterval(70))
+    #expect(e2.session.sets[0].reps == 8 && e2.session.sets[0].repCount.velocityLossPct == 30)
+}
+
+@Test @MainActor func aCountFarFromHisUsualIsAskedNotLoggedInSilence() {
+    let typical = ["row": 7]
+    // SAM, confident, 13 against his usual 7: asked. Yes keeps it as measured, with its slowdown.
+    let engine = SessionEngine(day: rowDay, weekNumber: 1, typicalReps: typical)
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), phone: phone(6), willMeasure: true)
+    let out = engine.measured(setId: engine.session.sets[0].id, measured(13, confidence: 0.9, velocityLoss: 35.9), now: t0.addingTimeInterval(60))
+    #expect(out.speech == "Camera says 13. You usually get around 7. Keep it?" && out.askBack == out.speech)
+    #expect(engine.session.sets[0].reps == 6 && engine.session.sets[0].repCount.source == .phone && engine.session.sets[0].repCount.measured == 13)
+    #expect(engine.session.sets[0].repCount.velocityLossPct == nil && engine.session.sets[0].edits.isEmpty)
+    let yes = engine.apply(intent(.yes, transcript: "yes"))
+    #expect(yes.speech == "Set 1, 13 reps." && engine.session.sets[0].reps == 13 && engine.session.sets[0].repCount.source == .measured)
+    #expect(engine.session.sets[0].repCount.velocityLossPct == 35.9)
+    // A number is his word.
+    let e2 = SessionEngine(day: rowDay, weekNumber: 1, typicalReps: typical)
+    e2.setStarted(at: t0); e2.setEnded(at: t0.addingTimeInterval(20), phone: phone(6), willMeasure: true)
+    e2.measured(setId: e2.session.sets[0].id, measured(13, confidence: 0.9), now: t0.addingTimeInterval(60))
+    e2.apply(intent(.answer, 7, transcript: "seven"))
+    #expect(e2.pendingQuestion == nil && e2.session.sets[0].reps == 7 && e2.session.sets[0].repCount.source == .spoken)
+    // No answer keeps the phone's count, as the low-confidence ask does.
+    let e3 = SessionEngine(day: rowDay, weekNumber: 1, typicalReps: typical)
+    e3.setStarted(at: t0); e3.setEnded(at: t0.addingTimeInterval(20), phone: phone(6), willMeasure: true)
+    e3.measured(setId: e3.session.sets[0].id, measured(13, confidence: 0.9), now: t0.addingTimeInterval(60))
+    e3.apply(intent(.setLoad, 85, transcript: "drop to 85"))
+    #expect(e3.pendingQuestion == nil && e3.session.sets[0].reps == 6 && e3.session.sets[0].repCount.source == .phone)
+    #expect(e3.tick(now: t0.addingTimeInterval(300)) == .none)
+    // SAM's 7 against his usual 7 logs as before.
+    let e4 = SessionEngine(day: rowDay, weekNumber: 1, typicalReps: typical)
+    e4.setStarted(at: t0); e4.setEnded(at: t0.addingTimeInterval(20), phone: phone(6), willMeasure: true)
+    let usual = e4.measured(setId: e4.session.sets[0].id, measured(7, confidence: 0.9), now: t0.addingTimeInterval(60))
+    #expect(usual.speech?.hasPrefix("Top set: 7 reps, measured.") == true && usual.askBack == nil)
+    #expect(e4.pendingQuestion == nil && e4.session.sets[0].reps == 7 && e4.session.sets[0].repCount.source == .measured)
+    // No usual for the lift (under two known sets): no ask.
+    let e5 = SessionEngine(day: rowDay, weekNumber: 1)
+    e5.setStarted(at: t0); e5.setEnded(at: t0.addingTimeInterval(20), phone: phone(6), willMeasure: true)
+    e5.measured(setId: e5.session.sets[0].id, measured(13, confidence: 0.9), now: t0.addingTimeInterval(60))
+    #expect(e5.pendingQuestion == nil && e5.session.sets[0].reps == 13 && e5.session.sets[0].repCount.source == .measured)
+    // The edges: 65% and 150% of 7 are 4.55 and 10.5, so 5 and 10 log, 4 and 11 ask.
+    for (reps, asks) in [(5, false), (10, false), (4, true), (11, true)] {
+        let e = SessionEngine(day: rowDay, weekNumber: 1, typicalReps: typical)
+        e.setStarted(at: t0); e.setEnded(at: t0.addingTimeInterval(20), phone: phone(6), willMeasure: true)
+        e.measured(setId: e.session.sets[0].id, measured(reps, confidence: 0.9), now: t0.addingTimeInterval(60))
+        #expect((e.pendingQuestion != nil) == asks, "\(reps) reps")
+    }
+}
+
+@Test @MainActor func thePhonesCountFarFromHisUsualIsAskedTheSameWay() {
+    let typical = ["row": 6]
+    // No clip for SAM: the phone's 2 would be the count of record now. Asked; the plan's 6 stands meanwhile.
+    let engine = SessionEngine(day: rowDay, weekNumber: 1, typicalReps: typical)
+    engine.setStarted(at: t0)
+    let out = engine.setEnded(at: t0.addingTimeInterval(20), phone: phone(2))
+    #expect(out.speech == "Set 1 done. Rest two thirty. The phone counted 2. You usually get around 6. Keep it?")
+    #expect(out.askBack == "The phone counted 2. You usually get around 6. Keep it?")
+    #expect(engine.session.sets[0].reps == 6 && engine.session.sets[0].repCount.source == .plan && engine.session.sets[0].repCount.phone == 2)
+    #expect(engine.session.sets[0].repCount.velocityLossPct == nil && engine.session.sets[0].repCount.status == .done)
+    let yes = engine.apply(intent(.yes, transcript: "yes"))
+    #expect(yes.speech == "Set 1, 2 reps." && engine.session.sets[0].reps == 2 && engine.session.sets[0].repCount.source == .phone)
+    #expect(engine.undo().speech == "Undid the phone's count." && engine.session.sets[0].reps == 6 && engine.session.sets[0].repCount.source == .plan)
+    // No answer: the plan's reps stay.
+    let e2 = SessionEngine(day: rowDay, weekNumber: 1, typicalReps: typical)
+    e2.setStarted(at: t0); e2.setEnded(at: t0.addingTimeInterval(20), phone: phone(2))
+    e2.apply(intent(.setLoad, 85, transcript: "drop to 85"))
+    #expect(e2.pendingQuestion == nil && e2.session.sets[0].reps == 6 && e2.session.sets[0].repCount.source == .plan)
+    // With a clip on its way the phone's count waits for SAM; at the fallback it is asked, never said as his.
+    let e3 = SessionEngine(day: rowDay, weekNumber: 1, typicalReps: typical)
+    e3.setStarted(at: t0); e3.setEnded(at: t0.addingTimeInterval(20), phone: phone(2), willMeasure: true)
+    #expect(e3.session.sets[0].reps == 2 && e3.session.sets[0].repCount.source == .phone && e3.pendingQuestion == nil)
+    let fallback = e3.tick(now: t0.addingTimeInterval(180))
+    #expect(fallback.speech == "The phone counted 2. You usually get around 6. Keep it?")
+    #expect(e3.session.sets[0].reps == 6 && e3.session.sets[0].repCount.source == .plan && e3.session.sets[0].repCount.phone == 2)
+    e3.apply(intent(.answer, 3, transcript: "three"))
+    #expect(e3.session.sets[0].reps == 3 && e3.session.sets[0].repCount.source == .spoken)
+    // A phone count near his usual is said as before.
+    let e4 = SessionEngine(day: rowDay, weekNumber: 1, typicalReps: typical)
+    e4.setStarted(at: t0)
+    #expect(e4.setEnded(at: t0.addingTimeInterval(20), phone: phone(5)).speech?.hasPrefix("5 reps, 1 short of plan.") == true)
+    #expect(e4.pendingQuestion == nil && e4.session.sets[0].reps == 5 && e4.session.sets[0].repCount.source == .phone)
+    // His own number is never asked about, and SAM's far count never replaces it.
+    let e5 = SessionEngine(day: rowDay, weekNumber: 1, typicalReps: typical)
+    e5.setStarted(at: t0)
+    e5.apply(intent(.reps, 2, transcript: "that was 2"))
+    e5.setEnded(at: t0.addingTimeInterval(20), phone: phone(2), willMeasure: true)
+    #expect(e5.pendingQuestion == nil && e5.session.sets[0].reps == 2 && e5.session.sets[0].repCount.source == .spoken)
+    #expect(e5.measured(setId: e5.session.sets[0].id, measured(13, confidence: 0.9), now: t0.addingTimeInterval(60)) == .none)
+    #expect(e5.pendingQuestion == nil && e5.session.sets[0].reps == 2 && e5.session.sets[0].repCount.measured == 13)
+}

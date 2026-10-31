@@ -62,7 +62,7 @@ final class SessionCoordinator {
                                     weekNumber: weekNumber, warmups: plan?.warmups,
                                     rules: plan?.rules ?? [], roleTargets: plan?.roleTargets ?? [], restRules: plan?.restRules ?? [],
                                     loadSteps: settings.loadSteps, lastSets: store.lastSets, nextSessionLoads: store.nextSessionLoads,
-                                    suggestionsEnabled: settings.nextSetSuggestions, calibration: store.calibration,
+                                    typicalReps: store.typicalReps, suggestionsEnabled: settings.nextSetSuggestions, calibration: store.calibration,
                                     athleteName: settings.athleteFirstName.isEmpty ? nil : settings.athleteFirstName,
                                     autoHolds: settings.autoStartHolds, takenRule: plan?.takenRule, takenHelp: settings.machineTakenHelp,
                                     variantLoads: store.variantLoads, recentVariants: store.recentVariants)

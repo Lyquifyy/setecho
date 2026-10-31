@@ -102,7 +102,10 @@ enum Effort {
         var best: [String: LoggedSet] = [:]
         for session in sessions.sorted(by: { $0.startedAt < $1.startedAt }) {
             for set in session.sets.sorted(by: { $0.startedAt < $1.startedAt }) {
-                guard set.role == .top, !set.isWarmup, set.repCount.measured != nil, set.repCount.velocityLossPct != nil else { continue }
+                guard set.role == .top, !set.isWarmup, let measured = set.repCount.measured, set.repCount.velocityLossPct != nil,
+                      // SAM's slowdown is of the reps it counted: a rejected track (its count neither the record
+                      // nor within a rep of it) measured nothing about his set.
+                      set.repCount.source == .measured || abs(measured - set.reps) <= 1 else { continue }
                 let key = set.exerciseId + "|" + (set.doneAs ?? "")
                 if best[key] == nil { order.append(key) }
                 if let current = best[key], (current.loadLb, current.reps) >= (set.loadLb, set.reps) { continue }

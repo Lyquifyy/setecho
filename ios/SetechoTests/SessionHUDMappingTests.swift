@@ -158,3 +158,48 @@ private var tripod: SessionHUDModel.Live {
     engine.setStarted(at: t0)
     #expect(SessionHUDModel(engine: engine, live: live).framing == nil)   // never during a set
 }
+
+/// The Done stage's time line: the session's length, and the time away from the sets as
+/// `pacing()` in backend/scripts/evidence.py counts it.
+@Test func timeAwayIsTheGapsFarLongerThanTheSessionsUsualRest() {
+    func set(_ start: Int, _ end: Int, _ exercise: String) -> (start: Date, end: Date, exerciseId: String) {
+        (t0.addingTimeInterval(TimeInterval(start)), t0.addingTimeInterval(TimeInterval(end)), exercise)
+    }
+    // Rests of 150, 150 and 180 s (median 150 → limit max(375, 300) = 375 s): the 240 s walk to the
+    // next lift is not away; the 780 s gap before the last lift is.
+    let sets = [set(0, 30, "a"), set(180, 210, "a"), set(360, 390, "a"),
+                set(630, 660, "b"), set(840, 870, "b"), set(1650, 1680, "c")]
+    #expect(SessionHUDModel.awaySeconds(sets: sets) == 780)
+    // Long rests raise the limit: 2.5 × a 200 s median is 500 s, so a 450 s gap is just rest.
+    let longRests = [set(0, 30, "a"), set(230, 260, "a"), set(710, 740, "a")]
+    #expect(SessionHUDModel.awaySeconds(sets: longRests) == 0)
+    // Short rests never lower it under 5 min.
+    let shortRests = [set(0, 30, "a"), set(90, 120, "a"), set(210, 240, "a"), set(570, 600, "b")]
+    #expect(SessionHUDModel.awaySeconds(sets: shortRests) == 330)
+    // No two sets of one lift: no usual rest, nothing counted as away. One set: nothing.
+    #expect(SessionHUDModel.awaySeconds(sets: [set(0, 30, "a"), set(2000, 2030, "b")]) == 0)
+    #expect(SessionHUDModel.awaySeconds(sets: [set(0, 30, "a")]) == 0)
+
+    func logged(_ s: (start: Date, end: Date, exerciseId: String)) -> LoggedSet {
+        LoggedSet(id: UUID(), exerciseId: s.exerciseId, setIndex: 0, loadLb: 80, reps: 8, rpe: nil,
+                  startedAt: s.start, endedAt: s.end, clipFile: nil, edits: [])
+    }
+    let away = Session(id: UUID(), programDayId: "d5", startedAt: t0, endedAt: t0.addingTimeInterval(52 * 60), sets: sets.map(logged), notes: [])
+    #expect(SessionHUDModel.timeLine(for: away) == "52 min · 13 min away")
+    let straight = Session(id: UUID(), programDayId: "d5", startedAt: t0, endedAt: t0.addingTimeInterval(28 * 60 + 20), sets: longRests.map(logged), notes: [])
+    #expect(SessionHUDModel.timeLine(for: straight) == "28 min")
+    // Not ended yet: to the last set's end. No set: nothing to say.
+    var open = away
+    open.endedAt = nil
+    #expect(SessionHUDModel.timeLine(for: open) == "28 min · 13 min away")
+    #expect(SessionHUDModel.timeLine(for: Session(id: UUID(), programDayId: "d5", startedAt: t0, endedAt: nil, sets: [], notes: [])) == nil)
+}
+
+@Test @MainActor func theSessionEndShowsHowLongItRan() {
+    let engine = SessionEngine(day: day, weekNumber: 1, now: t0)
+    engine.apply(say(.endSet, "done, 9", number: 9), now: t0.addingTimeInterval(60))
+    engine.apply(say(.endExercise, "that's it for these"), now: t0.addingTimeInterval(200))
+    engine.apply(say(.endExercise, "that's it for these"), now: t0.addingTimeInterval(210))
+    let m = SessionHUDModel(engine: engine, live: tripod)
+    #expect(m.phase == .done && m.summary?.time == "4 min")
+}

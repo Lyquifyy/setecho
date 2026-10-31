@@ -119,6 +119,10 @@ final class SessionEngine {
         var setId: UUID
         var measured: Int
         var current: Int
+        /// Whose count is asked about: SAM's (`.measured`) or the phone's (`.phone`, a count far from his usual).
+        var source: RepSource = .measured
+        /// That count's slowdown, stored only if he keeps the count (a rejected track's effort is never stored).
+        var velocityLossPct: Double? = nil
     }
 
     /// A set SAM is still counting: when it ended, and whether a number has been said for it yet.
@@ -147,6 +151,10 @@ final class SessionEngine {
     static let stillCountingSeconds: TimeInterval = 60
     /// A count's confidence under this is doubtful: SAM's is asked back, the phone's waits for SAM.
     static let lowConfidence = 0.6
+    /// A count under 65% or over 150% of his usual reps for the lift is far from it: asked, never
+    /// logged in silence (Oct 31: SAM's 13 on a 6-rep row).
+    static let farBelowTypical = 0.65
+    static let farAboveTypical = 1.5
     /// A warm-up is 8 reps or fewer with under 20% slowdown, before the first working set (§13).
     static let warmupMaxSlowdownPct = 20.0
     static let defaultWarmupMaxReps = 8
@@ -182,6 +190,9 @@ final class SessionEngine {
     /// next-session steps the athlete accepted. "Last time I did 145 for 9" adds to it.
     private(set) var lastSets: [String: LastSet]
     let nextSessionLoads: [String: Double]
+    /// His usual reps per exercise id: the median of his last three top sets (Setecho's log and the
+    /// imported history), absent under two known sets. A count far from it is asked, never logged in silence.
+    let typicalReps: [String: Int]
     /// Settings → "Next-set suggestions". Off: effort is still measured and still reaches the coach.
     let suggestionsEnabled: Bool
     let calibration: Effort.Calibration
@@ -277,7 +288,7 @@ final class SessionEngine {
     init(day: ProgramDay?, addOns: [AddOn] = [], availableAddOns: [AddOn] = [], weekNumber: Int, defaultRestSeconds: Int = 150,
          warmups: WarmupRule? = nil, rules: [ProgressionRule] = [], roleTargets: [RoleTarget] = [], restRules: [RestRule] = [],
          loadSteps: RuleEngine.LoadSteps = RuleEngine.LoadSteps(), lastSets: [String: LastSet] = [:], nextSessionLoads: [String: Double] = [:],
-         suggestionsEnabled: Bool = true, calibration: Effort.Calibration = Effort.Calibration(), athleteName: String? = nil,
+         typicalReps: [String: Int] = [:], suggestionsEnabled: Bool = true, calibration: Effort.Calibration = Effort.Calibration(), athleteName: String? = nil,
          autoHolds: Bool = true, takenRule: TakenRule? = nil, takenHelp: Bool = true, variantLoads: [String: Double] = [:],
          recentVariants: [String] = [], now: Date = .now) {
         self.day = day
@@ -291,6 +302,7 @@ final class SessionEngine {
         self.loadSteps = loadSteps
         self.lastSets = lastSets
         self.nextSessionLoads = nextSessionLoads
+        self.typicalReps = typicalReps
         self.suggestionsEnabled = suggestionsEnabled
         self.calibration = calibration
         self.athleteName = athleteName
@@ -556,8 +568,8 @@ final class SessionEngine {
         guard state == .recording, let exercise = currentExercise, let planned = currentPlannedSet else { return .none }
         let planReps = planned.minimumReps ?? planned.totalReps ?? 0
         let phoneReps = phone?.reps
-        let reps: Int
-        let source: RepSource
+        var reps: Int
+        var source: RepSource
         if let spoken = repsOverrideForCurrentSet {
             reps = spoken
             source = .spoken
@@ -568,11 +580,24 @@ final class SessionEngine {
             reps = planReps
             source = .plan
         }
+        // Nothing counted it and nobody said a number: never the plan's reps in silence.
+        let howMany = askHowMany && source == .plan && !willMeasure
         let call: WarmupCall = warmupMode && !forceWorkingForCurrentSet
             ? Self.warmupCall(reps: reps, source: source, phone: phone, maxReps: warmupMaxReps, planned: planned,
                               last: lastSets[Self.loadKey(exercise.id, planned.role)])
             : .working
         let isWarmup = call == .warmup
+        // The phone's count, about to be the count of record, is far from his usual for the lift: asked,
+        // and the plan's reps stand until he answers (SAM still gets the clip; its count is checked the same way).
+        var farTypical: Int?
+        if !willMeasure, source == .phone, call == .working, let phoneReps,
+           let typical = typicalIfFar(phoneReps, exerciseId: exercise.id, role: planned.role) {
+            farTypical = typical
+            reps = planReps
+            source = .plan
+        }
+        // The phone's slowdown is of the reps it counted: kept only when its count is the record, or within a rep of his.
+        let phoneLossKept = source == .phone || (source == .spoken && phoneReps.map { abs($0 - reps) <= 1 } == true)
         let logged = LoggedSet(
             id: UUID(),
             exerciseId: exercise.id,
@@ -581,7 +606,7 @@ final class SessionEngine {
             reps: reps,
             rpe: nil,
             role: isWarmup ? .warmup : planned.role,
-            repCount: RepCount(source: source, phone: phoneReps, velocityLossPct: phone?.velocityLossPct,
+            repCount: RepCount(source: source, phone: phoneReps, velocityLossPct: phoneLossKept ? phone?.velocityLossPct : nil,
                                status: willMeasure && !isWarmup ? .counting : .done),
             startedAt: recordingStartedAt ?? now,
             endedAt: now,
@@ -591,8 +616,6 @@ final class SessionEngine {
         )
         session.sets.append(logged)
         var rest = exercise.restSeconds ?? defaultRestSeconds
-        // Nothing counted it and nobody said a number: never the plan's reps in silence.
-        let howMany = askHowMany && source == .plan && !willMeasure
         repsOverrideForCurrentSet = nil
         forceWorkingForCurrentSet = false
         recordingStartedAt = nil
@@ -638,6 +661,9 @@ final class SessionEngine {
             // SAM is the count of record: no number until it answers, or 60 s pass.
             pendingCounts.append(PendingCount(setId: logged.id, endedAt: now, spoken: false, phoneConfidence: phone?.confidence))
             callout = Callout.setDone(setNumber: doneNumber, restSeconds: rest, sessionOver: isComplete)
+        } else if farTypical != nil {
+            // The phone's count is asked below: no number in the set-end line.
+            callout = Callout.setDone(setNumber: doneNumber, restSeconds: rest, sessionOver: isComplete)
         } else {
             callout = Callout.setDone(setNumber: doneNumber, reps: source == .plan ? nil : reps, total: planned.isRestPause,
                                       shortBy: shortBy, next: nextTarget, restSeconds: rest)
@@ -655,6 +681,12 @@ final class SessionEngine {
             outcome = outcome.merged(with: ask(.topSetCheck(setId: logged.id), question, now: now))
         } else if howMany, !isComplete {
             outcome = outcome.merged(with: ask(.howMany(setId: logged.id), "How many?", now: now))
+        } else if let farTypical, let phoneReps {
+            // "The phone counted 2. You usually get around 6. Keep it?" Yes logs the phone's count, a number
+            // his, and no answer leaves the plan's reps. Its effort is settled only once a count is kept.
+            let question = PendingQuestion(setId: logged.id, measured: phoneReps, current: planReps, source: .phone,
+                                           velocityLossPct: phone?.velocityLossPct)
+            outcome = outcome.merged(with: ask(.countConfirm(question), Callout.farCount(source: .phone, reps: phoneReps, typical: farTypical), now: now))
         } else if !(willMeasure && source != .spoken), let i = session.sets.firstIndex(where: { $0.id == logged.id }) {
             // Nothing to wait for: the effort and his rule's suggestion come now, after the set-end line.
             outcome = outcome.merged(with: settle(at: i, mode: .askOnly))
@@ -834,7 +866,8 @@ final class SessionEngine {
         set.repCount.measured = response.reps
         set.repCount.confidence = response.confidence
         set.repCount.repTimes = response.repTimes
-        if let loss = response.velocityLossPct { set.repCount.velocityLossPct = loss }
+        // SAM's slowdown is of the reps it counted: stored only when its count is the record, or within a
+        // rep of it (Oct 31: a 0.51 track counted 13 on a 6-rep row, and its 36% slowdown was logged as his).
         let pending = pendingCounts.first { $0.setId == setId }
         pendingCounts.removeAll { $0.setId == setId }
         let unspoken = pending.map { !$0.spoken } ?? false
@@ -846,22 +879,33 @@ final class SessionEngine {
             return unspoken ? speakFallback(at: i) : .none
         }
         set.repCount.status = .done
+        let current = set.reps
         if set.repCount.source == .spoken {
+            if abs(measured - current) <= 1, let loss = response.velocityLossPct { set.repCount.velocityLossPct = loss }
             session.sets[i] = set
             return .none
         }
-        let current = set.reps
         if measured == current {
             set.repCount.source = .measured
+            if let loss = response.velocityLossPct { set.repCount.velocityLossPct = loss }
             session.sets[i] = set
             // A late count he never heard a number for changes nothing he knows: the screen updates.
             if unspoken, late { return Outcome(echo: "Set \(number): \(measured) reps, measured") }
             return unspoken ? speakCount(at: i, late: late) : .none
         }
         if response.confidence >= RepCount.confidentThreshold {
+            if let typical = typicalIfFar(measured, exerciseId: set.exerciseId, role: set.role, seconds: set.seconds) {
+                // Far from his usual: asked, never logged in silence. SAM's number stays on the record as
+                // measured; the count of record, and its effort, wait for his answer.
+                session.sets[i] = set
+                let question = PendingQuestion(setId: setId, measured: measured, current: current, source: .measured,
+                                               velocityLossPct: response.velocityLossPct)
+                return ask(.countConfirm(question), Callout.farCount(source: .measured, reps: measured, typical: typical, setNumber: late ? number : nil))
+            }
             let oldSource = set.repCount.source
             set.reps = measured
             set.repCount.source = .measured
+            if let loss = response.velocityLossPct { set.repCount.velocityLossPct = loss }
             set.edits.append(SetEdit(at: now, field: "reps", from: "\(current)", to: "\(measured)", transcript: "measured"))
             session.sets[i] = set
             undoStack.append(UndoEntry(action: .measured(setId: setId, oldReps: current, oldSource: oldSource), description: "measured count"))
@@ -872,9 +916,22 @@ final class SessionEngine {
                            echo: "Set \(number) updated: \(measured) reps (measured). Say undo to revert.")
         }
         // Unsure: ask. A yes logs it as Measured, a number as You said, and no answer keeps the current count.
+        // Within a rep of the count kept, SAM's slowdown is of the same reps and goes on the record now.
+        if abs(measured - current) <= 1, let loss = response.velocityLossPct { set.repCount.velocityLossPct = loss }
         session.sets[i] = set
-        return ask(.countConfirm(PendingQuestion(setId: setId, measured: measured, current: current)),
+        return ask(.countConfirm(PendingQuestion(setId: setId, measured: measured, current: current, velocityLossPct: response.velocityLossPct)),
                    Callout.confirmCount(setNumber: number, reps: measured))
+    }
+
+    /// His usual reps for the lift when `count` is far from it (under 65% or over 150%), else nil. Only a
+    /// top or back-off set that was counted: never a hold, a rest-pause set, a warm-up or a count he said,
+    /// and never a lift under two known top sets (no entry in `typicalReps`). Numbers from code only.
+    private func typicalIfFar(_ count: Int, exerciseId: String, role: SetRole?, seconds: Int? = nil) -> Int? {
+        // Top sets only: the medians are of top sets, and a back-off at a lighter load runs past them
+        // by design (Oct 31: pulldown 9 on the top set, 15 on the back-off).
+        guard role == .top, seconds == nil, let typical = typicalReps[exerciseId], typical > 0 else { return nil }
+        let ratio = Double(count) / Double(typical)
+        return ratio < Self.farBelowTypical || ratio > Self.farAboveTypical ? typical : nil
     }
 
     /// The clip never reached the backend: the phone count stands, and is said now if nothing has
@@ -1060,7 +1117,22 @@ final class SessionEngine {
     private func speakFallback(at i: Int) -> Outcome {
         let set = session.sets[i]
         let late = session.sets.last?.id != set.id
-        if set.repCount.source == .phone { return speakCount(at: i, late: late) }
+        if set.repCount.source == .phone {
+            if let phoneReps = set.repCount.phone, let typical = typicalIfFar(phoneReps, exerciseId: set.exerciseId, role: set.role, seconds: set.seconds) {
+                // Far from his usual: asked, never said as his count. The plan's reps stand until he answers,
+                // and the phone's slowdown goes with its count.
+                let planReps = plannedSet(for: set).map { $0.minimumReps ?? $0.totalReps ?? 0 } ?? set.reps
+                let question = PendingQuestion(setId: set.id, measured: phoneReps, current: planReps, source: .phone,
+                                               velocityLossPct: set.repCount.velocityLossPct)
+                session.sets[i].reps = planReps
+                session.sets[i].repCount.source = .plan
+                session.sets[i].repCount.velocityLossPct = nil
+                session.sets[i].repCount.estimatedRIR = nil
+                lastEcho = "Set \(set.setIndex + 1): \(planReps) reps (Plan), phone counted \(phoneReps)"
+                return ask(.countConfirm(question), Callout.farCount(source: .phone, reps: phoneReps, typical: typical, setNumber: late ? set.setIndex + 1 : nil))
+            }
+            return speakCount(at: i, late: late)
+        }
         guard !late, let next = nextTarget else { return .none }
         lastEcho = "Set \(set.setIndex + 1): \(set.reps) reps (Plan)"
         return Outcome(speech: Callout.nextLine(next), echo: lastEcho)
@@ -2240,6 +2312,12 @@ final class SessionEngine {
         pendingCounts.removeAll { $0.setId == session.sets[index].id }
         session.sets[index].reps = n
         session.sets[index].repCount.source = .spoken
+        // The slowdown on record came from a count more than a rep off his: it was of some other reps.
+        let counted = oldSource == .measured ? session.sets[index].repCount.measured : oldSource == .phone ? session.sets[index].repCount.phone : nil
+        if let counted, abs(counted - n) > 1 {
+            session.sets[index].repCount.velocityLossPct = nil
+            session.sets[index].repCount.estimatedRIR = nil
+        }
         session.sets[index].edits.append(SetEdit(at: now, field: "reps", from: "\(old)", to: "\(n)", transcript: transcript))
         undoStack.append(UndoEntry(action: .reps(setId: session.sets[index].id, old: old, oldSource: oldSource), description: "\(n) reps"))
         return echo("Set \(session.sets[index].setIndex + 1) → \(n) reps", speech: Callout.repsLogged(n, setNumber: session.sets[index].setIndex + 1))
@@ -2250,17 +2328,21 @@ final class SessionEngine {
         return spokenReps(at: i, n, transcript: transcript, now: now)
     }
 
-    /// "Yes" to "was that 7?": SAM's count goes in the log as Measured.
+    /// "Yes" to "was that 7?" or "Keep it?": the asked count goes in the log as Measured (SAM's) or
+    /// Phone, with the slowdown it brought: a count he kept is the count of record.
     private func acceptMeasured(_ question: PendingQuestion, transcript: String, now: Date) -> Outcome {
         guard let i = session.sets.firstIndex(where: { $0.id == question.setId }) else { return .none }
         let old = session.sets[i].reps
         let oldSource = session.sets[i].repCount.source
+        let source: RepSource = question.source == .phone ? .phone : .measured
         session.sets[i].reps = question.measured
-        session.sets[i].repCount.source = .measured
+        session.sets[i].repCount.source = source
+        if let loss = question.velocityLossPct { session.sets[i].repCount.velocityLossPct = loss }
         session.sets[i].edits.append(SetEdit(at: now, field: "reps", from: "\(old)", to: "\(question.measured)", transcript: transcript))
-        undoStack.append(UndoEntry(action: .measured(setId: question.setId, oldReps: old, oldSource: oldSource), description: "measured count"))
+        undoStack.append(UndoEntry(action: .measured(setId: question.setId, oldReps: old, oldSource: oldSource),
+                                   description: source == .phone ? "the phone's count" : "measured count"))
         let number = session.sets[i].setIndex + 1
-        return echo("Set \(number) → \(question.measured) reps (measured)", speech: Callout.repsLogged(question.measured, setNumber: number))
+        return echo("Set \(number) → \(question.measured) reps (\(source.chipText.lowercased()))", speech: Callout.repsLogged(question.measured, setNumber: number))
     }
 
     private func setNumber(of setId: UUID) -> Int {

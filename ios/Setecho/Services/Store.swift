@@ -116,6 +116,36 @@ final class Store {
         return sets
     }
 
+    /// His usual reps per exercise id: the median of his last three top sets, from the app's log and the
+    /// imported Liftoff and Garmin sets through the names he matched. No entry under two known sets.
+    /// A count far from it is asked, never logged in silence (HANDOFF.md §7, Rep counting).
+    var typicalReps: [String: Int] {
+        var dated: [String: [(date: Date, reps: Int)]] = [:]
+        for session in sessions {
+            for set in session.workingSets where set.role == .top && set.reps > 0 {
+                dated[set.exerciseId, default: []].append((set.endedAt, set.reps))
+            }
+        }
+        let exercises = currentProgram.map { $0.cycleDays.flatMap(\.exercises) + $0.addOns.flatMap(\.exercises) } ?? []
+        for exercise in exercises {
+            let names = history.names(for: exercise.id)
+            guard !names.isEmpty else { continue }
+            for imported in history.sessions {
+                for done in imported.exercises where names.contains(done.name) {
+                    if let reps = done.topSet?.reps { dated[exercise.id, default: []].append((imported.startedAt, reps)) }
+                }
+            }
+        }
+        return dated.compactMapValues { Self.typicalReps(of: $0) }
+    }
+
+    /// The median reps of the last three sets (two: their mean, rounded), nil under two.
+    static func typicalReps(of sets: [(date: Date, reps: Int)]) -> Int? {
+        let last = sets.sorted { $0.date < $1.date }.suffix(3).map(\.reps).sorted()
+        guard last.count >= 2 else { return nil }
+        return last.count == 3 ? last[1] : Int((Double(last[0] + last[1]) / 2).rounded())
+    }
+
     /// Accepted next-session suggestions not yet used: the load step waiting for each exercise.
     var nextSessionLoads: [String: Double] {
         var loads: [String: Double] = [:]

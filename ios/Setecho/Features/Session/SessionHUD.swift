@@ -64,6 +64,8 @@ struct SessionHUDModel: Equatable {
         }
         var lines: [Line]
         var notes: [String]
+        /// "52 min · 13 min away": how long the session ran, and the time away from the sets.
+        var time: String? = nil
     }
 
     var phase: Phase
@@ -245,6 +247,9 @@ struct SessionHUD: View {
                 Label("Done", systemImage: "checkmark.circle.fill")
                     .font(.system(size: 48, weight: .bold))
                     .foregroundStyle(Theme.onStage)
+                if let time = model.summary?.time {
+                    Text(time).font(.hudLabel).foregroundStyle(Theme.onStageSecondary)
+                }
                 Text("Your coach sees all of it on Thursday.").font(.hudLabel).foregroundStyle(Theme.onStageSecondary)
             }
         case .ready, .armed, .recording:

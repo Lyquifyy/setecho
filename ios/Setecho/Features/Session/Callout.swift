@@ -37,6 +37,15 @@ enum Callout {
         "Set \(setNumber), was that \(reps)?"
     }
 
+    /// A count far from his usual for the lift, asked instead of logged: "Camera says 13. You usually get
+    /// around 7. Keep it?" / "The phone counted 2. You usually get around 6. Keep it?" Named with its set
+    /// when the set is not the one he just did. Every number from code (CLAUDE.md rule 13).
+    static func farCount(source: RepSource, reps: Int, typical: Int, setNumber: Int? = nil) -> String {
+        let who = source == .phone ? "The phone counted \(reps)." : "Camera says \(reps)."
+        let line = "\(who) You usually get around \(typical). Keep it?"
+        return setNumber.map { "Set \($0). \(line)" } ?? line
+    }
+
     /// No count to say (the plan's reps stand): just the next target. A new exercise names its
     /// add-on ("Abs"), says "Warm-ups first" when it starts in warm-up mode, and "Say go" for a hold.
     static func nextLine(_ next: NextSet) -> String {
