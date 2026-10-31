@@ -97,7 +97,8 @@ Every line of code in this repo was written between the kickoff (12:24 PM ET, Oc
 - **Oct 28:** the voice moved to Apple's on-device speech (Meta models only); the between-set conversation; fixes from the first gym test (sets start on the athlete's word, the camera follows only him, hearing him over gym noise); machine taken; the session screen.
 - **Oct 29:** the first real check-in sent through Setecho; Withings direct; the WhatsApp history import; Liftoff and Garmin history, so Last time is real from the first session; camera sets for flyes, one-arm and bodyweight lifts.
 - **Oct 30:** the first camera sets counted end to end in a real session; SAM follows the moving dumbbell and watches the hands on cables and machines; talking to it mid-set; a tighter counting clip; the slowdown said even when SAM's answer arrives late; the evidence script against the pre-Setecho baseline.
-- **Oct 31 – Nov 4:** *(to fill in as it lands)*
+- **Oct 31:** the measured top sets reach the coach in the check-in's notes field; check-in morning fixes from a practice run (finished days only, no spoken deltas); a refused spotter reply is asked again once; a set's clip can be shared for SAM tuning; the screens in this README.
+- **Nov 1 – Nov 4:** *(to fill in as it lands)*
 
 ## Run it
 
