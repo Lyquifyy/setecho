@@ -1,44 +1,82 @@
 <p><img src="ios/Setecho/Assets.xcassets/Lockup.imageset/Lockup.svg" alt="Setecho" width="320"></p>
 
-**Your workout, logged hands-free.**
+**Train with your coach. Skip the paperwork.**
 
-Setecho is an iPhone app for bodybuilding athletes who follow a human coach's training plan. It records workouts, takes progress photos hands-free and prepares updates to send the coach on WhatsApp.
+Setecho is an iPhone app for athletes who train under a human coach, like a bodybuilder getting ready for a competition with an online coach. That kind of coaching runs on paperwork. The athlete writes down every set of every workout. Once a week they retype the whole week into the coach's questionnaire, the **check-in**: body weight, food, sleep, how training went and four progress photos. Then they send it on WhatsApp, and the coach replies with changes to the plan.
 
-A **check-in** is that regular progress update: answers to the coach's questionnaire, health and workout data, photos and selected exercise videos. A **rep** is one repetition of an exercise; a **set** is a group of repetitions.
+Setecho takes the paperwork away and leaves the coaching to the coach:
 
-Import your coach's training spreadsheet and check-in questionnaire once. After that:
-- **Record workouts hands-free.** With the phone on a tripod, SAM tracks movement in video so code can count repetitions and measure their speed. Away from the camera, say the weight and repetitions you completed.
-- **Use your coach's rules for the next weight.** Code applies the coach's confirmed adjustment rules. You decide whether to accept a suggestion.
-- **Select exercise videos for review.** Say "flag that" to mark a recorded set for your coach. The two selected videos are trimmed to the exercise repetitions.
-- **Take progress photos hands-free.** The phone captures four poses in your coach's order, keeping the photos exactly as taken.
-- **Prepare your progress update.** Apple Health and your workout log fill parts of the questionnaire. Answer the remaining questions by voice, then review the message and photos before sending them through WhatsApp.
-- **Apply your coach's changes after reviewing them.** Import a text or voice message, see each proposed change beside the coach's exact words, and approve what goes into the plan.
+- **Workouts log themselves.** Say "done, twelve" between sets, or put the phone on a tripod and let it count the reps.
+- **The weekly check-in fills itself** from the athlete's scale, food log and watch. The rest is answered out loud.
+- **The coach's reply becomes plan changes** the athlete approves. The coach keeps his spreadsheet and his WhatsApp, and never installs anything.
 
-I built it while preparing for a bodybuilding competition in the natural Classic Physique category. The first real progress update went to my coach through Setecho on Thursday, Oct 29.
+**Why I built it.** I'm training for a bodybuilding competition with an online coach. Every week I typed my check-in through an entire 25-minute cardio session, and I tapped my phone between every set. I built Setecho for myself and used it for real during the hackathon: my coach's real program, a real week of training, and a real check-in sent to him through Setecho on Thursday, Oct 29.
 
-## Your coach makes the decisions
+## What it changed in the first week
 
-Setecho records training and handles the paperwork around a human coach's plan. The coach decides what the athlete should do.
+| | By hand (before) | With Setecho |
+|---|---|---|
+| **One workout** (the same day of my program) | 55–68 min, median 64 (my last four times through it, logged in Liftoff) | 53 min for 18 sets, none of them typed: faster than any of those four, while I still kept a paper logbook beside it to check it |
+| **Weekly check-in** | a whole 25-minute cardio session typing 22 questions into WhatsApp | 7 min 26 s by voice, start to finish, weigh-in and four photos included; I spoke for just over a minute of it (a practice run on my real data on Oct 30, two days into the week, so I answered 19 of the 22 fields out loud) |
+| **Typing between sets** | every set, during rest | none |
 
-- **It never writes a plan.** The program, the check-in form and the rules for changing loads all come from the coach, imported once from his own spreadsheet, form and messages.
-- **It never judges form or posing, and never gives nutrition advice.** The videos the coach asks for go to him cropped to the reps, with no verdict attached. The photos go to him exactly as taken.
-- **Weight suggestions follow the coach's rules.** A next-set weight comes only from a confirmed rule, such as "make the next set 20 to 25% lighter." The athlete decides, and the coach sees every adjustment in the next check-in. If equipment is occupied, any suggested substitute stays within the same movement family or the coach's own alternatives.
-- **Code calculates and checks the numbers:**
-  - **SAM 3.1** tracks the weight plates through each set's video. Code turns the track into a rep count, each rep's speed, and how much the reps slowed.
-  - **A rule engine**, written in code, applies the coach's written rules to that measurement: how to round weights, how much to change them and which limits to respect.
-  - **Muse Spark** reads the coach's material into structured data and holds the conversation. Every number it says is checked against the facts code computed before the line is used.
-  - **Muse Voice Transcribe** hears the athlete hands-free in the gym and during the check-in.
-- **It's used for real:** a real coach, a real program, a real week of training and a real check-in sent on WhatsApp.
+<!-- EVIDENCE: replace the Setecho column with `uv run python -m scripts.evidence` output once the session
+exports are in backend/private/sessions/ (HANDOFF.md §9). The Day 5 row is the Oct 30 export: 52.8 min start to
+end, 2.9 min per set against 3.6 before. -->
 
-## Which Meta model does what
+The "before" numbers come straight from my Liftoff export. `backend/scripts/evidence.py` rebuilds this table from the raw exports, matching each Setecho session to the same program day before Setecho.
+
+My coach replied to that first check-in with a 1:19 WhatsApp voice note. Setecho transcribed it, read it against my plan and found nothing to change. In his words, quoted with his permission:
+
+> "Continuing to do fantastic work, man… A pound a week of fat loss, right on the money… Keep doing what we're doing, it's working."
+
+## The thing my coach could never see
+
+My coach programs every **top set** (the heaviest set of an exercise) to **failure**: until I can't do one more rep. Online, the only evidence he gets is my word.
+
+With the phone on a tripod, **SAM 3.1** tracks the weight plate through the set, frame by frame. Code turns that track into a rep count and each rep's speed, then measures how much the last reps slowed against the first. Slowdown is how sports science estimates reps left in reserve ([Rodríguez-Rosell et al., 2020](https://www.uloyola.es/en/research-transfer/publications/relationship-between-velocity-loss-and-repetitions-in-reserve-in-the-bench-press-and-back-squat-exercises-article)): over about 40%, there was nothing left. Setecho calibrates that map per exercise against how hard I say each set felt (RPE, a 1–10 rating).
+
+So at the bench, during rest, I hear lines like this one: *"Eleven reps, measured. Slowed 46%, that's failure, his target. Back-off at 170, his rule: 20 to 25% lighter."* I say "go with it" and load the bar.
+
+<!-- KEEP ONLY IF the measured top sets ship in the check-in (design/handoff-oct30-evening.md, item 1). -->
+In the check-in, each top set goes to him with its measured reps and slowdown, in his own notes field, plus the two videos he asks for, cropped to just the reps. An honor system becomes a measurement, and he still makes every call.
+
+## Not an analyzer, not a coach
+
+- **An analyzer gives the athlete a verdict.** Setecho gives the coach a measurement and no verdict: no form score, no posing feedback, no program, no nutrition advice. The photos go to him exactly as taken.
+- **A coach decides.** Setecho applies only rules the coach wrote or the athlete confirmed as his ("back-offs 20 to 25% lighter"). The athlete accepts or keeps his weight, and every adjustment appears in the next check-in.
+- **It fits the coach's tools, not the other way round.** The program imports from his Google Sheet, the check-in goes to his WhatsApp in his exact format and order, and his replies, text or voice note, come back the same way.
+- **Numbers come from code, never from a model.** Every number Muse Spark says or writes is checked against the facts code computed, Apple Health, or what the athlete said, before it is used.
+
+## How the Meta models work together
+
+One week, end to end:
+
+```text
+Coach's sheet, form and email ─▶ Muse Spark ─▶ program, 22-field check-in template, his rules
+Phone on a tripod ─▶ SAM 3.1 tracks the plate ─▶ code: reps, rep speeds, slowdown ─▶ his rule ─▶ next weight
+"Done, twelve" ─▶ Muse Voice Transcribe ─▶ Muse Spark ─▶ the set is logged
+Check-in morning, talking ─▶ Voice Transcribe ─▶ Muse Spark fills the form from Apple Health + the log ─▶ WhatsApp
+His reply or voice note ─▶ Voice Transcribe ─▶ Muse Spark: each change beside his words ─▶ athlete approves ─▶ plan
+```
 
 | Model | What it does in Setecho |
 |---|---|
-| **Muse Spark 1.3** | Reads the coach's spreadsheet, questionnaire and rules; drafts progress updates with numbers traced to their sources; proposes plan changes from the coach's replies; understands spoken requests and phrases the app's responses. |
-| **Muse Voice Transcribe 1.0** | Hears the athlete hands-free during sessions and the check-in (realtime), and transcribes the coach's voice notes. |
-| **SAM 3.1** | Tracks the weight plates in each measured set's video, so code can count the reps and measure how much they slowed. |
+| **Muse Spark 1.3** | Reads the coach's spreadsheet, questionnaire and rules; drafts the check-in with every number traced to its source; turns the coach's replies into proposed plan changes; understands what the athlete says between sets and on check-in morning. |
+| **Muse Voice Transcribe 1.0** | Hears the athlete hands-free in the gym and on check-in morning (realtime), and transcribes the coach's voice notes. |
+| **SAM 3.1** | Tracks the weight plates (or, on dumbbells, cables and machines, the moving weight and hands) through each measured set, so code can count the reps and measure how much they slowed. |
 
-Every model the app calls at runtime is Meta's, on the Standard tier. Meta has no text-to-speech, so Setecho speaks with Apple's on-device voice. The voice is one swappable component, ready for Meta's announced custom voices. Apple Health, Apple's body-pose detection and on-device speech are OS frameworks, not model calls.
+Every model the app calls at runtime is Meta's, on the Standard tier. Meta has no text-to-speech, so Setecho speaks with Apple's on-device voice, one swappable component ready for Meta's announced custom voices. Apple Health, Apple's body-pose detection and on-device speech are OS frameworks, not model calls.
+
+## What it can't do (yet)
+
+- **SAM is slower than a rep.** Its count lands after the set, often within a minute and sometimes nearer two. The phone's instant pose count and the athlete's voice cover the gap, and a late slowdown is still said during rest.
+- **SAM is most reliable on plate-loaded and barbell lifts.** On cables and dumbbells it can miss; the phone's count or the athlete's spoken number then stands, and every correction is logged.
+- **Effort is an estimate.** It's always labelled "estimated" and calibrated per exercise against spoken RPE. It never replaces the coach's eye; the two videos are there for that.
+- **One athlete, one coach, iPhone, English.** Check-in photos never leave the phone except in the WhatsApp send.
+
+<!-- EVIDENCE: paste the "Rep counts", "Effort" and "Speed and hearing" sections from scripts/evidence.py here as
+"## How well it measures", misses included. -->
 
 ## Built during the hackathon
 
@@ -47,9 +85,9 @@ Every line of code in this repo was written between the kickoff (12:24 PM ET, Oc
 - **Oct 26:** the backend and the iOS app; importing the coach's sheet and form; the hands-free session; the photo session; the check-in draft; the backend deployed.
 - **Oct 27:** SAM as the count of record, with rep speeds and the slowdown; the coach's training cycle, add-ons and rules; Check-in morning; the coach-reply loop; measured effort and the rule engine; the spotter line.
 - **Oct 28:** the voice moved to Apple's on-device speech (Meta models only); the between-set conversation; fixes from the first gym test (sets start on the athlete's word, the camera follows only him, hearing him over gym noise); machine taken; the session screen.
-- **Oct 29:** the first real check-in sent through Setecho; Withings direct; the WhatsApp history import; Liftoff and Garmin history, so Last time is real from the first session.
-- **Oct 30 – Nov 4:** *(to fill in as it lands)*
-
+- **Oct 29:** the first real check-in sent through Setecho; Withings direct; the WhatsApp history import; Liftoff and Garmin history, so Last time is real from the first session; camera sets for flyes, one-arm and bodyweight lifts.
+- **Oct 30:** the first camera sets counted end to end in a real session; SAM follows the moving dumbbell and watches the hands on cables and machines; talking to it mid-set; a tighter counting clip; the slowdown said even when SAM's answer arrives late; the evidence script against the pre-Setecho baseline.
+- **Oct 31 – Nov 4:** *(to fill in as it lands)*
 
 ## Run it
 
