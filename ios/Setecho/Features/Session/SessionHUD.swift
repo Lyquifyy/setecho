@@ -468,11 +468,10 @@ private struct StatusRow: View {
                 if model.pocket {
                     PocketPill(label: audioLabel)
                 } else {
-                    AudioConnection(label: model.micLabel, onHim: model.micOnHim, showsLabel: audioLabel || !model.micOnHim)
+                    AudioConnection(label: model.micLabel, onHim: model.micOnHim, showsLabel: audioLabel || !model.micOnHim, wraps: flexible)
                 }
             }
             .fixedSize(horizontal: !flexible, vertical: true)
-            .minimumScaleFactor(0.7)
         }
     }
 }
@@ -484,15 +483,22 @@ struct AudioConnection: View {
     var onHim: Bool
     /// Short of room, the icon alone says the mic is on him; the warning always keeps its words.
     var showsLabel = true
+    /// The last resort when the warning still doesn't fit beside the state (Oct 31, "Phone mic · t…"
+    /// on a 402 pt phone): its words wrap to a second line instead of being cut.
+    var wraps = false
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: onHim ? (label.contains("AirPods") ? "airpodspro" : "mic.fill") : "exclamationmark.triangle.fill")
-            if showsLabel { Text(warning) }
+            if showsLabel {
+                Text(warning)
+                    .lineLimit(wraps ? 2 : 1)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .foregroundStyle(onHim ? Theme.cobalt : Theme.navy)
         .font(.hudLabel.weight(.semibold))
-        .lineLimit(1)
         .padding(.horizontal, 14)
         .frame(minHeight: 44)
         .background(onHim ? Theme.cobaltTint : Theme.yellow, in: Capsule())

@@ -282,6 +282,19 @@ struct SessionRow: View {
                             } else { missingClip = true }
                         }
                     }
+                    // Oct 31: a set's clip can leave the phone for SAM tuning (scripts/sam_reps_probe.py).
+                    // Until now a miscount could only be read about in the session JSON, never replayed.
+                    if let file = set.clipFile,
+                       case let url = store.mediaDirectory.appendingPathComponent(file),
+                       FileManager.default.fileExists(atPath: url.path) {
+                        ShareLink(item: url) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(Theme.cobalt)
+                                .frame(width: Theme.Control.minimum, height: Theme.Control.minimum)
+                        }
+                        .accessibilityLabel("Share the video of set \(set.setIndex + 1)")
+                    }
                     Text(exerciseName(set)).font(.footnote).foregroundStyle(Theme.navy)
                     Spacer()
                     Text(setText(set)).font(.footnote).monospacedDigit().secondaryText()
