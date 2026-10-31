@@ -41,6 +41,9 @@ final class Settings {
     var autoStartHolds: Bool { didSet { defaults.set(autoStartHolds, forKey: "autoStartHolds") } }
     /// Settings → "Machine-taken help": his options when a machine's taken. Off, his own swaps still work and are logged.
     var machineTakenHelp: Bool { didSet { defaults.set(machineTakenHelp, forKey: "machineTakenHelp") } }
+    /// Settings → "Measured top sets in check-ins" (on): each lift's best measured top set goes in his
+    /// notes field on Review and send, where the athlete can still untick one (HANDOFF.md §7, Measured effort).
+    var measuredTopSetsInCheckIns: Bool { didSet { defaults.set(measuredTopSetsInCheckIns, forKey: "measuredTopSetsInCheckIns") } }
     /// "How a session works" has been shown once, before the first session (`SessionIntroView`).
     var hasSeenSessionIntro: Bool { didSet { defaults.set(hasSeenSessionIntro, forKey: "hasSeenSessionIntro") } }
     /// What the athlete can load (§13): barbell 5 lb, dumbbells 5 lb, machines from here.
@@ -111,6 +114,7 @@ final class Settings {
         talkativeSpotter = defaults.object(forKey: "talkativeSpotter") as? Bool ?? true
         autoStartHolds = defaults.object(forKey: "autoStartHolds") as? Bool ?? false
         machineTakenHelp = defaults.object(forKey: "machineTakenHelp") as? Bool ?? true
+        measuredTopSetsInCheckIns = defaults.object(forKey: "measuredTopSetsInCheckIns") as? Bool ?? true
         hasSeenSessionIntro = defaults.bool(forKey: "hasSeenSessionIntro")
         barbellStepLb = defaults.object(forKey: "barbellStepLb") as? Double ?? 5
         dumbbellStepLb = defaults.object(forKey: "dumbbellStepLb") as? Double ?? 5

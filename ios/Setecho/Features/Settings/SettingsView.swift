@@ -90,6 +90,9 @@ struct SettingsView: View {
                 CardDivider()
                 SettingToggle("Current weight is the 7-day average", isOn: $settings.useSevenDayAverageWeight)
                 Note("Off: your latest weigh-in.")
+                CardDivider()
+                SettingToggle("Measured top sets in check-ins", isOn: $settings.measuredTopSetsInCheckIns)
+                Note("Each lift's best measured top set goes in your notes field: load, reps, how much it slowed and the estimated effort. You can untick any on Review and send.")
             }
 
             SectionCard("Sessions") {

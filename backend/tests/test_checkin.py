@@ -245,6 +245,90 @@ def test_render_puts_adjustments_and_gym_changes_in_his_notes_field():
     assert r.status_code == 200 and "Gym changes: Tue, Smith close-grip press" in r.json()["messages"][1]
 
 
+def test_render_puts_measured_top_sets_first_in_his_notes_field():
+    """Each lift's best measured top set, as the phone computed it, goes in his notes before the
+    adjustments and gym changes (HANDOFF.md §7, Measured effort). Nothing is added to his format."""
+    draft = checkin.build_draft(request(), agent=lambda req, fields: {})
+    measured = [
+        "Smith close-grip press 225 × 9, slowed 46%, failure",
+        "incline DB press 80 × 10, slowed 31%, about 1 left.",
+    ]
+    _, plain = checkin.render_messages(TEMPLATE, draft)
+    _, form = checkin.render_messages(TEMPLATE, draft, measured=measured)
+    notes = next(line for line in form.splitlines() if line.startswith("Additional notes or concerns"))
+    assert notes.endswith(
+        "Measured top sets: Smith close-grip press 225 × 9, slowed 46%, failure; "
+        "incline DB press 80 × 10, slowed 31%, about 1 left."
+    )
+    assert len(form.splitlines()) == len(plain.splitlines())
+    assert "Measured top sets" not in plain and "Top sets" not in form.replace("Measured top sets", "")
+    # Before the rule adjustments and the gym changes, all in the one field.
+    _, full = checkin.render_messages(
+        TEMPLATE,
+        draft,
+        adjustments=["Bench set 1, 190 → 195 next session (rest-pause over goal)"],
+        deviations=["Tue, Smith close-grip press → close-grip bench press (Smith taken)"],
+        measured=measured,
+    )
+    notes = next(line for line in full.splitlines() if line.startswith("Additional notes or concerns"))
+    assert (
+        notes.index("Measured top sets:")
+        < notes.index("Adjusted by your rule:")
+        < notes.index("Gym changes:")
+    )
+    assert len(full.splitlines()) == len(plain.splitlines())
+    # An empty list changes nothing; blank lines are dropped.
+    assert checkin.render_messages(TEMPLATE, draft, measured=[]) == checkin.render_messages(TEMPLATE, draft)
+    assert checkin.render_messages(TEMPLATE, draft, measured=["", "  "]) == checkin.render_messages(
+        TEMPLATE, draft
+    )
+    r = TestClient(app).post(
+        "/checkin/render",
+        json={"template": TEMPLATE.model_dump(), "draft": draft.model_dump(), "measured": measured},
+    )
+    assert r.status_code == 200, r.text
+    assert (
+        "Measured top sets: Smith close-grip press 225 × 9, slowed 46%, failure; incline DB press"
+        in r.json()["messages"][1]
+    )
+
+
+def test_measured_top_sets_without_a_notes_field_follow_his_last_field():
+    draft = checkin.build_draft(request(), agent=lambda req, fields: {})
+    notes_id = checkin.notes_field_id(TEMPLATE)
+    # Only data fields: no notes field and no spoken text field to fall back on.
+    bare = TEMPLATE.model_copy(
+        update={
+            "fields": [
+                f
+                for f in TEMPLATE.fields
+                if f.id != notes_id and not (f.source.type == "voice" and f.kind == "text")
+            ]
+        }
+    )
+    assert checkin.notes_field_id(bare) is None
+    _, plain = checkin.render_messages(bare, draft)
+    _, form = checkin.render_messages(bare, draft, measured=["Hack squat 270 × 7, slowed 44%, failure"])
+    lines = form.splitlines()
+    assert lines[-1] == "Measured top sets: Hack squat 270 × 7, slowed 44%, failure."
+    # One sentence after his last field, no heading of its own.
+    assert len(lines) == len(plain.splitlines()) + 2 and lines[-2] == ""
+
+
+def test_render_ignores_bookkeeping_keys_the_phone_adds_to_its_draft():
+    """A key the phone adds later (which measured sets he unticked, say) must never refuse a render."""
+    draft = checkin.build_draft(request(), agent=lambda req, fields: {})
+    body = draft.model_dump() | {
+        "measuredLeftOut": ["7D7E1A52-0000-4000-8000-000000000000"],
+        "somethingNew": 1,
+    }
+    r = TestClient(app).post("/checkin/render", json={"template": TEMPLATE.model_dump(), "draft": body})
+    assert r.status_code == 200, r.text
+    req = json.loads(request().model_dump_json())
+    req["lastCheckIn"] = body
+    assert TestClient(app).post("/checkin/draft", json=req).status_code != 422
+
+
 def test_notes_field_is_his_additional_notes_else_the_last_spoken_text_field():
     assert checkin.notes_field_id(TEMPLATE) is not None and "additional_notes" in checkin.notes_field_id(
         TEMPLATE

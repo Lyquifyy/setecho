@@ -68,4 +68,53 @@ enum Effort {
         let n = Int(rir.rounded())
         return "about \(n) left by the measure"
     }
+
+    /// Written for the coach's notes, the same words as spoken: "failure" / "about 2 left" / "4+ left".
+    static func written(rir: Double) -> String {
+        if rir <= 0 { return "failure" }
+        if rir >= 4 { return "4+ left" }
+        return "about \(Int(rir.rounded())) left"
+    }
+
+    // MARK: Measured top sets in the check-in (HANDOFF.md §7, Measured effort, In the check-in)
+
+    /// One lift's best measured top set this period, for his notes field. Every number is the log's;
+    /// the effort words are the spotter's. No verdict, nothing from a model.
+    struct TopSetNote: Identifiable, Equatable {
+        /// The set's id, so an untick on Review and send keys on the set.
+        var id: UUID
+        var exerciseName: String
+        var at: Date
+        var line: String
+    }
+
+    /// "Smith close-grip press 225 × 9, slowed 46%, failure": load through `Format` (DESIGN.md rule 7),
+    /// the logged reps, the slowdown as a whole percent, then the effort words.
+    static func topSetLine(name: String, loadLb: Double, reps: Int, velocityLossPct: Double, rir: Double) -> String {
+        "\(name) \(Format.number(loadLb)) × \(reps), slowed \(Format.percent(velocityLossPct)), \(written(rir: rir))"
+    }
+
+    /// The period's best measured top set per lift: `role == .top`, SAM's count and slowdown both
+    /// present, warm-ups never. Best is the heaviest, then the most reps. A swapped set counts as the
+    /// variant done (`doneAs`). One note per lift, in the order the lifts were first done.
+    static func measuredTopSets(in sessions: [Session], names: (String) -> String, calibration: Calibration = Calibration()) -> [TopSetNote] {
+        var order: [String] = []
+        var best: [String: LoggedSet] = [:]
+        for session in sessions.sorted(by: { $0.startedAt < $1.startedAt }) {
+            for set in session.sets.sorted(by: { $0.startedAt < $1.startedAt }) {
+                guard set.role == .top, !set.isWarmup, set.repCount.measured != nil, set.repCount.velocityLossPct != nil else { continue }
+                let key = set.exerciseId + "|" + (set.doneAs ?? "")
+                if best[key] == nil { order.append(key) }
+                if let current = best[key], (current.loadLb, current.reps) >= (set.loadLb, set.reps) { continue }
+                best[key] = set
+            }
+        }
+        return order.compactMap { key in
+            guard let set = best[key], let loss = set.repCount.velocityLossPct else { return nil }
+            let rir = set.repCount.estimatedRIR ?? estimatedRIR(velocityLossPct: loss, exerciseId: set.exerciseId, calibration: calibration)
+            let name = set.doneAs ?? names(set.exerciseId)
+            return TopSetNote(id: set.id, exerciseName: name, at: set.startedAt,
+                              line: topSetLine(name: name, loadLb: set.loadLb, reps: set.reps, velocityLossPct: loss, rir: rir))
+        }
+    }
 }

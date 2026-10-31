@@ -80,6 +80,15 @@ struct ReviewSendView: View {
 
     private var adjustmentLines: [String] { adjustments.filter { !leftOut.contains($0.id) }.map(\.line) }
 
+    /// "Smith close-grip press 225 × 9, slowed 46%, failure": each lift's best measured top set this
+    /// period, in by default while the setting is on (HANDOFF.md §7, Measured effort). Numbers from the log.
+    private var measuredTopSets: [Effort.TopSetNote] {
+        guard settings.measuredTopSetsInCheckIns else { return [] }
+        return Effort.measuredTopSets(in: periodSessions, names: exerciseName, calibration: store.calibration)
+    }
+
+    private var measuredLines: [String] { measuredTopSets.filter { !leftOut.contains($0.id) }.map(\.line) }
+
     /// "Tue, Smith close-grip press → close-grip bench press (Smith taken)": every gym change this
     /// period, in by default (HANDOFF.md §7, Machine taken).
     private var deviations: [PlanDeviation] { periodSessions.flatMap(\.deviations).sorted { $0.at < $1.at } }
@@ -239,6 +248,24 @@ struct ReviewSendView: View {
                     HStack(spacing: Theme.Space.xs) {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.cobalt)
                         Text("Ready to send. WhatsApp uploads them when you share.").font(.footnote).secondaryText()
+                    }
+                }
+            }
+            if !measuredTopSets.isEmpty {
+                SectionCard("Top sets, measured") {
+                    Text("Each lift's best measured top set this period, first in your notes field: load, reps, how much it slowed, and the estimated effort. Untick any you'd rather leave out.")
+                        .font(.footnote).secondaryText()
+                    ForEach(measuredTopSets) { note in
+                        CardDivider()
+                        HStack(alignment: .top, spacing: Theme.Space.s) {
+                            VStack(alignment: .leading, spacing: Theme.Space.xxs) {
+                                Text(note.line).font(.subheadline).monospacedDigit().foregroundStyle(Theme.navy)
+                                Text("Measured · \(note.at.formatted(.dateTime.weekday(.wide)))").font(.footnote).secondaryText()
+                            }
+                            Spacer(minLength: Theme.Space.xs)
+                            Checkbox(isOn: !leftOut.contains(note.id)) { toggle(note.id) }
+                                .accessibilityLabel("\(note.line), \(leftOut.contains(note.id) ? "left out" : "in the notes")")
+                        }
                     }
                 }
             }
@@ -446,7 +473,7 @@ struct ReviewSendView: View {
         error = nil
         do {
             let response = try await APIClient().checkInRenderMessages(template: template, draft: draft, adjustments: adjustmentLines,
-                                                                       deviations: deviationLines)
+                                                                       deviations: deviationLines, measured: measuredLines)
             messages = response.messages
             coordinator.setAdjustments(adjustments.map(\.id).filter { !leftOut.contains($0) })
         } catch {

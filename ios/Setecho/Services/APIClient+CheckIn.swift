@@ -9,9 +9,12 @@ extension APIClient {
         try await checkInRenderMessages(template: template, draft: draft).text
     }
 
-    /// Both messages in his order: the plan message, then the questionnaire with the adjustments line.
-    func checkInRenderMessages(template: CheckInTemplate, draft: CheckInDraft, adjustments: [String] = [], deviations: [String] = []) async throws -> RenderResponse {
-        try await postJSON("/checkin/render", body: RenderRequest(template: template, draft: draft, adjustments: adjustments, deviations: deviations),
+    /// Both messages in his order: the plan message, then the questionnaire with the measured top sets,
+    /// the adjustments and the gym changes in his notes field.
+    func checkInRenderMessages(template: CheckInTemplate, draft: CheckInDraft, adjustments: [String] = [], deviations: [String] = [],
+                               measured: [String] = []) async throws -> RenderResponse {
+        try await postJSON("/checkin/render",
+                           body: RenderRequest(template: template, draft: draft, adjustments: adjustments, deviations: deviations, measured: measured),
                            timeout: 30)
     }
 

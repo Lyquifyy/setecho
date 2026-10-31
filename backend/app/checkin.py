@@ -11,7 +11,7 @@ import re
 from datetime import date
 from typing import Any
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from app import meta
 from app.schemas import CheckInTemplate, FieldSpec, Macros, MacroTargets, StrictModel, strict_schema
@@ -94,13 +94,16 @@ class VideoPick(StrictModel):
 
 
 class CheckInDraft(StrictModel):
+    # The phone's own bookkeeping is carried through, and any key it adds later is ignored rather
+    # than refused (Oct 28: a render with picks or adjustments was refused with "extra inputs are
+    # not permitted"). This model is never a structured-output schema, so the looseness costs nothing.
+    model_config = ConfigDict(extra="ignore")
+
     id: str
     weekStart: str
     weekEnd: str
     answers: list[FieldAnswer]
     photoSetId: str | None = None
-    # The phone's own bookkeeping, carried through so a draft it sends back is accepted (Oct 28: a
-    # render with picks or adjustments was refused with "extra inputs are not permitted").
     videoPicks: list[VideoPick] = Field(default_factory=list)
     adjustments: list[str] = Field(default_factory=list)
     sentAt: str | None = None
@@ -124,6 +127,10 @@ class RenderRequest(StrictModel):
         description='The accepted suggestions as lines computed on the phone: "Incline press set 3, 225 → 215 (RPE 9.5 vs 8)"',
     )
     deviations: list[str] = Field(default_factory=list, description="Gym changes (stretch), one line each")
+    measured: list[str] = Field(
+        default_factory=list,
+        description='Each lift\'s best measured top set this period, as lines computed on the phone: "Smith close-grip press 225 × 9, slowed 46%, failure"',
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -595,16 +602,20 @@ def _trim(lines: list[str]) -> str:
 
 
 def render_messages(
-    template: CheckInTemplate, draft: CheckInDraft, adjustments: list[str] = (), deviations: list[str] = ()
+    template: CheckInTemplate,
+    draft: CheckInDraft,
+    adjustments: list[str] = (),
+    deviations: list[str] = (),
+    measured: list[str] = (),
 ) -> list[str]:
     """The check-in as the coach asked for it (HANDOFF.md §7, Check-in, step 6): two messages in his
     order. First the plan message, the carried blocks verbatim (macros, cardio, supplements); then
     the questionnaire, every field in his order as "Label (prompt): answer". Missing answers render
     as an empty value, never a guess. With no carried blocks there is only the questionnaire."""
     by_id = {a.fieldId: a for a in draft.answers}
-    # The week's accepted suggestions and gym changes go in his own notes field as plain sentences
-    # (HANDOFF.md §7, Measured effort; Machine taken): his format gains no line and no section.
-    extra = _notes_sentences(adjustments, deviations)
+    # The week's measured top sets, accepted suggestions and gym changes go in his own notes field as
+    # plain sentences (HANDOFF.md §7, Measured effort; Machine taken): his format gains no line and no section.
+    extra = _notes_sentences(adjustments, deviations, measured)
     notes_id = notes_field_id(template) if extra else None
     plan: list[str] = []
     for block in template.carriedBlocks:
@@ -654,10 +665,13 @@ def _sentence(text: str) -> str:
     return text if not text or text[-1] in ".!?" else text + "."
 
 
-def _notes_sentences(adjustments: list[str], deviations: list[str]) -> str:
-    """ "Adjusted by your rule: Incline press set 3, 225 → 215 (RPE 9.5 vs 8)." and "Gym changes:
-    Tue, Smith close-grip press → close-grip bench press (Smith taken)." Only what the athlete kept in."""
+def _notes_sentences(adjustments: list[str], deviations: list[str], measured: list[str] = ()) -> str:
+    """ "Measured top sets: Smith close-grip press 225 × 9, slowed 46%, failure." first, then "Adjusted by
+    your rule: Incline press set 3, 225 → 215 (RPE 9.5 vs 8)." and "Gym changes: Tue, Smith close-grip
+    press → close-grip bench press (Smith taken)." Only what the athlete kept in; every number from the log."""
     parts = []
+    if top := [m.strip().rstrip(".") for m in measured if m.strip()]:
+        parts.append("Measured top sets: " + "; ".join(top) + ".")
     if adj := [a.strip().rstrip(".") for a in adjustments if a.strip()]:
         parts.append("Adjusted by your rule: " + "; ".join(adj) + ".")
     if dev := [d.strip().rstrip(".") for d in deviations if d.strip()]:
