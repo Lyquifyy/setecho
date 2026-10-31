@@ -28,8 +28,8 @@ export const TitleCard: React.FC = () => {
       <LogoDraw size={176}/>
       <Img src={staticFile('brand/wordmark.svg')} style={{width: 630, opacity: appear(frame, 22)}}/>
     </div>
-    <div style={{fontSize: 91, fontWeight: 650, letterSpacing: '-3px', opacity: appear(frame, 36), transform: `translateY(${rise(frame, 36)}px)`}}>Your workout, logged hands-free.</div>
-    <div style={{...labelStyle, marginTop: 34, opacity: appear(frame, 48)}}>Record workouts. Share progress with your coach.</div>
+    <div style={{fontSize: 84, fontWeight: 650, letterSpacing: '-2.6px', lineHeight: 1.08, textAlign: 'center', opacity: appear(frame, 36), transform: `translateY(${rise(frame, 36)}px)`}}>Train with your coach.<br/>Skip the paperwork.</div>
+    <div style={{...labelStyle, fontSize: 30, marginTop: 34, textAlign: 'center', maxWidth: 1250, opacity: appear(frame, 48)}}>Setecho logs every workout and fills in your weekly report to your coach, hands-free.</div>
     <div style={{position: 'absolute', bottom: 66, fontSize: 24, color: t.secondary, opacity: appear(frame, 52)}}>getsetecho.com</div>
   </AbsoluteFill>;
 };

@@ -27,7 +27,12 @@ All render outputs are under ignored `out/`:
 - `Pipeline.mp4`: 14 seconds, speak → workout log → progress update via WhatsApp → coach reply → plan update. The final link activates only after a visible approval pause.
 - `MetaStack.mp4`: 14-second tooling slide with correct model responsibilities and on-device speech attribution.
 - `lower-third-logging.mov`, `lower-third-check-in.mov`, `lower-third-coach-reply.mov`: 5-second transparent ProRes 4444 overlays. Place over real footage in the editor; they are transparent full-frame, with the graphic inside the bottom safe area.
-- `TitleCard.png`, `Pipeline.png`, `MetaStack.png`: review frames (`npm run stills`).
+- `TwoClocks.mp4`: 10 seconds, the same check-in typed against spoken. Both clocks run at the stated speed; the spoken side stops at its measured time and its "Me talking" counter advances only while the athlete was speaking. Values come from `props/two-clocks.json` (timings from a filming-mode manifest, no words).
+- `FirstWeek.mp4`: 5-second end card, before against after for the Day 5 session and the check-in, from `props/first-week.json`.
+- `CoachQuote.mp4`: 5 seconds, the coach's words as text (never his voice). Rendered only when `props/coach-quote.json` exists with his exact words: `{"quote": "…", "attribution": "My coach, replying to my first check-in sent with Setecho"}`. Without that file there is nothing to render, so the placeholder can never ship.
+- `<Composition>-<frame>.png`: review frames (`npm run stills`).
+
+When a number changes (for example, once a manual check-in is timed), edit the props JSON (`manualSeconds`, `manualTimed: true`, and the matching `first-week.json` row) and rerender. The code never holds a number.
 
 The lower third takes `title`, `detail` and `preview` props. Copy a JSON file in `props/` and render it:
 
@@ -52,4 +57,4 @@ Renderer API: [Remotion rendering](https://www.remotion.dev/docs/cli/render), [C
 
 ## Copy for judges
 
-Use “Your workout, logged hands-free.” for the title. Explain a check-in as a progress update sent to the coach, and a rep as one repetition of an exercise. The overview includes a fictional voice-logging example instead of editor instructions. Keep these explanations in the final edit; see `../COPY.md` for consistent terminology.
+Use “Train with your coach. Skip the paperwork.” for the title, with “Setecho logs every workout and fills in your weekly report to your coach, hands-free.” under it. Explain a check-in as a progress update sent to the coach, and a rep as one repetition of an exercise. The overview includes a fictional voice-logging example instead of editor instructions. Keep these explanations in the final edit; see `../COPY.md` for consistent terminology.

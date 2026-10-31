@@ -2,9 +2,13 @@
 
 Assume the reader has never followed a bodybuilding training plan. Name what the app does before introducing gym terminology.
 
-**Headline:** Your workout, logged hands-free.
+**Headline:** Train with your coach. Skip the paperwork.
 
-**One-sentence explanation:** Setecho is an iPhone app that records workouts, takes progress photos hands-free and prepares WhatsApp updates for athletes with a human coach.
+**Subhead:** Setecho logs every workout and fills in your weekly report to your coach, hands-free.
+
+**One-sentence explanation:** Setecho is an iPhone app for athletes who train under a human coach: it logs every workout from their voice and the phone's camera, and fills in the weekly progress report the coach asks for, so the athlete stops typing and the coach keeps coaching.
+
+**Never in a headline:** "prep", "Classic Physique", "top set", "RPE". Judges don't know them. Say "training for a bodybuilding competition", "the heaviest set", "how hard it felt".
 
 **Coach approval:** Your coach sets the plan. Setecho proposes changes from the coach's reply, and the plan changes only after you approve.
 
