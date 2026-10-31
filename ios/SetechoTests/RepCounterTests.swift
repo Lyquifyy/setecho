@@ -161,3 +161,26 @@ private func fixtures() throws -> [RepFixture] {
     }
     #expect(series.phoneCount(from: 0, to: 20) == nil)
 }
+
+@Test func lowerBodyIsSeenOnlyWhenHipsKneesOrAnklesShow() {
+    // Oct 31: his deadlifts from the hips up: six upper joints (on duty), no hips or knees.
+    var upper = JointSeries()
+    for i in 0..<150 {
+        upper.add(JointSeries.Sample(t: Double(i) / 15, joints: ["left_wrist": 0.7, "right_wrist": 0.7, "left_elbow": 0.6, "right_elbow": 0.6,
+                                                               "left_shoulder": 0.55, "right_shoulder": 0.55, "nose": 0.5, "neck": 0.55]))
+    }
+    #expect(upper.isOnDuty(now: 10) && !upper.seesLowerBody(now: 10))
+    // A hip in a quarter of the frames is enough; a flicker in one frame is not.
+    var whole = JointSeries()
+    for i in 0..<150 {
+        var joints: [String: Double] = ["left_wrist": 0.7, "right_wrist": 0.7, "left_shoulder": 0.55, "right_shoulder": 0.55, "nose": 0.5, "neck": 0.55]
+        if i % 4 == 0 { joints["left_hip"] = 0.5 }
+        whole.add(JointSeries.Sample(t: Double(i) / 15, joints: joints))
+    }
+    #expect(whole.seesLowerBody(now: 10))
+    var flicker = upper
+    flicker.add(JointSeries.Sample(t: 5.01, joints: ["left_hip": 0.5]))
+    #expect(!flicker.seesLowerBody(now: 10))
+    // Nothing seen yet: nothing to say.
+    #expect(JointSeries().seesLowerBody(now: 10))
+}

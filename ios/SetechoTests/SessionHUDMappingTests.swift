@@ -147,3 +147,14 @@ private var tripod: SessionHUDModel.Live {
         try png.write(to: folder.appendingPathComponent("8-live-rest.png"))
     }
 }
+
+@Test @MainActor func theFramingCueShowsOnlyWhileTheCameraSeesHisUpperBodyBeforeASet() {
+    let engine = SessionEngine(day: day, weekNumber: 1)
+    let live = SessionHUDModel.Live(micLabel: "AirPods mic", micOnHim: true, cameraRunning: true, cameraOnDuty: true, upperBodyOnly: true, now: t0)
+    #expect(SessionHUDModel(engine: engine, live: live).framing == "Upper body only · step back")
+    var whole = live
+    whole.upperBodyOnly = false
+    #expect(SessionHUDModel(engine: engine, live: whole).framing == nil)
+    engine.setStarted(at: t0)
+    #expect(SessionHUDModel(engine: engine, live: live).framing == nil)   // never during a set
+}

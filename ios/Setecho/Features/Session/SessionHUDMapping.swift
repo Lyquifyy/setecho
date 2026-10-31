@@ -18,6 +18,8 @@ extension SessionHUDModel {
         var frontCamera = false
         /// His box in the camera's upright, unmirrored frame (`SetDetector.trackedBox`).
         var trackedBox: CGRect?
+        /// The camera sees only his upper body: the framing pill on the stage (Oct 31).
+        var upperBodyOnly = false
         /// Someone is talking into the mic, with the stream's words so far.
         var hearing = false
         var liveWords: String?
@@ -64,7 +66,8 @@ extension SessionHUDModel {
             camera: live.cameraRunning && !live.cameraDark,
             lockBox: live.trackedBox.map { box in
                 live.frontCamera ? CGRect(x: 1 - box.maxX, y: box.minY, width: box.width, height: box.height) : box
-            }
+            },
+            framing: live.upperBodyOnly && [.ready, .armed].contains(phase) ? "Upper body only · step back" : nil
         )
     }
 

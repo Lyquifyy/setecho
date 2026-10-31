@@ -93,6 +93,9 @@ struct SessionHUDModel: Equatable {
     var camera = true
     /// His lock-on box in the camera's frame, normalized, top-left origin (`BodyTracker`).
     var lockBox: CGRect?
+    /// The framing cue on the stage's foot, like the photo session's: "Upper body only · step back"
+    /// while the camera sees him from the hips up in Ready or Armed (Oct 31, the deadlifts).
+    var framing: String?
 }
 
 /// The live camera, injected by the session (the front camera's preview layer, mirrored for him);
@@ -637,8 +640,27 @@ private struct CameraStage: View {
                         .animation(.linear(duration: 0.12), value: box)
                 }
             }
+            if let cue = model.framing {
+                VStack {
+                    Spacer(minLength: 0)
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                        Text(cue)
+                    }
+                    .font(.hudLabel.weight(.semibold))
+                    .foregroundStyle(Theme.navy)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 44)
+                    .background(Theme.surface, in: Capsule())
+                    .padding(.bottom, Theme.Space.m)
+                }
+                .transition(.opacity)
+            }
         }
-        .accessibilityHidden(true)
+        .accessibilityHidden(model.framing == nil)
+        .accessibilityLabel(model.framing.map { "Camera: \($0)" } ?? "")
     }
 
     private var brackets: Bool {

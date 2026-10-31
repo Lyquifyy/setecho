@@ -30,6 +30,8 @@ final class SetDetector: NSObject {
     private(set) var isRecording = false
     /// Body pose has found at least 6 joints in at least half the frames of the last 10 s.
     private(set) var isOnDuty = false
+    /// The camera sees his hips, knees or ankles, not only his upper body (Oct 31, the deadlifts).
+    private(set) var seesLowerBody = true
     /// The picture is dark, as in a pocket: under 6% brightness, and lit again above 12% (Oct 29: the
     /// screen hid his camera until the body tracker found him, so he couldn't frame himself).
     private(set) var isDark = false
@@ -228,7 +230,10 @@ final class SetDetector: NSObject {
             boxes.removeAll { $0.t < sample.t - 300 }
             signal.trim(olderThan: 600, now: sample.t)
         }
-        if framesSeen % 15 == 0 { isOnDuty = joints.isOnDuty(now: sample.t) }
+        if framesSeen % 15 == 0 {
+            isOnDuty = joints.isOnDuty(now: sample.t)
+            seesLowerBody = joints.seesLowerBody(now: sample.t)
+        }
         if !movieOutput.isRecording, !stopping { startSegment(at: sample.t) }
 
         let readings = WristSignal.readings(joints: sample.joints, wristX: sample.wristX)

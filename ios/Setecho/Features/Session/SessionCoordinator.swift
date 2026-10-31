@@ -518,8 +518,21 @@ final class SessionCoordinator {
     /// The coordinator's side of a command: a spoken "done" closes the camera's clip, "say that
     /// again" replays the cue, "that was my top set" uploads the held clip, the session ends or
     /// moves on.
+    /// The lift the framing line was said for: once per lift, never per set.
+    private var framingSaidFor: String?
+
+    /// The camera sees him from the hips up: said once per lift when he arms, so a deadlift is never
+    /// counted from his set-up again (Oct 31).
+    var upperBodyOnly: Bool { cameraRunning && detector.isOnDuty && !detector.seesLowerBody }
+
     private func afterVoice(_ response: VoiceCommandResponse, wasRecording: Bool) {
         filming?.transcribed(response.transcript)
+        if [.starting, .topSet].contains(response.intent.intent), engine.isArmed, upperBodyOnly,
+           let lift = engine.currentExercise?.id, framingSaidFor != lift {
+            framingSaidFor = lift
+            show(.init(speech: "I can only see you from the hips up. Step back so your whole body's in.",
+                       echo: "Camera sees your upper body only"))
+        }
         if response.intent.intent == .replayCue, let cue = engine.cueToReplay() {
             Task { await play(cue) }
         }

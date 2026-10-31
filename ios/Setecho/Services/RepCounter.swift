@@ -269,6 +269,18 @@ struct JointSeries {
         return Double(good) >= Double(recent.count) / 2
     }
 
+    static let lowerBody = ["left_hip", "right_hip", "left_knee", "right_knee", "left_ankle", "right_ankle"]
+
+    /// A hip, knee or ankle shows in at least a quarter of the recent frames that see him at all.
+    /// Oct 31: his deadlifts were filmed from the hips up (six upper joints, so on duty), and the
+    /// phone counted his set-up as reps. True when nothing has been seen yet: nothing to say.
+    func seesLowerBody(now t: Double, seconds: Double = 10) -> Bool {
+        let seen = samples.filter { $0.t >= t - seconds && !$0.joints.isEmpty }
+        guard !seen.isEmpty else { return true }
+        let lower = seen.filter { sample in Self.lowerBody.contains { sample.joints[$0] != nil } }.count
+        return Double(lower) >= Double(seen.count) / 4
+    }
+
     /// The count over [from, to]: the joint whose smoothed y has the largest range (or the wrist gap,
     /// for a flye's sideways sweep), counted like the backend. Nil when nothing moved enough or
     /// tracking dropped for over 20% of the set.

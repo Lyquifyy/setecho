@@ -72,7 +72,7 @@ struct SessionView: View {
         return SessionHUDModel.Live(
             micLabel: audio.inputLabel, micOnHim: audio.isHeadWornMic, micLevel: audio.inputLevel,
             cameraRunning: coordinator.cameraRunning, cameraOnDuty: coordinator.detector.isOnDuty, cameraDark: coordinator.detector.isDark,
-            frontCamera: coordinator.detector.front, trackedBox: coordinator.detector.trackedBox,
+            frontCamera: coordinator.detector.front, trackedBox: coordinator.detector.trackedBox, upperBodyOnly: coordinator.upperBodyOnly,
             hearing: audio.isHearing, liveWords: coordinator.liveWords, reading: talk.reading,
             speakingLine: talk.speakingLine, speakingSince: talk.speakingSince, lastLine: talk.lastLine, quiet: talk.quiet, now: date)
     }
