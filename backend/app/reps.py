@@ -18,6 +18,9 @@ The pipeline, numbered as in the handoff:
    phase, with real timestamps. Pixels per second; the next step is a ratio, so no scale is needed.
 9. Velocity loss: 100 x (1 - mean of the last two speeds / fastest of the first two), floored at 0.
    Sets under 3 reps and rest-pause sets return none: the pauses make the slowdown meaningless.
+   A speed over twice the set's median is a tracker artifact (a swapped or lost mask for a frame or
+   two), not a fast rep: it is left out of the picks, the rep stays in the count, and fewer than 3
+   speeds left means none.
 
 Steps 3-5 on a one-dimensional series are `count_series`, which `RepCounter.swift` mirrors on
 the phone. Both run on the fixtures in tests/fixtures/reps/ and must agree.
@@ -77,6 +80,10 @@ LIFT_PHASE_START_FRACTION = 0.90
 LIFT_PHASE_END_FRACTION = 0.20
 # Step 9: velocity loss compares the last two reps with the first two, so it needs three.
 MIN_REPS_FOR_VELOCITY = 3
+# A SAM track that jumps (a swapped or lost mask for a frame or two) gives one rep a speed far outside
+# the others, and a bogus slowdown with it. A speed over this many times the set's median is an
+# artifact: it is left out of the first-two/last-two picks, while the rep stays in the count.
+SPEED_OUTLIER_FACTOR = 2.0
 
 SetRole = Literal["warmup", "top", "backOff", "restPause"]
 
@@ -392,14 +399,30 @@ def rep_speeds(t: np.ndarray, d: np.ndarray, peaks: list[int]) -> list[float]:
     return speeds
 
 
+def speed_outliers(speeds: list[float]) -> list[int]:
+    """Step 9's artifact filter: the indices of the rep speeds over SPEED_OUTLIER_FACTOR times the
+    set's median. None when the median is 0 (then nothing measured, and step 9 returns none anyway)."""
+    if not speeds:
+        return []
+    median = float(np.median(speeds))
+    if median <= 0:
+        return []
+    return [i for i, v in enumerate(speeds) if v > SPEED_OUTLIER_FACTOR * median]
+
+
 def velocity_loss(speeds: list[float], set_role: str | None = None) -> float | None:
-    """Step 9. None under three reps, on a rest-pause set, or when the first reps did not move."""
+    """Step 9. None under three reps, on a rest-pause set, when the first reps did not move, or when
+    fewer than three speeds are left once the tracker artifacts (`speed_outliers`) are set aside."""
     if set_role == "restPause" or len(speeds) < MIN_REPS_FOR_VELOCITY:
         return None
-    fastest = max(speeds[:2])
+    dropped = set(speed_outliers(speeds))
+    kept = [v for i, v in enumerate(speeds) if i not in dropped]
+    if len(kept) < MIN_REPS_FOR_VELOCITY:
+        return None
+    fastest = max(kept[:2])
     if fastest <= 0:
         return None
-    loss = 100.0 * (1.0 - (speeds[-2] + speeds[-1]) / 2.0 / fastest)
+    loss = 100.0 * (1.0 - (kept[-2] + kept[-1]) / 2.0 / fastest)
     return round(max(0.0, loss), 1)
 
 

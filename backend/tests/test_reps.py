@@ -65,6 +65,58 @@ def test_velocity_loss_needs_three_reps_and_never_applies_to_a_rest_pause_set():
     assert reps.count_1d(_series(FIXTURES / "slowing_8.json"), set_role="top").velocity_loss_pct is not None
 
 
+def _with_track_jump(series: reps.Series, rep: int, jump: float = 1.5) -> reps.Series:
+    """The series with a swapped mask for two frames in one rep's lifting phase: the centroid sits on
+    another object 1.5 of the motion range away, then comes back."""
+    peaks, _ = reps.count_series(series.t, series.y)
+    y = series.y.copy()
+    y[peaks[rep] + 3 : peaks[rep] + 5] += jump
+    return reps.Series(series.t, y)
+
+
+def test_a_track_jump_in_an_early_rep_does_not_fake_a_slowdown():
+    """SAM swaps masks for two frames during rep 2: that rep's speed comes out 30x the median. The
+    count keeps the rep; the slowdown is the one the other seven reps imply, not 98%."""
+    series = _series(FIXTURES / "slowing_8.json")
+    clean = reps.count_1d(series)
+    jumped = reps.count_1d(_with_track_jump(series, rep=1))
+    assert jumped.reps == 8 and len(jumped.rep_times) == 8 and len(jumped.rep_speeds) == 8
+    assert jumped.rep_times == pytest.approx(clean.rep_times, abs=0.3)  # the spike nudges rep 2's peak
+    median = float(np.median(jumped.rep_speeds))
+    assert jumped.rep_speeds[1] > 5 * median
+    assert reps.speed_outliers(jumped.rep_speeds) == [1]
+    assert jumped.velocity_loss_pct == pytest.approx(clean.velocity_loss_pct, abs=1)
+    assert reps.velocity_loss(jumped.rep_speeds, "restPause") is None
+
+
+def test_a_track_jump_in_the_last_rep_does_not_hide_the_slowdown():
+    """The same artifact on rep 8 would read as a sprint at the end and floor the loss at 0."""
+    series = _series(FIXTURES / "slowing_8.json")
+    jumped = reps.count_1d(_with_track_jump(series, rep=7))
+    assert jumped.reps == 8
+    assert reps.speed_outliers(jumped.rep_speeds) == [7]
+    # Reps 6 and 7 against the fastest of 1 and 2: 100 x (1 - (0.148 + 0.114) / 2 / 0.208).
+    assert jumped.velocity_loss_pct == pytest.approx(37.0, abs=3)
+    assert jumped.velocity_loss_pct > 25
+
+
+def test_speed_outliers_are_over_twice_the_median_and_rarely_leave_enough_reps():
+    speeds = [1.0, 1.0, 1.0, 1.0, 5.0, 1.0, 0.6, 0.6]
+    assert reps.speed_outliers(speeds) == [4]
+    assert reps.velocity_loss(speeds) == pytest.approx(40.0)
+    assert reps.speed_outliers([1.0, 1.0, 2.0]) == []  # exactly twice the median is a fast rep, kept
+    assert reps.speed_outliers([]) == [] and reps.speed_outliers([0.0, 0.0, 3.0]) == []
+    assert reps.velocity_loss([1.0, 1.0, 9.0]) is None  # one artifact leaves two: no loss
+    assert reps.velocity_loss([1.0, 1.0, 9.0, 0.5]) == pytest.approx(25.0)  # (1.0 + 0.5) / 2 against 1.0
+
+
+def test_no_shared_fixture_carries_a_speed_outlier():
+    """The rule changes nothing on the synthetic sets: every speed sits within twice the median."""
+    for path in FIXTURE_FILES:
+        result = reps.count_1d(_series(path))
+        assert reps.speed_outliers(result.rep_speeds) == [], path.stem
+
+
 def test_rep_speed_uses_real_timestamps():
     """The same motion sampled at half the frame rate must give the same speed."""
     series = _series(FIXTURES / "slowing_8.json")
@@ -249,6 +301,9 @@ def test_saved_g7_centroid_series_count_correctly(path):
     assert len(result.rep_speeds) == result.reps and all(v > 0 for v in result.rep_speeds)
     assert result.velocity_loss_pct is not None and 30 <= result.velocity_loss_pct <= 70
     assert reps.count(track, "restPause").velocity_loss_pct is None
+    # Rep 4 of the real set is slow (a grind, about 0.4 of the median), never over twice it: no
+    # speed is set aside, and the loss is the one the plain formula gives.
+    assert reps.speed_outliers(result.rep_speeds) == []
 
 
 def test_the_two_g7_passes_agree_on_the_velocity_loss():

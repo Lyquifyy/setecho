@@ -65,6 +65,27 @@ def test_set_roles_and_rest_pause_totals():
     assert [s.role for s in curl.sets] == ["top", "backOff"]  # "work down set"
 
 
+def test_tempo_and_pause_notes_reach_the_exercise_verbatim(monkeypatch):
+    """The prompt sends anything unmapped to `notes` verbatim, and the code path from Spark's output
+    to the Program copies `notes` as it is: a tempo cell or a rest-pause note is on the exercise,
+    with its own punctuation, through to_program and through the endpoint. No `tempo` field exists."""
+    program = _program()
+    pec = program.weeks[0].days[0].exercises[3]
+    assert pec.name == "Pec Deck" and pec.notes == "20 total reps (rest pause set)"
+    raw = json.loads(json.dumps(RAW))
+    raw["weeks"][0]["days"][1]["exercises"][0]["notes"] = "Tempo 3:2:1:2"
+    raw["weeks"][0]["days"][0]["exercises"][3]["notes"] = "20 total reps pause set"
+    program = to_program(ProgramOut.model_validate(raw), datetime(2026, 10, 28, tzinfo=UTC))
+    hack = program.weeks[0].days[1].exercises[0]
+    assert hack.name == "Hack Squat" and hack.notes == "Tempo 3:2:1:2"
+    assert program.weeks[0].days[0].exercises[3].notes == "20 total reps pause set"
+    assert "tempo" not in type(hack).model_fields
+    monkeypatch.setattr(meta, "spark_json", lambda *a, **k: (raw, None))
+    body = TestClient(app).post("/import/program", data={"text": SHEET}).json()
+    assert body["weeks"][0]["days"][1]["exercises"][0]["notes"] == "Tempo 3:2:1:2"
+    assert body["weeks"][0]["days"][0]["exercises"][3]["notes"] == "20 total reps pause set"
+
+
 def test_day_level_rest_period_applies_to_every_exercise_that_day():
     day1 = _program().weeks[0].days[0]
     assert all(ex.restSeconds == 180 and ex.restMinSeconds == 90 for ex in day1.exercises)
