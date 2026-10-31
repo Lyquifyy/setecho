@@ -45,6 +45,8 @@ struct SessionHUDModel: Equatable {
         case thinking(String)
         /// Setecho is saying a line; `spoken` of its words have been said.
         case speaking(String, spoken: Int)
+        /// He's talking to someone else: nothing is read or said until "I'm back" (or a tap).
+        case quiet
     }
 
     /// One fact about the last set, and whether it's a data source (cobalt, like a source chip).
@@ -132,6 +134,10 @@ struct SessionHUD: View {
     var onEnd: (() -> Void)?
     /// Developer → Rehearse a session: the typed line field, above the end button.
     var footer: AnyView?
+    /// A tap on the voice line: quiet, or back (the voice equivalent is "quiet" / "I'm back").
+    var onVoiceTap: (() -> Void)?
+    /// A tap on the audio pill: back onto the AirPods mic after they came back.
+    var onAudioTap: (() -> Void)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The yellow tag travels: the set's tag becomes the next set's tag in rest.
     @Namespace private var tagSpace
@@ -142,7 +148,7 @@ struct SessionHUD: View {
         } overlay: {
             VStack(alignment: .leading, spacing: Theme.Space.s) {
                 LiftsStrip(exercises: model.progress)
-                StatusRow(model: model, camera: showsCamera)
+                StatusRow(model: model, camera: showsCamera, onAudioTap: onAudioTap)
                 Spacer(minLength: 0)
                 stageHero
                     .id(stageKey)
@@ -158,6 +164,10 @@ struct SessionHUD: View {
                 if !model.pocket, model.phase != .done {
                     CardDivider()
                     VoiceLine(voice: model.voice, prompt: idlePrompt)
+                        .contentShape(Rectangle())
+                        .onTapGesture { onVoiceTap?() }
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityHint(model.voice == .quiet ? "Listens again" : "Goes quiet while you talk to someone")
                 }
                 if let footer { footer }
                 EndButton(label: model.phase == .done ? "Hold to close" : "Hold to end session", onEnd: onEnd)
@@ -447,6 +457,7 @@ private struct StatusRow: View {
     var model: SessionHUDModel
     /// The state rides on the camera; on the navy stage the stage itself names it.
     var camera: Bool
+    var onAudioTap: (() -> Void)?
 
     var body: some View {
         // The audio pill gives way to its icon first: the state keeps its words longest.
@@ -472,6 +483,10 @@ private struct StatusRow: View {
                 }
             }
             .fixedSize(horizontal: !flexible, vertical: true)
+            .contentShape(Capsule())
+            .onTapGesture { onAudioTap?() }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint("Reconnects the mic you prefer")
         }
     }
 }
@@ -905,6 +920,7 @@ struct VoiceLine: View {
                 case .hearing(_, let level): WaveformBars(level: level, animating: true)
                 case .thinking: ThinkingDots()
                 case .speaking: WaveformBars(level: 0.55, animating: true)
+                case .quiet: Image(systemName: "mic.slash").font(.title2.weight(.semibold)).foregroundStyle(Theme.textSecondary)
                 }
             }
             .frame(width: 52, height: 52)
@@ -936,6 +952,12 @@ struct VoiceLine: View {
         case .hearing(let said, _), .thinking(let said):
             Text("\u{201C}\(said)\u{201D}").font(.system(size: 24, weight: .semibold)).foregroundStyle(Theme.cobalt)
                 .lineLimit(2).minimumScaleFactor(0.85)
+        case .quiet:
+            (Text("Quiet. ").foregroundStyle(Theme.navy).fontWeight(.semibold) + Text("Say ") + Text("\u{201C}I'm back\u{201D}").foregroundStyle(Theme.navy).fontWeight(.semibold) + Text(" or tap."))
+                .font(.hudLabel)
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
         case .speaking(let line, let spoken):
             line.split(separator: " ").enumerated().reduce(Text("")) { text, item in
                 let word = Text((item.offset == 0 ? "" : " ") + item.element)
@@ -954,6 +976,7 @@ struct VoiceLine: View {
         case .hearing(let said, _): "Hearing you: \(said)"
         case .thinking(let said): "Heard: \(said)"
         case .speaking(let line, _): "Setecho: \(line)"
+        case .quiet: "Quiet. Say I'm back, or tap, to listen again"
         }
     }
 }

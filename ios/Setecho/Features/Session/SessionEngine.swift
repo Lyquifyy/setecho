@@ -126,6 +126,10 @@ final class SessionEngine {
         var setId: UUID
         var endedAt: Date
         var spoken: Bool
+        /// "Still counting." was said for it.
+        var held = false
+        /// The phone's own confidence in its count: under 0.6 it waits for SAM past 60 s.
+        var phoneConfidence: Double? = nil
     }
 
     /// One exercise of the session, with the add-on it belongs to (nil for the day's own lifts).
@@ -136,7 +140,13 @@ final class SessionEngine {
     }
 
     /// SAM silent for this long after a set ends: the phone's count is spoken (HANDOFF.md §7).
-    static let fallbackSeconds: TimeInterval = 60
+    /// The phone's count is said only when SAM has had this long (Oct 31: the phone's 5 on a 2-rep
+    /// deadlift was said at 60 s and SAM's 2 landed at 85 s; its four counts that day took 71–101 s).
+    static let fallbackSeconds: TimeInterval = 150
+    /// "Still counting." once, while SAM is still on the clip.
+    static let stillCountingSeconds: TimeInterval = 60
+    /// A count's confidence under this is doubtful: SAM's is asked back, the phone's waits for SAM.
+    static let lowConfidence = 0.6
     /// A warm-up is 8 reps or fewer with under 20% slowdown, before the first working set (§13).
     static let warmupMaxSlowdownPct = 20.0
     static let defaultWarmupMaxReps = 8
@@ -626,7 +636,7 @@ final class SessionEngine {
             callout = Callout.setDone(setNumber: doneNumber, restSeconds: rest, sessionOver: isComplete)
         } else if willMeasure, source != .spoken {
             // SAM is the count of record: no number until it answers, or 60 s pass.
-            pendingCounts.append(PendingCount(setId: logged.id, endedAt: now, spoken: false))
+            pendingCounts.append(PendingCount(setId: logged.id, endedAt: now, spoken: false, phoneConfidence: phone?.confidence))
             callout = Callout.setDone(setNumber: doneNumber, restSeconds: rest, sessionOver: isComplete)
         } else {
             callout = Callout.setDone(setNumber: doneNumber, reps: source == .plan ? nil : reps, total: planned.isRestPause,
@@ -879,8 +889,9 @@ final class SessionEngine {
         return unspoken ? speakFallback(at: i) : .none
     }
 
-    /// One second passed. A set SAM has not answered within 60 s of its end, or whose upload
-    /// failed during the next set, gets the phone's count spoken now. Never during a set.
+    /// One second passed. A set SAM has not answered within `fallbackSeconds` of its end, or whose
+    /// upload failed during the next set, gets the phone's count spoken now; at `stillCountingSeconds`
+    /// the set he just did gets "Still counting." once. Never during a set.
     @discardableResult
     func tick(now: Date) -> Outcome {
         guard state != .recording else { return .none }
@@ -888,7 +899,17 @@ final class SessionEngine {
         for k in pendingCounts.indices where !pendingCounts[k].spoken {
             let p = pendingCounts[k]
             let failed = session.sets.first { $0.id == p.setId }?.repCount.status == .failed
-            guard failed || now.timeIntervalSince(p.endedAt) >= Self.fallbackSeconds else { continue }
+            let waited = now.timeIntervalSince(p.endedAt)
+            // A confident phone count is said at 60 s as before; a doubtful one (the deadlift's setup
+            // movements counted as reps) waits for SAM, with "Still counting." once.
+            let doubtful = (p.phoneConfidence ?? 1) < SessionEngine.lowConfidence
+            if !failed, waited < Self.fallbackSeconds, doubtful || waited < Self.stillCountingSeconds {
+                if waited >= Self.stillCountingSeconds, !p.held, session.sets.last?.id == p.setId {
+                    pendingCounts[k].held = true
+                    outcome = outcome.merged(with: say("Still counting."))
+                }
+                continue
+            }
             pendingCounts[k].spoken = true
             if let i = session.sets.firstIndex(where: { $0.id == p.setId }) {
                 outcome = outcome.merged(with: speakFallback(at: i))
@@ -1318,7 +1339,7 @@ final class SessionEngine {
         case .topSet:
             return topSet(transcript: response.transcript, now: now)
         case .warmup:
-            return markLastAsWarmup(now: now)
+            return warmup(transcript: response.transcript, now: now)
         case .addAddOn:
             return addAddOn(named: intent.text ?? response.transcript)
         case .skipAddOn:
@@ -2129,6 +2150,29 @@ final class SessionEngine {
         if let ex = currentExercise, let logbook = logbookLine(for: ex) { speech += " \(logbook)" }
         if needsLoad { speech += " \(loadAsk)" }
         return echo("Next: set \(setNumber), the top set", speech: speech)
+    }
+
+    /// "That was a warm-up" after a set: the last set becomes a warm-up. "Warm-up first", "let's do a
+    /// warm-up set" before one: warm-up mode for this lift, whether or not his rule lists warm-ups
+    /// (Oct 31: "No warm-up on rows", and his first row set logged as the top set).
+    private func warmup(transcript: String, now: Date) -> Outcome {
+        let words = transcript.lowercased()
+        let forNext = ["first", "before", "next", "let's", "lets", "do a", "want", "gonna", "going to", "start with"]
+            .contains { words.contains($0) }
+        let aboutTheLast = !forNext && (words.isEmpty || words.contains("was") || words.contains("last") || state != .ready)
+        if aboutTheLast || state == .recording { return markLastAsWarmup(now: now) }
+        return warmupsFirst()
+    }
+
+    /// Warm-up mode for the lift up now, on his word: the next set is a warm-up until "top set".
+    private func warmupsFirst() -> Outcome {
+        guard state != .recording else { return .none }
+        enterIfNeeded()
+        let speech = "Warm-ups first. Say top set when you're on it."
+        if warmupMode { return say(speech) }
+        warmupMode = true
+        undoStack.append(UndoEntry(action: .warmupMode(wasOn: false), description: "warm-up first"))
+        return echo("Warm-ups first", speech: speech)
     }
 
     /// "That was a warm-up": the last working set of this lift becomes a warm-up, the counter moves back.

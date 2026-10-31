@@ -75,6 +75,12 @@ final class AudioService {
                 guard let self else { return }
                 self.updateInput()
                 self.logAudio("route change · \(reason.map(Self.describe) ?? "unknown")", lowered: self.isSpeaking, error: nil)
+                // The AirPods back after a drop (Oct 31): iOS put the output on them and left the mic on
+                // the phone, and the stale preference stopped a plain prefer. Ask again, by force.
+                if reason == .newDeviceAvailable, AirPodsMic.shared.isActive, !AirPodsMic.shared.inputIsPreferred(in: self.session) {
+                    self.reconnectMic(reason: "new device available")
+                    return
+                }
                 guard AirPodsMic.shared.isActive, AirPodsMic.shared.check(self.session) else { return }
                 self.configure()
             }
@@ -118,6 +124,16 @@ final class AudioService {
             logAudio("configure", lowered: holdsDucking, error: error)
             lastError = "Audio couldn't start"
         }
+    }
+
+    /// Back onto the mic we want (the DJI receiver, else the AirPods at high quality) after it came
+    /// back, or on a tap of the HUD's audio pill. The preference is asked for again even if it reads
+    /// as already set, then the route is checked as after any activation.
+    func reconnectMic(reason: String) {
+        AirPodsMic.shared.prefer(AirPodsMic.shared.preferredInput(in: session), in: session, force: true)
+        AirPodsMic.shared.check(session)
+        updateInput()
+        logAudio("reconnect mic · \(reason)", lowered: isSpeaking, error: nil)
     }
 
     /// The route's input in words, for the HUD and the debug record.

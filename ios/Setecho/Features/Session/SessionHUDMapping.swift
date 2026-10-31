@@ -26,6 +26,8 @@ extension SessionHUDModel {
         var speakingLine: String?
         var speakingSince: Date?
         var lastLine: String?
+        /// He's talking to someone else (SessionConversation.quiet).
+        var quiet = false
         var now = Date.now
     }
 
@@ -135,6 +137,7 @@ extension SessionHUDModel {
 
     @MainActor
     static func voice(_ engine: SessionEngine, live: Live, phase: Phase) -> Voice {
+        if live.quiet, live.speakingLine == nil, live.lastLine == nil { return .quiet }
         if live.hearing { return .hearing(live.liveWords ?? "…", level: max(0.3, live.micLevel)) }
         if let reading = live.reading, !reading.isEmpty { return .thinking(reading) }
         if let line = live.speakingLine {

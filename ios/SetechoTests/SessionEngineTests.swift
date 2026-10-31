@@ -222,7 +222,7 @@ private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(set.repCount.isCounting)
     #expect(out.speech == "Set 1 done. Rest two thirty.")       // no number: SAM is the count of record
     #expect(out.echo == "Set 1 saved: 225 lb, counting")
-    #expect(engine.pendingCounts == [SessionEngine.PendingCount(setId: set.id, endedAt: t0.addingTimeInterval(20), spoken: false)])
+    #expect(engine.pendingCounts == [SessionEngine.PendingCount(setId: set.id, endedAt: t0.addingTimeInterval(20), spoken: false, phoneConfidence: 0.9)])
     #expect(engine.state == .rest(remaining: 150))
 }
 
@@ -941,4 +941,65 @@ private let topRest = RestRule(after: .top, minSeconds: 180, maxSeconds: 240, qu
     engine.apply(intent(.reps, 8, transcript: "that was 8"))
     let out = engine.setEnded(at: t0.addingTimeInterval(230), phone: nil)
     #expect(out.speech?.contains("8 reps.") == true)
+}
+
+// MARK: - Oct 31, Day 6: warm-ups on his word, and a doubtful phone count waits for SAM
+
+@Test @MainActor func warmUpFirstOnHisWordWithoutAWarmupRule() {
+    // "What's my last set or warm-up set?" → "No warm-up on rows.", and his first row set logged as the top set.
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    #expect(!engine.warmupMode)
+    let out = engine.apply(intent(.warmup, transcript: "let's do a warm-up set first"), now: t0)
+    #expect(out.speech == "Warm-ups first. Say top set when you're on it." && engine.warmupMode)
+    #expect(engine.apply(intent(.warmup, transcript: "warm-up first"), now: t0).speech == "Warm-ups first. Say top set when you're on it.")
+    engine.setStarted(at: t0.addingTimeInterval(10))
+    engine.setEnded(at: t0.addingTimeInterval(30), phone: easy(5), willMeasure: true)
+    #expect(engine.session.sets[0].isWarmup && engine.setNumber == 1 && engine.pendingCounts.isEmpty)
+    // "Top set" ends the warm-ups as before.
+    engine.apply(intent(.topSet, transcript: "top set"), now: t0.addingTimeInterval(100))
+    #expect(!engine.warmupMode)
+    // Undo of "warm-up first" puts the mode back off.
+    let fresh = SessionEngine(day: upperA, weekNumber: 1)
+    fresh.apply(intent(.warmup, transcript: "warm-up first"), now: t0)
+    fresh.apply(intent(.undo), now: t0.addingTimeInterval(1))
+    #expect(!fresh.warmupMode)
+}
+
+@Test @MainActor func aBareWarmUpAfterASetStillMarksThatSet() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), phone: easy(5))
+    engine.apply(intent(.warmup, transcript: "warm-up"), now: t0.addingTimeInterval(25))
+    #expect(engine.session.sets[0].isWarmup && engine.setNumber == 1)
+}
+
+@Test @MainActor func aDoubtfulPhoneCountWaitsForSamPastSixtySeconds() {
+    // His deadlift: the phone counted 5 (confidence 0.48, only his upper body in frame) on a 2-rep set.
+    // At 60 s it said "5"; SAM's 2 landed at 85 s.
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), phone: phone(5, confidence: 0.48), willMeasure: true)
+    let id = engine.session.sets[0].id
+    #expect(engine.tick(now: t0.addingTimeInterval(79)) == .none)
+    #expect(engine.tick(now: t0.addingTimeInterval(80)).speech == "Still counting.")
+    #expect(engine.tick(now: t0.addingTimeInterval(81)) == .none)                 // said once
+    #expect(engine.pendingCounts.first?.spoken == false)
+    // SAM lands at 85 s: its count is said in full, as on time, never as an update to a number he heard.
+    let sam = engine.measured(setId: id, measured(2, confidence: 1), now: t0.addingTimeInterval(105))
+    #expect(sam.speech?.hasPrefix("2 reps, measured") == true)
+    #expect(engine.session.sets[0].reps == 2 && engine.session.sets[0].repCount.source == .measured)
+}
+
+@Test @MainActor func aDoubtfulPhoneCountIsSaidAt150SecondsIfSamNeverComes() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), phone: phone(5, confidence: 0.48), willMeasure: true)
+    engine.tick(now: t0.addingTimeInterval(80))                                    // "Still counting."
+    #expect(engine.tick(now: t0.addingTimeInterval(169)) == .none)
+    let fallback = engine.tick(now: t0.addingTimeInterval(170))
+    #expect(fallback.speech?.contains("5 reps") == true && engine.pendingCounts.first?.spoken == true)
+    #expect(engine.session.sets[0].repCount.source == .phone)
+}
+
+@Test @MainActor func aConfidentPhoneCountIsStillSaidAtSixtySeconds() {
+    let engine = SessionEngine(day: upperA, weekNumber: 1)
+    engine.setStarted(at: t0); engine.setEnded(at: t0.addingTimeInterval(20), phone: phone(8, confidence: 0.9), willMeasure: true)
+    #expect(engine.tick(now: t0.addingTimeInterval(80)).speech == "8 reps. Next, 225 for 8.")
 }

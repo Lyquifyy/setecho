@@ -126,6 +126,12 @@ final class SessionCoordinator {
     /// "I'm doing Day 5 today" before any set: the view rebuilds the session on that day.
     var requestedDayNumber: Int? { engine.requestedDayNumber }
 
+    /// A tap on the voice line: quiet while he talks to someone, or back (Oct 31).
+    func toggleQuiet() { conversation.toggleQuiet() }
+
+    /// A tap on the audio pill: back onto the AirPods mic after they came back (Oct 31).
+    func reconnectMic() { audio.reconnectMic(reason: "tap") }
+
     var state: SessionEngine.State { engine.state }
 
     var hudState: HUDState.State {

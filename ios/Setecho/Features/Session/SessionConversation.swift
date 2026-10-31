@@ -112,6 +112,70 @@ final class SessionConversation {
         self.engine = engine
     }
 
+    // MARK: Quiet (Oct 31: a conversation with a friend during rest, and Setecho answered every line)
+
+    /// Quiet: he's talking to someone else. Nothing is read by the backend and nothing is said back
+    /// until "I'm back"; only the set commands ("go", "done, 9") still act, so a set he lifts while
+    /// quiet is never lost. Entered by voice ("quiet", "mute", "talking to someone", "give me a
+    /// minute") or a tap on the voice line, which also brings it back.
+    private(set) var quiet = false
+
+    static let quietLine = "Quiet. Say \u{201C}I'm back\u{201D} when you're done."
+    static let backLine = "Back with you."
+
+    private static let quietPhrases = try! NSRegularExpression(
+        pattern: #"^(okay,? |ok,? |alright,? |hey,? )?(setecho,? )?(be )?(quiet|mute|stop listening|hush|hang on|one sec(ond)?|just a (sec(ond)?|minute|moment)|give me (a|two|a couple of|a few) (sec(ond)?s?|minutes?|moments?)|(i'?m )?(talking|speaking) to (someone|somebody|a friend|him|her|them)|not talking to you|don'?t listen)\b"#,
+        options: [.caseInsensitive])
+    private static let backPhrases = try! NSRegularExpression(
+        pattern: #"^(okay,? |ok,? |alright,? |hey,? )?(setecho,? )?(i'?m back|back with you|unmute|listen( up| again| to me)?|start listening|you can listen)\b"#,
+        options: [.caseInsensitive])
+    /// The set commands that still act while quiet: the rule layer's arm and end phrases, with a count.
+    private static let setCommands = try! NSRegularExpression(
+        pattern: #"^(okay,? |ok,? |alright,? )?(go|starting|here we go|lifting|top set|back-?off|set (one|two|three|four|five|\d+)|going|done|stop|set done|that was \d+|that was (one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|twenty))( (\d+|[a-z]+))?\.?$"#,
+        options: [.caseInsensitive])
+
+    private static func matches(_ regex: NSRegularExpression, _ words: String) -> Bool {
+        let line = words.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: ".!,?"))
+        return regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil
+    }
+
+    /// A tap on the voice line: quiet, or back.
+    func toggleQuiet() {
+        setQuiet(!quiet)
+    }
+
+    func setQuiet(_ on: Bool) {
+        guard on != quiet else { return }
+        quiet = on
+        show(.init(speech: on ? Self.quietLine : Self.backLine, echo: on ? "Quiet" : "Listening again"))
+    }
+
+    /// The words, read on the phone while quiet, or on a quiet phrase: `true` when they were handled here
+    /// and the backend never sees them.
+    private func handleQuiet(_ words: String?, log: inout SessionDebug.UtteranceRecord) -> Bool {
+        guard let words, words.contains(where: \.isLetter) else { return false }
+        if quiet {
+            if Self.matches(Self.backPhrases, words) {
+                log.kind = "quiet off"
+                setQuiet(false)
+                return true
+            }
+            if Self.matches(Self.setCommands, words) { return false } // "go", "done, 9": the set still counts
+            log.kind = "quiet"
+            log.transcript = words
+            log.addressed = false
+            show(.init(heard: "(quiet) \(words)"))
+            return true
+        }
+        if engine.state != .recording, Self.matches(Self.quietPhrases, words) {
+            log.kind = "quiet on"
+            log.transcript = words
+            setQuiet(true)
+            return true
+        }
+        return false
+    }
+
     // MARK: Utterances
 
     /// Queue an utterance; they are handled one at a time, in order, and none is dropped.
@@ -182,6 +246,10 @@ final class SessionConversation {
         } else if heard.transcript == nil, let words = heard.words {
             heard.transcript = await words()
             if heard.transcript != nil { log.toTranscript = now().timeIntervalSince(heard.speechEndedAt) }
+        }
+        if handleQuiet(heard.transcript, log: &log) {
+            record(log)
+            return
         }
         reading = heard.transcript
         defer { reading = nil }

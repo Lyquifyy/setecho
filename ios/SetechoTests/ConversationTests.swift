@@ -464,3 +464,58 @@ private func spark(_ engine: SessionEngine, _ turn: SessionTurnResponse) -> Sess
     #expect(talk.said == ["Got it, 25 on this one."])
     #expect(engine.targetLoadLb == 25 && engine.state == .recording)
 }
+
+// MARK: - Quiet (Oct 31: a friend's conversation during rest, answered line by line)
+
+private let quietDay = ProgramDay(id: "d6", name: "Day 6", exercises: [
+    PlannedExercise(id: "rows", name: "Chest-supported rows", sets: [PlannedSet(reps: 8, repsMin: nil, repsMax: nil, loadLb: 110, rpe: nil, rir: nil), PlannedSet(reps: 8, repsMin: nil, repsMax: nil, loadLb: 90, rpe: nil, rir: nil)],
+                    restSeconds: 150, notes: nil),
+])
+
+@MainActor
+private func quietTalk() -> (SessionConversation, () -> [String]) {
+    let engine = SessionEngine(day: quietDay, weekNumber: 1)
+    let talk = SessionConversation(engine: engine)
+    var seen: [String] = []
+    talk.classify = { heard, _ in
+        seen.append(heard.transcript ?? "")
+        let words = heard.transcript ?? ""
+        let kind: VoiceIntent.Kind = words.lowercased().hasPrefix("go") ? .starting : .chatter
+        return SessionTurnResponse(command: VoiceCommandResponse(
+            transcript: words, intent: VoiceIntent(intent: kind, confidence: 0.95), classifiedBy: "rules"))
+    }
+    return (talk, { seen })
+}
+
+@Test @MainActor func quietDropsTalkUntilImBackAndSetCommandsStillAct() async {
+    let (talk, seen) = quietTalk()
+    let at = Date(timeIntervalSince1970: 1_800_000_000)
+    await talk.hear(.init(transcript: "Hang on, I'm talking to someone.", wav: nil, seconds: 1, speechEndedAt: at))
+    #expect(talk.quiet && talk.said.last == SessionConversation.quietLine && seen().isEmpty)
+    await talk.hear(.init(transcript: "I have three workout plans.", wav: nil, seconds: 1, speechEndedAt: at))
+    await talk.hear(.init(transcript: "Sure.", wav: nil, seconds: 1, speechEndedAt: at))
+    #expect(seen().isEmpty && talk.said.count == 1)                 // nothing read, nothing said
+    #expect(talk.heard == "Heard: (quiet) Sure.")
+    await talk.hear(.init(transcript: "Go.", wav: nil, seconds: 1, speechEndedAt: at))
+    #expect(seen() == ["Go."] && talk.engine.state == .recording)   // the set still starts
+    await talk.hear(.init(transcript: "Okay, I'm back.", wav: nil, seconds: 1, speechEndedAt: at))
+    #expect(!talk.quiet && talk.said.last == SessionConversation.backLine)
+    await talk.hear(.init(transcript: "What's next?", wav: nil, seconds: 1, speechEndedAt: at))
+    #expect(seen() == ["Go.", "What's next?"])
+}
+
+@Test @MainActor func aTapGoesQuietAndBack() {
+    let (talk, _) = quietTalk()
+    talk.toggleQuiet()
+    #expect(talk.quiet && talk.said == [SessionConversation.quietLine])
+    talk.toggleQuiet()
+    #expect(!talk.quiet && talk.said == [SessionConversation.quietLine, SessionConversation.backLine])
+}
+
+@Test @MainActor func quietPhrasesNeverFireMidSet() async {
+    let (talk, seen) = quietTalk()
+    let at = Date(timeIntervalSince1970: 1_800_000_000)
+    talk.engine.setStarted(at: at)
+    await talk.hear(.init(transcript: "give me a minute", wav: nil, seconds: 1, speechEndedAt: at))
+    #expect(!talk.quiet && seen() == ["give me a minute"])
+}

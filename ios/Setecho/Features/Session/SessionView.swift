@@ -24,7 +24,9 @@ struct SessionView: View {
         TimelineView(.periodic(from: .now, by: 0.25)) { context in
             SessionHUD(model: SessionHUDModel(engine: engine, live: live(at: context.date)),
                        onEnd: endSession,
-                       footer: coordinator.rehearsal ? AnyView(rehearsalField) : nil)
+                       footer: coordinator.rehearsal ? AnyView(rehearsalField) : nil,
+                       onVoiceTap: { coordinator.toggleQuiet() },
+                       onAudioTap: { coordinator.reconnectMic() })
         }
         .environment(\.sessionCameraFeed, cameraFeed)
         .environment(\.sessionReplayFeed, replayFeed)
@@ -72,7 +74,7 @@ struct SessionView: View {
             cameraRunning: coordinator.cameraRunning, cameraOnDuty: coordinator.detector.isOnDuty, cameraDark: coordinator.detector.isDark,
             frontCamera: coordinator.detector.front, trackedBox: coordinator.detector.trackedBox,
             hearing: audio.isHearing, liveWords: coordinator.liveWords, reading: talk.reading,
-            speakingLine: talk.speakingLine, speakingSince: talk.speakingSince, lastLine: talk.lastLine, now: date)
+            speakingLine: talk.speakingLine, speakingSince: talk.speakingSince, lastLine: talk.lastLine, quiet: talk.quiet, now: date)
     }
 
     /// His live image, from the set detector's own capture session.

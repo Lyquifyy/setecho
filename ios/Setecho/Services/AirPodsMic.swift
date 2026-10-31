@@ -63,9 +63,18 @@ final class AirPodsMic {
     }
 
     /// Prefer this input, unless it already is: a repeated preference re-routes like a new one.
-    func prefer(_ port: AVAudioSessionPortDescription?, in session: AVAudioSession) {
-        guard session.preferredInput?.uid != port?.uid else { return }
+    /// `force` asks again even so: when the AirPods come back after a drop the preference still
+    /// names them while iOS has moved the mic to the phone (Oct 31, 18:47: output back on the
+    /// AirPods, input "iPhone Microphone" for the rest of the session).
+    func prefer(_ port: AVAudioSessionPortDescription?, in session: AVAudioSession, force: Bool = false) {
+        guard force || session.preferredInput?.uid != port?.uid else { return }
         try? session.setPreferredInput(port)
+    }
+
+    /// The route's mic is the one we'd prefer (or there is nothing to prefer).
+    func inputIsPreferred(in session: AVAudioSession) -> Bool {
+        guard let wanted = preferredInput(in: session) else { return true }
+        return session.currentRoute.inputs.first?.uid == wanted.uid
     }
 
     /// The AirPods are the mic at high quality right now.
