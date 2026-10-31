@@ -406,3 +406,71 @@ def test_the_rest_of_this_lift_is_sets_left():
     for said in ["what weight do I need to do for my next set", "how much should I be lifting"]:
         ruled = voice.classify_by_rules(said)
         assert ruled is not None and (ruled.intent, ruled.topic) == ("question", "load"), said
+
+
+def _spark_twice(monkeypatch, first: dict, second: dict) -> list[str]:
+    """Spark's first answer, then its second; returns the user messages it saw."""
+    calls: list[str] = []
+    answers = [first, second]
+
+    def fake(system, user, name, schema, effort=None):
+        calls.append(user)
+        return answers[min(len(calls) - 1, 1)], {}
+
+    monkeypatch.setattr(meta, "spark_json", fake)
+    return calls
+
+
+_QUESTION = session_turn.TurnRequest(
+    transcript="that felt pretty heavy, what have I got after the bench today?",
+    state="rest",
+    facts={
+        "state": "rest",
+        "exercise": "Bench press",
+        "setCount": 4,
+        "exercises": [
+            {"name": "Bench press", "setsPlanned": 4, "setsDone": 1, "loadLb": 185},
+            {"name": "Barbell row", "setsPlanned": 4, "setsDone": 0, "target": "8-10 reps", "loadLb": 135},
+        ],
+    },
+)
+
+
+def test_a_refused_reply_is_asked_again_once_with_the_reason(monkeypatch):
+    # Oct 31: a clear question got "Sorry, say that again?" because the one reply tripped the validator.
+    calls = _spark_twice(
+        monkeypatch,
+        {"addressed": True, "actions": [], "reply": "Heavy set. Barbell row next, 155 for 8 to 10.",
+         "expectsAnswer": False, "outOfScope": False},
+        {"addressed": True, "actions": [], "reply": "Barbell row next, 135 for 8 to 10.",
+         "expectsAnswer": False, "outOfScope": False},
+    )  # fmt: skip
+    out = session_turn.take_turn(_QUESTION)
+    assert len(calls) == 2
+    assert "refused" in calls[1] and "refused" not in calls[0]
+    assert out.reply == "Barbell row next, 135 for 8 to 10."
+    assert out.classifiedBy == "spark"
+    assert out.unclearReason == "retried after reply: judging"
+
+
+def test_two_refused_replies_still_end_in_the_re_ask(monkeypatch):
+    bad = {"addressed": True, "actions": [], "reply": "Barbell row next, 155 for 8.",
+           "expectsAnswer": False, "outOfScope": False}  # fmt: skip
+    calls = _spark_twice(monkeypatch, bad, bad)
+    out = session_turn.take_turn(_QUESTION)
+    assert len(calls) == 2
+    assert out.reply == session_turn.SAY_AGAIN
+    assert out.unclearReason == "reply: number 155"
+
+
+def test_a_model_failure_is_not_retried(monkeypatch):
+    calls: list[str] = []
+
+    def boom(system, user, *a, **k):
+        calls.append(user)
+        raise TimeoutError
+
+    monkeypatch.setattr(meta, "spark_json", boom)
+    out = session_turn.take_turn(_QUESTION)
+    assert len(calls) == 1
+    assert out.unclearReason == "model: TimeoutError"

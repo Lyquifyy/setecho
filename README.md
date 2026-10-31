@@ -10,6 +10,16 @@ Setecho takes the paperwork away and leaves the coaching to the coach:
 - **The weekly check-in fills itself** from the athlete's scale, food log and watch. The rest is answered out loud.
 - **The coach's reply becomes plan changes** the athlete approves. The coach keeps his spreadsheet and his WhatsApp, and never installs anything.
 
+<p>
+<img src="docs/screens/today.png" alt="Today: the coach's day, the check-in and photos tiles, one Start session button" width="19%">
+<img src="docs/screens/session-recording.png" alt="Session, recording: the lifts strip, the camera stage and the set's target" width="19%">
+<img src="docs/screens/session-rest.png" alt="Session, rest: 11 reps measured, slowed 46%, the countdown and the next set" width="19%">
+<img src="docs/screens/check-in-morning.png" alt="Check-in morning, done: 23 of 23 ready, the summary and Open to send" width="19%">
+<img src="docs/screens/coach-reply.png" alt="Coach reply: his voice note, each change beside his exact words, Apply 3 changes" width="19%">
+</p>
+
+<sub>Today · a set recording · the rest after a measured set · check-in morning, done · the coach's reply. Rendered from the app with the repo's synthetic fixtures (`make screens`).</sub>
+
 **Why I built it.** I'm training for a bodybuilding competition with an online coach. Every week I typed my check-in through an entire 25-minute cardio session, and I tapped my phone between every set. I built Setecho for myself and used it for real during the hackathon: my coach's real program, a real week of training, and a real check-in sent to him through Setecho on Thursday, Oct 29.
 
 ## What it changed in the first week

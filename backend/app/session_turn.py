@@ -496,7 +496,7 @@ def _leaves_a_number(ruled: voice.VoiceIntent, transcript: str) -> bool:
     return any(not _is_known(n, used) for n in numbers_in(transcript))
 
 
-def spark_turn(req: TurnRequest) -> SparkTurn:
+def spark_turn(req: TurnRequest, rejected: str | None = None) -> SparkTurn:
     recent = req.recentTurns[-MAX_RECENT_TURNS:]
     lines = [f"He: {t.heard}" + (f"\nYou: {t.said}" if t.said else "") for t in recent]
     user = (
@@ -504,6 +504,13 @@ def spark_turn(req: TurnRequest) -> SparkTurn:
         f"Recent exchanges:\n{chr(10).join(lines) or '(none yet)'}\n"
         f"He just said: {req.transcript!r}"
     )
+    if rejected:
+        # The second try (Oct 31): the system prompt stays byte-identical for caching; the reason the
+        # first answer was refused rides in the user message.
+        user += (
+            f"\nYour previous answer was refused ({rejected}). Answer again using only numbers from the "
+            "facts or his words, with no rating of the set and no advice, in 20 words or fewer."
+        )
     raw, _ = meta.spark_json(SYSTEM, user, "SessionTurn", SPARK_SCHEMA, effort="low")
     return SparkTurn.model_validate(raw)
 
@@ -583,6 +590,21 @@ def take_turn(req: TurnRequest) -> TurnResponse:
         out.timings["spark"] = round(time.monotonic() - t0, 2)
         return out
     out = validated(spark, req)
+    if out.reply == SAY_AGAIN and out.unclearReason and not out.unclearReason.startswith("model"):
+        # Oct 31: a clear question got "Sorry, say that again?" because one reply tripped the validator
+        # (a stray number, a rating word) and nothing asked Spark again. One more try, told why.
+        log.warning(
+            "session turn: reply refused (%s): %r; asking Spark again", out.unclearReason, spark.reply
+        )
+        try:
+            second = validated(spark_turn(req, rejected=out.unclearReason), req)
+            if second.reply != SAY_AGAIN:
+                second.unclearReason = f"retried after {out.unclearReason}"
+                out = second
+            else:
+                log.warning("session turn: second reply refused too (%s)", second.unclearReason)
+        except Exception as e:  # noqa: BLE001 - the re-ask is best effort; the first fallback stands
+            log.info("session turn: retry failed: %s", e)
     out.timings["spark"] = round(time.monotonic() - t0, 2)
     return out
 
