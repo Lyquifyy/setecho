@@ -32,6 +32,18 @@ final class SetDetector: NSObject {
     private(set) var isOnDuty = false
     /// The camera sees his hips, knees or ankles, not only his upper body (Oct 31, the deadlifts).
     private(set) var seesLowerBody = true
+    /// The back camera as the dual-wide virtual device where the phone has one: zooming out to the
+    /// ultra-wide is then a zoom factor, with no input to swap and the recording untouched.
+    private var device: AVCaptureDevice?
+    /// The dual-wide camera's factor for the 1× wide lens (its switch-over), 1 on any other camera.
+    private var wideZoomFactor: CGFloat = 1
+    /// The ultra-wide is in use: about twice the view each way.
+    private(set) var zoomedOut = false
+    /// The back camera has an ultra-wide to zoom out to (never the front camera).
+    var canZoomOut: Bool { !front && device?.deviceType == .builtInDualWideCamera }
+    /// Since when the camera has seen only his upper body, on the frame clock.
+    private var upperOnlySince: Double?
+    nonisolated static let zoomOutAfterSeconds = 2.0
     /// The picture is dark, as in a pocket: under 6% brightness, and lit again above 12% (Oct 29: the
     /// screen hid his camera until the body tracker found him, so he couldn't frame himself).
     private(set) var isDark = false
@@ -56,6 +68,9 @@ final class SetDetector: NSObject {
     var onSetEnd: ((Double) -> Void)?
     /// Both exports for a set finished (either file may be nil if its export failed).
     var onClipsReady: ((Clips) -> Void)?
+    /// The camera zoomed out to the ultra-wide by itself: it saw him from the hips up for 2 s in
+    /// Ready and had no room to ask him to step back (Oct 31).
+    var onZoomOut: (() -> Void)?
 
     let captureSession = AVCaptureSession()
     private let processor = FrameProcessor()
@@ -127,7 +142,8 @@ final class SetDetector: NSObject {
         // capture session sets the session up itself, interrupting other audio by default (Apple's
         // header): starting a session stopped his music while "Check the mic" kept it (Oct 29).
         captureSession.automaticallyConfiguresApplicationAudioSession = false
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: front ? .front : .back),
+        let dualWide = front ? nil : AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back)
+        guard let device = dualWide ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: front ? .front : .back),
               let input = try? AVCaptureDeviceInput(device: device), captureSession.canAddInput(input)
         else {
             lastError = "No back camera"
@@ -135,6 +151,17 @@ final class SetDetector: NSObject {
             return
         }
         captureSession.addInput(input)
+        self.device = device
+        if device.deviceType == .builtInDualWideCamera {
+            // Start on the 1× wide lens, as before; the ultra-wide is factor 1.0, a zoom-out away.
+            wideZoomFactor = device.virtualDeviceSwitchOverVideoZoomFactors.first.map { CGFloat(truncating: $0) } ?? 2
+            if (try? device.lockForConfiguration()) != nil {
+                device.videoZoomFactor = wideZoomFactor
+                device.unlockForConfiguration()
+            }
+        }
+        zoomedOut = false
+        upperOnlySince = nil
         // 1080p for the coach's clip; a front camera that can't gets its best (720p is still plenty for pose and SAM).
         captureSession.sessionPreset = captureSession.canSetSessionPreset(.hd1920x1080) ? .hd1920x1080 : .high
         let output = AVCaptureVideoDataOutput()
@@ -174,6 +201,26 @@ final class SetDetector: NSObject {
         queue.async { session.stopRunning() }
         isRunning = false
         exportDebugSeries()
+    }
+
+    /// Zoom out once the camera has seen only his upper body for 2 s with no set under way, where it
+    /// can. Pure, so the rule is tested without a camera.
+    nonisolated static func shouldZoomOut(upperOnlySince: Double?, now: Double, canZoomOut: Bool, zoomedOut: Bool, filming: Bool) -> Bool {
+        guard canZoomOut, !zoomedOut, !filming, let since = upperOnlySince else { return false }
+        return now - since >= zoomOutAfterSeconds
+    }
+
+    /// To the ultra-wide (factor 1.0 on the dual-wide camera), ramped so the picture doesn't jump.
+    /// Stays out for the rest of the session: the clips keep one framing.
+    private func zoomOut(at t: Double) {
+        guard let device, canZoomOut, (try? device.lockForConfiguration()) != nil else { return }
+        device.ramp(toVideoZoomFactor: 1.0, withRate: 2)
+        device.unlockForConfiguration()
+        zoomedOut = true
+        joints = JointSeries()   // the old frames saw the old picture; judge the framing afresh
+        upperOnlySince = nil
+        debugEvents.append(["kind": "zoomOut", "t": t, "from": Double(wideZoomFactor)])
+        onZoomOut?()
     }
 
     /// He armed a set: the next pose frame picks him again (largest, nearest the centre) and follows him.
@@ -233,6 +280,11 @@ final class SetDetector: NSObject {
         if framesSeen % 15 == 0 {
             isOnDuty = joints.isOnDuty(now: sample.t)
             seesLowerBody = joints.seesLowerBody(now: sample.t)
+            upperOnlySince = isOnDuty && !seesLowerBody ? (upperOnlySince ?? sample.t) : nil
+            if Self.shouldZoomOut(upperOnlySince: upperOnlySince, now: sample.t, canZoomOut: canZoomOut, zoomedOut: zoomedOut,
+                                  filming: currentSetStart != nil || restPausePausedAt != nil) {
+                zoomOut(at: sample.t)
+            }
         }
         if !movieOutput.isRecording, !stopping { startSegment(at: sample.t) }
 

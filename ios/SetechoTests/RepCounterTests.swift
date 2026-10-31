@@ -184,3 +184,13 @@ private func fixtures() throws -> [RepFixture] {
     // Nothing seen yet: nothing to say.
     #expect(JointSeries().seesLowerBody(now: 10))
 }
+
+@Test func theCameraZoomsOutAfterTwoSecondsOfUpperBodyOnlyWithNoSetUnderWay() {
+    // Oct 31: no room to step the tripod back. The back camera's ultra-wide is a zoom factor away.
+    #expect(!SetDetector.shouldZoomOut(upperOnlySince: nil, now: 10, canZoomOut: true, zoomedOut: false, filming: false))
+    #expect(!SetDetector.shouldZoomOut(upperOnlySince: 9, now: 10, canZoomOut: true, zoomedOut: false, filming: false))
+    #expect(SetDetector.shouldZoomOut(upperOnlySince: 8, now: 10, canZoomOut: true, zoomedOut: false, filming: false))
+    #expect(!SetDetector.shouldZoomOut(upperOnlySince: 8, now: 10, canZoomOut: false, zoomedOut: false, filming: false))  // the front camera
+    #expect(!SetDetector.shouldZoomOut(upperOnlySince: 8, now: 10, canZoomOut: true, zoomedOut: true, filming: false))   // once per session
+    #expect(!SetDetector.shouldZoomOut(upperOnlySince: 8, now: 10, canZoomOut: true, zoomedOut: false, filming: true))   // never mid-set
+}

@@ -220,6 +220,11 @@ final class SessionCoordinator {
             detector.onSetStart = { [weak self] start in self?.cameraSetStarted(at: start) }
             detector.onSetEnd = { [weak self] end in self?.cameraSetEnded(at: end) }
             detector.onClipsReady = { [weak self] clips in self?.clipsReady(clips) }
+            detector.onZoomOut = { [weak self] in
+                guard let self else { return }
+                self.zoomedOutAt = .now
+                self.show(.init(speech: "Zooming out so your whole body's in.", echo: "Camera zoomed out"))
+            }
             detector.start()
             audio.logAudio("camera on", lowered: false, error: nil)
         }
@@ -520,10 +525,18 @@ final class SessionCoordinator {
     /// moves on.
     /// The lift the framing line was said for: once per lift, never per set.
     private var framingSaidFor: String?
+    /// When the camera last zoomed out by itself: the step-back line waits for the new picture.
+    private var zoomedOutAt: Date?
 
-    /// The camera sees him from the hips up: said once per lift when he arms, so a deadlift is never
-    /// counted from his set-up again (Oct 31).
-    var upperBodyOnly: Bool { cameraRunning && detector.isOnDuty && !detector.seesLowerBody }
+    /// The camera sees him from the hips up and can't fix it itself: said once per lift when he
+    /// arms, so a deadlift is never counted from his set-up again (Oct 31). While the back camera
+    /// still has its zoom-out to spend, the camera adjusts instead of asking.
+    var upperBodyOnly: Bool {
+        guard cameraRunning, detector.isOnDuty, !detector.seesLowerBody else { return false }
+        if detector.canZoomOut, !detector.zoomedOut { return false }
+        if let at = zoomedOutAt, Date.now.timeIntervalSince(at) < 8 { return false }
+        return true
+    }
 
     private func afterVoice(_ response: VoiceCommandResponse, wasRecording: Bool) {
         filming?.transcribed(response.transcript)
