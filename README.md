@@ -26,7 +26,7 @@ Setecho takes the paperwork away and leaves the coaching to the coach:
 
 | | By hand (before) | With Setecho |
 |---|---|---|
-| **One workout** (the same day of my program) | 55–68 min, median 64 (my last four times through it, logged in Liftoff) | 53 min for 18 sets, none of them typed: faster than any of those four, while I still kept a paper logbook beside it to check it |
+| **One workout** (the same day of my program) | 55–68 min, median 64 (my last four times through it, logged in Liftoff) | 53 min for 18 sets, none of them typed: faster than any of those four, while I still kept a paper logbook beside it to check it. The next day, Day 6: 52 min for 17 sets against a 74-minute median |
 | **Weekly check-in** | a whole 25-minute cardio session typing 22 questions into WhatsApp | 7 min 26 s by voice, start to finish, weigh-in and four photos included; I spoke for just over a minute of it (a practice run on my real data on Oct 30, two days into the week, so I answered 19 of the 22 fields out loud) |
 | **Typing between sets** | every set, during rest | none |
 
@@ -85,8 +85,15 @@ Every model the app calls at runtime is Meta's, on the Standard tier. Meta has n
 - **Effort is an estimate.** It's always labelled "estimated" and calibrated per exercise against spoken RPE. It never replaces the coach's eye; the two videos are there for that.
 - **One athlete, one coach, iPhone, English.** Check-in photos never leave the phone except in the WhatsApp send.
 
-<!-- EVIDENCE: paste the "Rep counts", "Effort" and "Speed and hearing" sections from scripts/evidence.py here as
-"## How well it measures", misses included. -->
+## How well it measures
+
+From the session exports so far (`backend/scripts/evidence.py`, aggregates only), misses included:
+
+- **Rep counts on camera sets:** SAM 3.1 matched the count I said or corrected to on 3 of 4 sets (Oct 31: deadlifts 2 and 4, a plate-loaded row 7). The miss was a chest-supported row counted from my hands, 13 against 6, at confidence 0.51: under the 0.6 bar, so the phone's count stood and nothing was spoken wrong.
+- **Effort:** on the row's back-off set, "slowed 28%, about 2 left" matched what I felt. On the deadlifts the two slow reps read as no slowdown, which is right for a 2-rep set and useless for effort; the rule only fires from 3 reps.
+- **Speed:** set end to SAM's count, median 85 s, slowest 111 s, over 5 sets. The clip reaches the phone's export in 7–9 s; the rest is the upload (3–27 s at the gym), the crop (11 s) and SAM itself (31–49 s). The phone's own count covers the gap, and a doubtful phone count now waits for SAM instead of being spoken.
+- **Hearing:** end of speech to understood, median 2.7 s; 56 of 422 utterances acted on, the rest were the gym, a friend, or me breathing.
+- **Time:** Day 6 on Oct 31 ran 52 min for 17 working sets against a 74-minute median (61–78) for the same day in Liftoff, 32% less per set.
 
 ## Built during the hackathon
 
