@@ -144,11 +144,9 @@ final class HealthService: @unchecked Sendable {
         for (i, lb) in firstWeights.byDay { days[i].weighInLb = lb }
         for row in weights { sources["weight", default: []].insert(row.source) }
         if firstWeights.latestDirect { sources["weight.direct"] = [Self.directSource] }
-        for row in sleeps {
-            guard let i = index(row.end) else { continue }
-            days[i].sleepHours = (days[i].sleepHours ?? 0) + row.end.timeIntervalSince(row.start) / 3600
-            sources["sleep", default: []].insert(row.source)
-        }
+        let spans = sleeps.map { SleepSpan(start: $0.start, end: $0.end, source: $0.source) }
+        for (i, hours) in Self.sleepHoursByNight(spans, day: index) { days[i].sleepHours = hours }
+        for row in sleeps where index(row.end) != nil { sources["sleep", default: []].insert(row.source) }
         for row in workouts {
             guard let i = index(row.start) else { continue }
             days[i].liss.append(LissSession(type: row.name, minutes: Int(row.value / 60)))
@@ -167,6 +165,25 @@ final class HealthService: @unchecked Sendable {
             !fromWithings.contains { abs($0.at.timeIntervalSince(sample.at)) <= duplicateWindow }
         }
         return (fromWithings + rest).sorted { $0.at < $1.at }
+    }
+
+    /// One asleep-stage sample, from either wearable.
+    struct SleepSpan: Equatable, Sendable {
+        var start: Date
+        var end: Date
+        var source: String
+    }
+
+    /// Hours asleep per night (the day index the sample ends in), from one source only: the one with
+    /// the most asleep time that night. Garmin and an Apple Watch both writing the same night used to be
+    /// added together, so a night counted twice. Within a source the asleep stages don't overlap.
+    nonisolated static func sleepHoursByNight(_ spans: [SleepSpan], day: (Date) -> Int?) -> [Int: Double] {
+        var bySource: [Int: [String: Double]] = [:]
+        for span in spans {
+            guard let i = day(span.end) else { continue }
+            bySource[i, default: [:]][span.source, default: 0] += span.end.timeIntervalSince(span.start) / 3600
+        }
+        return bySource.compactMapValues { $0.values.max() }
     }
 
     /// The first weigh-in each day (the morning one), and whether the latest of those came straight
@@ -252,6 +269,10 @@ final class HealthService: @unchecked Sendable {
 
 extension WeekFacts {
     /// Assemble the week the backend cites from Health readings and the log. Pure, so it is testable.
+    /// Only a completed day counts against the macro targets: the day `now` falls in goes out with no
+    /// food logged, so a half-eaten day is neither on nor off plan (Oct 30, 4 PM: "0 of 2 days on
+    /// macros" judged the afternoon's food against a whole day). It joins once the day is over, which
+    /// on check-in morning is every day of the period.
     static func build(
         week: HealthService.Week,
         weekStart: Date,
@@ -261,18 +282,22 @@ extension WeekFacts {
         scheduledWeekdays: Set<Int>,
         showDate: String?,
         lastCheckInWeightLb: Double?,
+        now: Date = .now,
         calendar: Calendar = .current
     ) -> WeekFacts {
+        let today = DayKey.string(now, calendar: calendar)
         let daily = week.days.map { day in
-            DayFacts(
-                date: DayKey.string(day.date, calendar: calendar),
+            let date = DayKey.string(day.date, calendar: calendar)
+            let complete = date != today
+            return DayFacts(
+                date: date,
                 isTrainingDay: Adherence.isTrainingDay(
                     day.date, sessions: sessions, scheduledWeekdays: scheduledWeekdays, calendar: calendar
                 ),
-                kcal: day.kcal.map { $0.rounded() },
-                proteinG: day.proteinG.map { $0.rounded() },
-                carbsG: day.carbsG.map { $0.rounded() },
-                fatG: day.fatG.map { $0.rounded() },
+                kcal: complete ? day.kcal.map { $0.rounded() } : nil,
+                proteinG: complete ? day.proteinG.map { $0.rounded() } : nil,
+                carbsG: complete ? day.carbsG.map { $0.rounded() } : nil,
+                fatG: complete ? day.fatG.map { $0.rounded() } : nil,
                 steps: day.steps.map { $0.rounded() },
                 sleepHours: day.sleepHours.map { ($0 * 10).rounded() / 10 },
                 weighInLb: day.weighInLb.map { ($0 * 10).rounded() / 10 },

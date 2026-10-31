@@ -172,7 +172,7 @@ struct DeveloperView: View {
                 recordingBytes = store.recordingBytes
             }
         } message: {
-            Text("Every logged set and recording leaves the phone. This can't be undone.")
+            Text("Every logged set and recording leaves the phone, and this week's check-in training numbers and Last time empty with them. This can't be undone. To free space and keep the log, use Delete recordings.")
         }
         .sheet(item: $exportFile) { file in
             ShareSheet(image: nil, text: nil, files: [file.url]) { _ in }

@@ -120,6 +120,33 @@ private func fixture(_ name: String) throws -> Data {
     #expect(facts.sources["weight"] == "Withings")
 }
 
+/// Sleep per night is the asleep stages from one wearable, the one that saw the most of the night.
+/// Garmin and an Apple Watch both writing the same night were summed before, so the night counted twice.
+@Test func aNightWrittenByTwoWearablesCountsOnce() {
+    let cal = Calendar(identifier: .gregorian)
+    let day0 = cal.date(from: DateComponents(year: 2026, month: 10, day: 29))!
+    func t(_ day: Int, _ hour: Int, _ minute: Int = 0) -> Date {
+        cal.date(byAdding: .day, value: day, to: cal.date(bySettingHour: hour, minute: minute, second: 0, of: day0)!)!
+    }
+    let index = { (date: Date) -> Int? in
+        let d = cal.dateComponents([.day], from: day0, to: cal.startOfDay(for: date)).day ?? -1
+        return (0...6).contains(d) ? d : nil
+    }
+    let spans = [
+        // Night ending the morning of day 1: Garmin has 7.5 h in stages, the Apple Watch 7.0 h.
+        HealthService.SleepSpan(start: t(0, 22, 30), end: t(1, 2), source: "Garmin Connect"),
+        HealthService.SleepSpan(start: t(1, 2), end: t(1, 6), source: "Garmin Connect"),
+        HealthService.SleepSpan(start: t(0, 23), end: t(1, 3), source: "Apple Watch"),
+        HealthService.SleepSpan(start: t(1, 3), end: t(1, 6), source: "Apple Watch"),
+        // Night ending day 2: only the Apple Watch, a short night.
+        HealthService.SleepSpan(start: t(1, 23, 30), end: t(2, 5), source: "Apple Watch"),
+        // A night before the window: dropped.
+        HealthService.SleepSpan(start: t(-1, 23), end: t(-1, 23, 30), source: "Garmin Connect"),
+    ]
+    let nights = HealthService.sleepHoursByNight(spans, day: index)
+    #expect(nights == [1: 7.5, 2: 5.5])
+}
+
 @Test func loggedSetWithoutRepCountDecodesAsPlan() throws {
     let json = """
     {"id":"8E2B2C0E-5C4C-4C3B-9B1D-0D7B5B3D1A11","exerciseId":"bench","setIndex":0,"loadLb":225,"reps":8,"rpe":null,

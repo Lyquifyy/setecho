@@ -45,6 +45,37 @@ private func week(_ days: [DayFacts]) -> WeekFacts {
     #expect(result.onPlan == 2 && result.logged == 3)
 }
 
+/// Oct 30, 4:18 PM: "0 of 2 days on macros" judged the afternoon's half-logged food against the day's
+/// targets. Only a completed day counts, in the count and in the denominator; today joins once it is over.
+@Test func todaysFoodWaitsUntilTheDayIsOver() {
+    let cal = Calendar(identifier: .gregorian)
+    let thursday = cal.date(from: DateComponents(year: 2026, month: 10, day: 29))!
+    let friday = cal.date(from: DateComponents(year: 2026, month: 10, day: 30))!
+    let week = HealthService.Week(
+        days: [
+            HealthService.DayReading(date: thursday, kcal: 2400, proteinG: 200, carbsG: 250, fatG: 65, steps: 9800, sleepHours: 7.5, weighInLb: 181.2),
+            HealthService.DayReading(date: friday, kcal: 1240, proteinG: 110, carbsG: 120, fatG: 30, steps: 5890, sleepHours: 7.2, weighInLb: 180.8),
+        ],
+        sources: [:]
+    )
+    func build(now: Date) -> WeekFacts {
+        WeekFacts.build(week: week, weekStart: thursday, weekEnd: friday, targets: targets, sessions: [],
+                        scheduledWeekdays: [5], showDate: nil, lastCheckInWeightLb: nil, now: now, calendar: cal)
+    }
+    // Friday at 4:18 PM: Friday's food is half logged, so it is neither on nor off plan.
+    let afternoon = build(now: cal.date(bySettingHour: 16, minute: 18, second: 0, of: friday)!)
+    #expect(afternoon.daily[1].kcal == nil && afternoon.daily[1].proteinG == nil && afternoon.daily[1].carbsG == nil && afternoon.daily[1].fatG == nil)
+    #expect(Adherence.isOnPlan(afternoon.daily[1], targets: targets) == nil)
+    #expect(Adherence.daysOnPlan(afternoon) == (onPlan: 1, logged: 1))
+    // The rest of Friday still counts: the weigh-in, last night's sleep and the steps so far.
+    #expect(afternoon.daily[1].weighInLb == 180.8 && afternoon.daily[1].sleepHours == 7.2 && afternoon.daily[1].steps == 5890)
+    #expect(afternoon.daily[0].kcal == 2400 && Adherence.isOnPlan(afternoon.daily[0], targets: targets) == true)
+    // Saturday morning (check-in morning, say): Friday is over and is judged as logged.
+    let nextMorning = build(now: cal.date(byAdding: .hour, value: 7, to: cal.date(byAdding: .day, value: 1, to: friday)!)!)
+    #expect(nextMorning.daily[1].kcal == 1240 && Adherence.isOnPlan(nextMorning.daily[1], targets: targets) == false)
+    #expect(Adherence.daysOnPlan(nextMorning) == (onPlan: 1, logged: 2))
+}
+
 @Test func stepsAverageRoundsToHundreds() {
     let facts = week([
         day("a", training: true, steps: 10412), day("b", training: false, steps: 9950), day("c", training: true),

@@ -137,10 +137,67 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
 }
 
 @Test func theIntroductionNamesTheAthleteTheDayAndWhatIsComing() {
-    #expect(CheckInMorningFlow.intro(firstName: "Zander", dueDay: "Thursday", isDueMorning: true)
+    let cal = Calendar(identifier: .gregorian)
+    let seven = cal.date(from: DateComponents(year: 2026, month: 10, day: 29, hour: 7, minute: 5))!
+    #expect(CheckInMorningFlow.intro(firstName: "Zander", dueDay: "Thursday", isDueMorning: true, now: seven, calendar: cal)
             == "Morning, Zander. It's your Thursday check-in. We'll do your weight, glucose and photos, then your coach's questions.")
-    #expect(CheckInMorningFlow.intro(firstName: " ", dueDay: "Thursday", isDueMorning: false)
+    #expect(CheckInMorningFlow.intro(firstName: " ", dueDay: "Thursday", isDueMorning: false, now: seven, calendar: cal)
             == "Morning. This is a practice run of your Thursday check-in. We'll do your weight, glucose and photos, then your coach's questions.")
+}
+
+/// Oct 30, 4:18 PM: "Morning, Zander" in the afternoon. The greeting follows the clock; the rest stays.
+@Test func theGreetingFollowsTheClock() {
+    let cal = Calendar(identifier: .gregorian)
+    func at(_ hour: Int, _ minute: Int = 0) -> Date { cal.date(from: DateComponents(year: 2026, month: 10, day: 30, hour: hour, minute: minute))! }
+    #expect(CheckInMorningFlow.greeting(at: at(6, 30), calendar: cal) == "Morning")
+    #expect(CheckInMorningFlow.greeting(at: at(11, 59), calendar: cal) == "Morning")
+    #expect(CheckInMorningFlow.greeting(at: at(12), calendar: cal) == "Afternoon")
+    #expect(CheckInMorningFlow.greeting(at: at(16, 18), calendar: cal) == "Afternoon")
+    #expect(CheckInMorningFlow.greeting(at: at(17, 59), calendar: cal) == "Afternoon")
+    #expect(CheckInMorningFlow.greeting(at: at(18), calendar: cal) == "Evening")
+    #expect(CheckInMorningFlow.greeting(at: at(23, 30), calendar: cal) == "Evening")
+    #expect(CheckInMorningFlow.intro(firstName: "Zander", dueDay: "Thursday", isDueMorning: false, now: at(16, 18), calendar: cal)
+            == "Afternoon, Zander. This is a practice run of your Thursday check-in. We'll do your weight, glucose and photos, then your coach's questions.")
+    #expect(CheckInMorningFlow.intro(firstName: "", dueDay: "Thursday", isDueMorning: false, now: at(21), calendar: cal)
+            .hasPrefix("Evening. This is a practice run"))
+}
+
+/// Oct 30: the practice run read "up 5890.0" on steps, "down 100 points", and a delta right after a
+/// correction. With a sent check-in from last week in the store, nothing spoken compares to it.
+@Test @MainActor func noSpokenLineCarriesADelta() async throws {
+    let store = makeStore()
+    let template = try template()
+    store.saveTemplate(template)
+    let flow = CheckInMorningFlow(template: template)
+    let weight = try #require(flow.weightField)
+    let glucose = try #require(flow.glucoseField)
+    let steps = try #require(template.fields.first { $0.source.key == .avgDailySteps })
+    let training = try #require(template.fields.first { $0.source.key == .trainingConsistency })
+    // Last week's check-in, sent: the "last value" every delta would compare to.
+    let weekAgo = Calendar.current.date(byAdding: .day, value: -7, to: .now)!
+    let fromData = { (id: String, text: String) in
+        FieldAnswer(fieldId: id, text: text, state: .filled, provenance: [Provenance(source: "Apple Health", detail: text)])
+    }
+    store.upsert(checkIn: CheckInDraft(id: UUID(), weekStart: Calendar.current.date(byAdding: .day, value: -14, to: .now)!, weekEnd: weekAgo,
+                                       answers: [answer(weight.id, "181.2"), fromData(steps.id, "8.9k"), fromData(training.id, "100%, 5 of 5 sessions")],
+                                       photoSetId: nil, sentAt: weekAgo))
+    // This week's draft, with the data fields in and the weight and glucose still to come.
+    store.upsert(checkIn: currentDraft(answers: [fromData(steps.id, "5,890"), fromData(training.id, "80%, 4 of 5 sessions")]))
+    let coordinator = CheckInCoordinator(store: store)
+    nonisolated(unsafe) var spoken: [String] = []
+    let m = CheckInMorningModel(coordinator: coordinator, store: store, speak: { spoken.append($0) })
+    await m.resume(opening: true)
+    await m.apply(turn(.answer, "180.8", answers: [answer(weight.id, "180.8")], reply: "180.8, got it."))
+    await m.apply(turn(.correction, "wait, it was 180.6", answers: [answer(weight.id, "180.6")], reply: "Changed to 180.6."))
+    await m.apply(turn(.answer, "91", answers: [answer(glucose.id, "91")], reply: "Got it, 91."))
+    // The read-back lines, as the review step says them.
+    let items = flow.readBackFields(draft: coordinator.draft)
+    let readBacks = items.enumerated().map { CheckInMorningFlow.readBackPrompt($1.field, $1.answer, index: $0, first: $0 == 0) }
+    #expect(readBacks.contains { $0.contains("5,890") } && readBacks.contains { $0.contains("80%") })
+    for line in spoken + readBacks + [CheckInMorningModel.weightOffer("180.8")] {
+        #expect(!line.contains("from last week") && !line.contains("since your last check-in") && !line.contains("point"), "\(line)")
+    }
+    #expect(spoken.contains { $0.hasPrefix("Got it, 180.8.") || $0.hasPrefix("Okay, 180.8.") })
 }
 
 @Test @MainActor func aScriptedMorningSavesEveryAnswerAndPicksTheNextQuestionItself() async throws {
@@ -159,7 +216,7 @@ private func turn(_ intent: TurnIntent, _ transcript: String, answers: [FieldAns
     await m.resume(opening: true)
     #expect(m.step == .weight && spoken.last == "Hop on the scale, and tell me when you're off.")
     // The introduction is spoken by start(), before the draft builds; its words come from the flow.
-    #expect(m.intro.hasPrefix("Morning") && m.intro.contains("check-in"))
+    #expect(["Morning", "Afternoon", "Evening"].contains { m.intro.hasPrefix($0) } && m.intro.contains("check-in"))
     // "Give me a couple of minutes": a pause keeps listening and asks nothing.
     await m.apply(turn(.pause, "give me a couple of minutes", reply: "No rush. Tell me when you're ready."))
     #expect(m.isPaused && m.isListening && spoken.last == "No rush. Tell me when you're ready.")

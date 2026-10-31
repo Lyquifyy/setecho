@@ -1,15 +1,18 @@
 import Foundation
 
 /// What makes a read-back sound like a person who knows him, from content alone (HANDOFF.md §7):
-/// one fact from the log beside a value, and acknowledgments that never come twice in a row. Every
-/// number here is computed from his own check-ins; the model writes none of it.
+/// acknowledgments that never come twice in a row, and a change since the last check-in computed from
+/// his own check-ins. Every number here is computed; the model writes none of it. The comparisons are
+/// for the screen only: no spoken line carries one (Oct 30, the practice run read "up 5890.0" on steps
+/// against a last value that wasn't there, "down 100 points", and a delta right after a correction).
 enum SpokenFacts {
     // MARK: One fact from the log
 
-    /// The leading number of an answer: "180.8" → 180.8, "9.4k" → 9400, "100%, 5 of 5 sessions" → 100,
-    /// "31 in" → 31, "6/10" → 6. Nil when the answer doesn't start with a number.
+    /// The leading number of an answer: "180.8" → 180.8, "9.4k" → 9400, "10,200" → 10200,
+    /// "100%, 5 of 5 sessions" → 100, "31 in" → 31, "6/10" → 6. Nil when the answer doesn't start with
+    /// a number.
     static func value(_ text: String) -> Double? {
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        let trimmed = text.trimmingCharacters(in: .whitespaces).replacing(/(\d),(\d{3})/, with: { "\($0.1)\($0.2)" })
         guard let match = trimmed.firstMatch(of: /^(\d+(?:\.\d+)?)(k)?/) else { return nil }
         guard let n = Double(match.1) else { return nil }
         return match.2 == nil ? n : n * 1000
@@ -23,10 +26,12 @@ enum SpokenFacts {
     }
 
     /// "down 0.4 from last week", "up 500 from last week", "up 5 points since your last check-in",
-    /// "same as last week". Nil without a comparable value from a previous check-in.
+    /// "same as last week". Nil without a comparable value from a previous check-in: a missing, empty or
+    /// wordy last value compares to nothing. Steps (either value in the thousands) are whole hundreds,
+    /// never a decimal.
     static func comparison(_ field: FieldSpec, now: String, last: String?, lastSentAt: Date?, today: Date = .now,
                            calendar: Calendar = .current) -> String? {
-        guard comparable(field), let last, let a = value(now), let b = value(last) else { return nil }
+        guard comparable(field), let last, let a = value(now), let b = value(last), a.isFinite, b.isFinite else { return nil }
         let days = lastSentAt.map { calendar.dateComponents([.day], from: calendar.startOfDay(for: $0), to: calendar.startOfDay(for: today)).day ?? 0 }
         let weekly = days.map { (5...9).contains($0) } ?? false
         let since = weekly ? "from last week" : "since your last check-in"
@@ -38,8 +43,8 @@ enum SpokenFacts {
             let points = Int(delta.rounded())
             guard points != 0 else { return same }
             text = "\(abs(points)) \(abs(points) == 1 ? "point" : "points")"
-        } else if a >= 1000, b >= 1000 {
-            let hundreds = Int((delta / 100).rounded()) * 100 // steps: to the nearest hundred
+        } else if a >= 1000 || b >= 1000 {
+            let hundreds = Int((delta / 100).rounded()) * 100 // steps: to the nearest hundred, no decimal
             guard hundreds != 0 else { return "about the \(same)" }
             text = "\(abs(hundreds))"
         } else if now.contains(".") || last.contains(".") {

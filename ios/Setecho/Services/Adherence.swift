@@ -23,7 +23,8 @@ enum Adherence {
             && abs(fat - target.fatG) <= tolerance.grams
     }
 
-    /// "7 of 7 days": days on plan over days with nutrition logged.
+    /// "7 of 7 days": days on plan over days with nutrition logged. The day in progress arrives with no
+    /// nutrition (`WeekFacts.build`), so it is in neither count until it is over.
     static func daysOnPlan(_ facts: WeekFacts, tolerance: MacroTolerance = .init()) -> (onPlan: Int, logged: Int) {
         let verdicts = facts.daily.compactMap { isOnPlan($0, targets: facts.targets, tolerance: tolerance) }
         return (verdicts.filter { $0 }.count, verdicts.count)

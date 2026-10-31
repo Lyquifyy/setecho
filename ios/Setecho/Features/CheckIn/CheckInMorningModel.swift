@@ -113,14 +113,13 @@ struct CheckInMorningFlow: Equatable {
     /// One data field read back, like the questions (Oct 28: all of them in one line was too much).
     /// The first opens the read-back: "Quick check on your data. Average daily steps came in at 9.4k. Sound right?"
     /// The tail changes line to line ("Sound right?", "Look right?", "That right?") so a run of them
-    /// doesn't sound stamped out.
-    /// With one fact from the log where there is one: "Average daily steps came in at 9.4k, up 500 from last week."
-    static func readBackPrompt(_ field: FieldSpec, _ answer: FieldAnswer, index: Int, first: Bool, fact: String? = nil) -> String {
+    /// doesn't sound stamped out. The value alone: no "up 500 from last week" (Oct 30, the deltas
+    /// spoke against a missing last value, with a decimal, and right after he had corrected the number).
+    static func readBackPrompt(_ field: FieldSpec, _ answer: FieldAnswer, index: Int, first: Bool) -> String {
         let label = WrapUpModel.spokenLabel(field).capitalizedFirst
         let verb = answer.text.first?.isNumber == true ? "came in at" : "is"
         let tails = ["Sound right?", "Look right?", "That right?"]
-        let value = answer.text + (fact.map { ", \($0)" } ?? "")
-        return (first ? "Quick check on your data. " : "") + "\(label) \(verb) \(value). \(tails[index % tails.count])"
+        return (first ? "Quick check on your data. " : "") + "\(label) \(verb) \(answer.text). \(tails[index % tails.count])"
     }
 
     /// The notes field a question for the coach lands in ("Additional notes or concerns").
@@ -130,12 +129,22 @@ struct CheckInMorningFlow: Equatable {
 
 
     /// The opening line (Oct 27 rehearsal): who it is for, which check-in, and what is coming. Every
-    /// word is fixed or computed here; the name is the athlete's own first name from Settings.
-    static func intro(firstName: String, dueDay: String, isDueMorning: Bool) -> String {
+    /// word is fixed or computed here; the name is the athlete's own first name from Settings, and the
+    /// greeting follows the clock (Oct 30: "Morning, Zander" at 4:18 PM).
+    static func intro(firstName: String, dueDay: String, isDueMorning: Bool, now: Date = .now, calendar: Calendar = .current) -> String {
         let name = firstName.trimmingCharacters(in: .whitespaces)
-        let greeting = name.isEmpty ? "Morning." : "Morning, \(name)."
+        let greeting = name.isEmpty ? "\(Self.greeting(at: now, calendar: calendar))." : "\(Self.greeting(at: now, calendar: calendar)), \(name)."
         let which = isDueMorning ? "It's your \(dueDay) check-in." : "This is a practice run of your \(dueDay) check-in."
         return "\(greeting) \(which) We'll do your weight, glucose and photos, then your coach's questions."
+    }
+
+    /// "Morning" before noon, "Afternoon" from 12 to 5, "Evening" from 6 PM.
+    static func greeting(at now: Date, calendar: Calendar = .current) -> String {
+        switch calendar.component(.hour, from: now) {
+        case ..<12: "Morning"
+        case 12..<18: "Afternoon"
+        default: "Evening"
+        }
     }
 
     static func isYes(_ transcript: String) -> Bool { SpokenReply.read(transcript, offered: true) == .keep }
@@ -300,7 +309,7 @@ final class CheckInMorningModel {
         lines += groups.map { CheckInMorningFlow.bridged(flow.prompt(for: $0, draft: draft), index: 1, count: 2) }
         // The data read-back, each line as it will be said, so they play at once; the last one says so.
         let readBacks = flow.readBackFields(draft: draft).enumerated().map { index, item in
-            CheckInMorningFlow.readBackPrompt(item.field, item.answer, index: index, first: index == 0, fact: fact(for: item.field, now: item.answer.text))
+            CheckInMorningFlow.readBackPrompt(item.field, item.answer, index: index, first: index == 0)
         }
         lines += readBacks
         if let last = readBacks.last, readBacks.count > 1 { lines.append("Last one. " + last) }
@@ -325,7 +334,7 @@ final class CheckInMorningModel {
         let schedule = CheckInSchedule(plan: store.plan, lastSentAt: store.lastSentCheckIn?.sentAt)
         let dueDay = schedule.nextDue(from: .now).formatted(.dateTime.weekday(.wide))
         return CheckInMorningFlow.intro(firstName: Settings.shared.athleteFirstName, dueDay: dueDay,
-                                        isDueMorning: schedule.isCheckInMorning(on: .now))
+                                        isDueMorning: schedule.isCheckInMorning(on: .now), now: .now)
     }
 
     // MARK: Lifecycle
@@ -362,7 +371,7 @@ final class CheckInMorningModel {
         await draft.value
         TurnTimings.shared.stage("draft")
         await coordinator.refreshWeightToday()
-        if let known = coordinator.weightTodayText { await voice.warm([weightOfferLine(known)], within: .seconds(1)) }
+        if let known = coordinator.weightTodayText { await voice.warm([Self.weightOffer(known)], within: .seconds(1)) }
         status = nil
         prerender()
         await resume(opening: true)
@@ -435,8 +444,7 @@ final class CheckInMorningModel {
                 dataReadBackStarted = true
                 // The same index as the pre-rendered line, so it plays from its file.
                 let index = flow.readBackFields(draft: draft).firstIndex { $0.field.id == id } ?? 0
-                var line = CheckInMorningFlow.readBackPrompt(item.field, item.answer, index: index, first: first,
-                                                             fact: fact(for: item.field, now: item.answer.text))
+                var line = CheckInMorningFlow.readBackPrompt(item.field, item.answer, index: index, first: first)
                 // The last read-back is the last check before the summary.
                 if dataQueue.count == 1, !first { line = "Last one. " + line }
                 await ask(line, after: ack)
@@ -957,34 +965,16 @@ final class CheckInMorningModel {
     private func offerWeight(_ known: String, after ack: String? = nil) async {
         offeredWeight = known
         awaitingWeightReading = false
-        await ask(weightOfferLine(known), after: ack)
+        await ask(Self.weightOffer(known), after: ack)
     }
 
-    /// "Apple Health has you at 180.8, down 0.4 from last week. Should I use that?"
-    nonisolated static func weightOffer(_ known: String, fact: String? = nil) -> String {
-        "Apple Health has you at \(known)\(fact.map { ", \($0)" } ?? ""). Should I use that?"
-    }
-
-    private func weightOfferLine(_ known: String) -> String {
-        Self.weightOffer(known, fact: flow.weightField.flatMap { fact(for: $0, now: known) })
+    /// "Apple Health has you at 180.8. Should I use that?" The number alone, never a change since last
+    /// week: no spoken line carries a delta (Oct 30).
+    nonisolated static func weightOffer(_ known: String) -> String {
+        "Apple Health has you at \(known). Should I use that?"
     }
 
     // MARK: Sounding like a person (SpokenFacts)
-
-    /// His last check-in that was actually sent before today: what "last week" means. A rehearsal sent
-    /// this morning doesn't count.
-    private var previousCheckIn: CheckInDraft? {
-        let today = Calendar.current.startOfDay(for: .now)
-        return store.checkIns.filter { $0.isSent && ($0.sentAt ?? .distantFuture) < today && $0.id != draft?.id }
-            .max { $0.sentAt! < $1.sentAt! }
-    }
-
-    /// One fact from the log for this value, computed from his last check-in; nil when there's nothing to compare.
-    func fact(for field: FieldSpec, now text: String) -> String? {
-        guard let previous = previousCheckIn else { return nil }
-        return SpokenFacts.comparison(field, now: text, last: previous.answers.first { $0.fieldId == field.id }?.text,
-                                      lastSentAt: previous.sentAt)
-    }
 
     /// The next acknowledgment in turn, never the last one again.
     private func acknowledgment(beforeAFact: Bool) -> String {
@@ -993,23 +983,16 @@ final class CheckInMorningModel {
         return ack
     }
 
-    /// The reply to an answer: its "got it" swapped for the acknowledgment in turn, then one fact from the
-    /// log when he answered one field that has one: "Okay, 180.8, down 0.4 from last week."
+    /// The reply to an answer: its "got it" swapped for the acknowledgment in turn, "Okay, 180.8." The
+    /// value as he said it, with nothing compared to last week (Oct 30: a delta was read right after he
+    /// had corrected the number, and "up 5890.0" went out against a last value that wasn't there).
     private func acknowledged(_ response: TurnResponse) -> String {
         let reply = response.reply.isEmpty ? Self.readBack(response.answers, labels: label(for:)) : response.reply
-        var fact: String?
-        if response.answers.count == 1, let answer = response.answers.first,
-           let field = flow.template.fields.first(where: { $0.id == answer.fieldId }) {
-            fact = self.fact(for: field, now: answer.text)
+        guard let swapped = SpokenFacts.reacknowledged(reply, with: SpokenFacts.next(after: lastAcknowledgment, beforeAFact: false)) else {
+            return reply
         }
-        let line: String
-        if let swapped = SpokenFacts.reacknowledged(reply, with: SpokenFacts.next(after: lastAcknowledgment, beforeAFact: fact != nil)) {
-            _ = acknowledgment(beforeAFact: fact != nil)
-            line = swapped
-        } else {
-            line = reply
-        }
-        return SpokenFacts.joined(line, fact: fact)
+        _ = acknowledgment(beforeAFact: false)
+        return swapped
     }
 
     /// After an answer: the next pending step or question, by the draft, never by the model. The
