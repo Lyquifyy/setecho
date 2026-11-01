@@ -72,6 +72,7 @@ final class SessionCoordinator {
         self.conversation = SessionConversation(engine: engine)
         self.voice = SystemSpeaker(audio: audio, cacheDirectory: store.mediaDirectory.appendingPathComponent("voice", isDirectory: true))
         self.detector = SetDetector(mediaDirectory: store.mediaDirectory, sessionId: engine.session.id, front: settings.frontCameraInSessions)
+        self.cameraZoomsOut = settings.cameraZoomsOut
         if settings.talkativeSpotter {
             let name = settings.athleteFirstName.isEmpty ? nil : settings.athleteFirstName
             conversation.rephrase = { line, turn, previous in Talk.rephrase(line, turn: turn, name: name, previous: previous) }
@@ -330,6 +331,7 @@ final class SessionCoordinator {
             lastArmedAt = engine.armedAt
         }
         detector.startsAllowed = engine.cameraMayStart || engine.state == .recording
+        detector.zoomOutAllowed = cameraZoomsOut && liftNeedsWholeBody
     }
 
     private func cameraSetEnded(at end: Double) {
@@ -434,6 +436,7 @@ final class SessionCoordinator {
     var medianCountLatency: TimeInterval? { engine.medianCountLatency }
 
     private func afterStateChange() {
+        syncCamera()   // the lift may have changed: whether the camera may zoom out follows it
         if engine.state == .ended { finish() }
         if engine.state == .ready || engine.restIsUp { Task { await playCueIfDue() } }
     }
@@ -523,6 +526,13 @@ final class SessionCoordinator {
     /// The coordinator's side of a command: a spoken "done" closes the camera's clip, "say that
     /// again" replays the cue, "that was my top set" uploads the held clip, the session ends or
     /// moves on.
+    /// Settings → "Camera zooms out by itself", read when the session starts.
+    private let cameraZoomsOut: Bool
+    /// The lift up now is done standing or hinged (`SetDetector.needsWholeBody`).
+    private var liftNeedsWholeBody: Bool {
+        SetDetector.needsWholeBody(engine.currentExercise?.name ?? "")
+    }
+
     /// The lift the framing line was said for: once per lift, never per set.
     private var framingSaidFor: String?
     /// When the camera last zoomed out by itself: the step-back line waits for the new picture.
@@ -532,8 +542,8 @@ final class SessionCoordinator {
     /// arms, so a deadlift is never counted from his set-up again (Oct 31). While the back camera
     /// still has its zoom-out to spend, the camera adjusts instead of asking.
     var upperBodyOnly: Bool {
-        guard cameraRunning, detector.isOnDuty, !detector.seesLowerBody else { return false }
-        if detector.canZoomOut, !detector.zoomedOut { return false }
+        guard cameraRunning, liftNeedsWholeBody, detector.isOnDuty, !detector.seesLowerBody else { return false }
+        if detector.canZoomOut, detector.zoomOutAllowed, !detector.zoomedOut { return false }
         if let at = zoomedOutAt, Date.now.timeIntervalSince(at) < 8 { return false }
         return true
     }

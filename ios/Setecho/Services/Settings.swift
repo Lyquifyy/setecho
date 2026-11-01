@@ -79,6 +79,9 @@ final class Settings {
     /// Settings → "Camera faces you" (off until SAM's count is measured front against back): the
     /// front camera, so the screen faces him from the bench (HANDOFF.md §7, Built for not looking).
     var frontCameraInSessions: Bool { didSet { defaults.set(frontCameraInSessions, forKey: "frontCameraInSessions") } }
+    /// Settings → "Camera zooms out by itself" (on): on a standing or hinged lift seen from the hips
+    /// up, the back camera goes to the ultra-wide once and stays there for the session.
+    var cameraZoomsOut: Bool { didSet { defaults.set(cameraZoomsOut, forKey: "cameraZoomsOut") } }
     /// Developer → "Apple voice processing" (off until the gym data says it hears more): noise
     /// suppression and gain control on the session mic, recorded with every utterance.
     var voiceProcessing: Bool { didSet { defaults.set(voiceProcessing, forKey: "voiceProcessing") } }
@@ -130,6 +133,7 @@ final class Settings {
         voiceProcessing = defaults.bool(forKey: "voiceProcessing")
         airPodsLowering = defaults.string(forKey: "airPodsLowering").flatMap(AirPodsLowering.init(rawValue:)) ?? .off
         frontCameraInSessions = defaults.bool(forKey: "frontCameraInSessions")
+        cameraZoomsOut = defaults.object(forKey: "cameraZoomsOut") as? Bool ?? true
         sessionsStarted = defaults.integer(forKey: "sessionsStarted")
         checkInWakeTime = defaults.string(forKey: "checkInWakeTime") ?? "06:30"
         lastMorningAutoStart = defaults.string(forKey: "lastMorningAutoStart") ?? ""

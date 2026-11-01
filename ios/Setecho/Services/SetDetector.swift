@@ -41,6 +41,10 @@ final class SetDetector: NSObject {
     private(set) var zoomedOut = false
     /// The back camera has an ultra-wide to zoom out to (never the front camera).
     var canZoomOut: Bool { !front && device?.deviceType == .builtInDualWideCamera }
+    /// The lift up now needs his whole body in frame, and Settings lets the camera zoom out by itself
+    /// (Nov 1). Off until the session says so: lying on a bench, the bench can hide his hips and
+    /// knees, and the zoom-out would put the rest of the session on the ultra-wide.
+    var zoomOutAllowed = false
     /// Since when the camera has seen only his upper body, on the frame clock.
     private var upperOnlySince: Double?
     nonisolated static let zoomOutAfterSeconds = 2.0
@@ -210,6 +214,18 @@ final class SetDetector: NSObject {
         return now - since >= zoomOutAfterSeconds
     }
 
+    /// Lifts done standing or hinged, where the phone's count needs his hips and knees in frame
+    /// (Oct 31, the deadlifts). Everything else (presses, flyes, rows on a pad, pulldowns, anything
+    /// seated or lying) keeps the 1× framing and never hears the step-back line. Pure, so it's tested.
+    nonisolated static func needsWholeBody(_ name: String) -> Bool {
+        let n = name.lowercased().replacingOccurrences(of: "-", with: " ")
+        let lying = ["seated", "lying", "bench", "incline", "decline", "chest supported", "prone", "leg press"]
+        if lying.contains(where: { n.contains($0) }) { return false }
+        let standing = ["deadlift", "rdl", "romanian", "squat", "lunge", "bulgarian", "step up", "good morning",
+                        "clean", "snatch", "swing", "bent over", "pendlay", "hip hinge"]
+        return standing.contains { n.contains($0) }
+    }
+
     /// To the ultra-wide (factor 1.0 on the dual-wide camera), ramped so the picture doesn't jump.
     /// Stays out for the rest of the session: the clips keep one framing.
     private func zoomOut(at t: Double) {
@@ -281,7 +297,7 @@ final class SetDetector: NSObject {
             isOnDuty = joints.isOnDuty(now: sample.t)
             seesLowerBody = joints.seesLowerBody(now: sample.t)
             upperOnlySince = isOnDuty && !seesLowerBody ? (upperOnlySince ?? sample.t) : nil
-            if Self.shouldZoomOut(upperOnlySince: upperOnlySince, now: sample.t, canZoomOut: canZoomOut, zoomedOut: zoomedOut,
+            if Self.shouldZoomOut(upperOnlySince: upperOnlySince, now: sample.t, canZoomOut: canZoomOut && zoomOutAllowed, zoomedOut: zoomedOut,
                                   filming: currentSetStart != nil || restPausePausedAt != nil) {
                 zoomOut(at: sample.t)
             }

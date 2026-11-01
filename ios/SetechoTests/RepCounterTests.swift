@@ -194,3 +194,15 @@ private func fixtures() throws -> [RepFixture] {
     #expect(!SetDetector.shouldZoomOut(upperOnlySince: 8, now: 10, canZoomOut: true, zoomedOut: true, filming: false))   // once per session
     #expect(!SetDetector.shouldZoomOut(upperOnlySince: 8, now: 10, canZoomOut: true, zoomedOut: false, filming: true))   // never mid-set
 }
+
+@Test func onlyStandingAndHingedLiftsNeedTheWholeBody() {
+    // Nov 1: on a bench the bench can hide his hips, and a zoom-out would hold the hero take on the ultra-wide.
+    for name in ["Deadlift", "Romanian Deadlift", "RDL", "Back Squat", "Bulgarian Split Squat", "Walking Lunges",
+                 "Bent-Over Barbell Row", "Hack squat"] {
+        #expect(SetDetector.needsWholeBody(name), "\(name)")
+    }
+    for name in ["Smith close-grip press", "Smith Close Grip Bench Press", "Incline DB Press", "Seated DB Shoulder Press",
+                 "Chest-Supported T-Bar Row", "Lat Pulldown", "Cable Fly", "Leg Press", "Seated Leg Curl", ""] {
+        #expect(!SetDetector.needsWholeBody(name), "\(name)")
+    }
+}
