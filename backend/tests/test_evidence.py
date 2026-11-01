@@ -74,7 +74,11 @@ def _session(tmp_path):
     sets.append(_set(m(8), role="backOff", reps=11, rpe=9, source="spoken", measured=10, phone=11, rir=1.0))
     sets.append(_set(m(11), reps=10, source="measured", measured=10, phone=10, edits=[1]))
     sets.append(_set(m(14), reps=12, source="measured", measured=12))  # accepted, unverified
-    sets += [_set(t0 + timedelta(minutes=16 + 2 * i), reps=12, source="spoken") for i in range(12)]
+    written_back = _set(m(15), reps=7, source="measured", measured=7, edits=[1])
+    written_back["edits"][0].update({"from": "8", "to": "7", "transcript": "measured"})
+    sets.append(written_back)  # SAM's own write-back, also accepted, not his word
+    sets.append(_set(m(16), reps=6, source="phone", measured=13, phone=6))  # SAM and phone disagree, he said nothing
+    sets += [_set(t0 + timedelta(minutes=18 + 2 * i), reps=12, source="spoken") for i in range(10)]
     data = {
         "session": {
             "id": "s",
@@ -88,9 +92,10 @@ def _session(tmp_path):
             for s in (40, 60, 111)
         ],
         "utterances": [
-            {"at": "", "seconds": 1, "state": "", "intent": "logSet", "toIntent": 0.6},
-            {"at": "", "seconds": 1, "state": "", "intent": None, "error": "too short"},
-            {"at": "", "seconds": 1, "state": "", "kind": "nearMiss"},
+            {"at": "", "seconds": 1, "state": "", "intent": "logSet", "toIntent": 0.6, "transcript": "ten"},
+            {"at": "", "seconds": 1, "state": "", "intent": None, "toIntent": 2.1, "transcript": "how long"},
+            {"at": "", "seconds": 1, "state": "", "intent": None, "error": "too short"},  # no words
+            {"at": "", "seconds": 1, "state": "", "kind": "nearMiss", "transcript": "hm"},
         ],
     }
     folder = tmp_path / "sessions"
@@ -125,7 +130,8 @@ def test_counts_are_checked_only_against_his_number(tmp_path):
     a = evidence.count_agreement(evidence.read_sessions(_session(tmp_path), TZ))
     # Verified: the top set (9 = 9), the back-off (10 vs 11), the corrected set (10 = 10).
     assert (a.verified, a.exact, a.within_one) == (3, 2, 3)
-    assert a.accepted_unverified == 1
+    assert a.accepted_unverified == 2  # the plain accept and SAM's own write-back
+    assert a.disagreed_unverified == 1
     assert (a.phone_verified, a.phone_exact) == (3, 2)
 
 
@@ -137,6 +143,16 @@ def test_effort_pairs_and_report(tmp_path):
     assert "| Fri Oct 30 | 16 | 40 | 2.5 | 64 min (60–68, n=4) | 4.0 | -38% per set |" in text
     assert "2 of 3 exact" in text
     assert "median 60 s, slowest 111 s" in text
-    assert "1 of 2" in text  # the near miss isn't an utterance
+    assert "1 of 2" in text  # the near miss and the wordless clip aren't utterances
+    assert "## Pacing" in text
+
     for private in ("137.5", "Lift 0", "that was"):
         assert private not in text.split("## With Setecho")[1]
+
+
+def test_pacing_rest_transitions_and_away(tmp_path):
+    [session] = evidence.read_sessions(_session(tmp_path), TZ)
+    pc = evidence.pacing(session)
+    assert len(pc["rest"]) + len(pc["transitions"]) == len(session.sets) - 1
+    assert pc["away"] == []  # 2-min gaps, no outlier
+    assert 0 < pc["work_pct"] < 100

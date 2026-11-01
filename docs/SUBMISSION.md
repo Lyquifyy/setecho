@@ -37,8 +37,16 @@ number comes from code, Apple Health or the athlete's own words, never from a mo
 - Built for my own prep and used for real during the hackathon: my coach's real program, a real week of
   training, a real check-in sent on Thursday Oct 29, and his real reply (a voice note) read by Setecho.
 - Check-in: 25 minutes of typing became 7 min 26 s by voice, about 1 min of it talking (practice run, Oct 30).
-- Training: the same program day, 55–68 min by hand over my last four (median 64), 53 min for 18 sets with
-  Setecho, none typed. [Replace with `scripts/evidence.py` output once the weekend's exports are in.]
+- Training, two program days so far (`scripts/evidence.py`, Liftoff export against the session exports):
+  Day 5, 64 min by hand over my last four (55–68), 53 min for 18 sets with Setecho; Day 6, 74 min by hand
+  (61–78), 52 min for 17 sets with a six-minute conversation in the middle. Minutes per working set
+  3.6 → 2.9 and 4.5 → 3.1. None typed; every set was on the record within about ten seconds of "done".
+- What did not change: how long I rest. Median rest between sets was 96 s on Day 6, the same 80–120 s my
+  watch recorded on four hand-logged sessions. The time came out of logging and transitions, not out of
+  the training.
+- What the coach sees that he couldn't before: the heaviest deadlift set has been 385 × 2 for three weeks,
+  down from 385 × 5 the three weeks before; the back-off set dropped from 6 to 4. Every number is from
+  the log, and the check-in says it in one line.
 - Works with any coach's material: the import reads a second coach's program and form the same way.
 
 ## Use of Meta AI tooling
@@ -68,10 +76,15 @@ synthesizer behind one swappable component.
 
 ## What it can't do yet
 
-SAM's count lands after the set, often within a minute and sometimes nearer two. It is most reliable on
-plate-loaded lifts; on cables and dumbbells it can miss, and the phone's count or the athlete's spoken number
-then stands. Effort is an estimate, always labelled, calibrated against spoken RPE. One athlete, one coach,
-iPhone, English.
+SAM's count lands after the set, often within a minute and sometimes nearer two (median 85 s over five
+sets). It is most reliable on plate-loaded lifts; on cables and dumbbells it can miss, and the phone's count
+or the athlete's spoken number then stands. Of the two camera sets where I also said a number, SAM matched
+one; two more it counted I accepted without checking. On one row set SAM and the phone disagreed (13 against
+6) and nothing asked me which was right — the next build holds a doubtful count and asks. Effort is an
+estimate, always labelled, calibrated against spoken RPE; it has no value on a set of two reps. The rest
+cue is a flat three minutes from the program and I rested through it at 96 s; it should learn per lift.
+When the earbuds dropped mid-session the phone's microphone heard the gym, and Spark answered people who
+weren't talking to it until the earbuds came back. One athlete, one coach, iPhone, English.
 
 ## Built during the hackathon
 

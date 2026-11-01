@@ -89,10 +89,10 @@ Every model the app calls at runtime is Meta's, on the Standard tier. Meta has n
 
 From the session exports so far (`backend/scripts/evidence.py`, aggregates only), misses included:
 
-- **Rep counts on camera sets:** SAM 3.1 matched the count I said or corrected to on 3 of 4 sets (Oct 31: deadlifts 2 and 4, a plate-loaded row 7). The miss was a chest-supported row counted from my hands, 13 against 6, at confidence 0.51: under the 0.6 bar, so the phone's count stood and nothing was spoken wrong.
+- **Rep counts on camera sets:** on the sets where I also said a number, SAM 3.1 matched 1 of 2. It counted two more (Oct 31, deadlifts of 2 and 4) that I accepted without saying a number, so they aren't counted here. On a chest-supported row SAM counted my hands as 13 against my 6, at confidence 0.51: under the 0.6 bar, so the phone's count stood and nothing wrong was spoken. Small numbers so far; the misses are listed so they can be checked.
 - **Effort:** on the row's back-off set, "slowed 28%, about 2 left" matched what I felt. On the deadlifts the two slow reps read as no slowdown, which is right for a 2-rep set and useless for effort; the rule only fires from 3 reps.
 - **Speed:** set end to SAM's count, median 85 s, slowest 111 s, over 5 sets. The clip reaches the phone's export in 7–9 s; the rest is the upload (3–27 s at the gym), the crop (11 s) and SAM itself (31–49 s). The phone's own count covers the gap, and a doubtful phone count now waits for SAM instead of being spoken.
-- **Hearing:** end of speech to understood, median 2.7 s; 56 of 422 utterances acted on, the rest were the gym, a friend, or me breathing.
+- **Hearing:** end of speech to understood, median 3.0 s; 56 of 116 utterances with words became an action, the rest were questions, chat or people nearby.
 - **Time:** Day 6 on Oct 31 ran 52 min for 17 working sets against a 74-minute median (61–78) for the same day in Liftoff, 32% less per set.
 
 ## Built during the hackathon

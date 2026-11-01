@@ -30,6 +30,7 @@ import re
 import statistics
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -110,6 +111,9 @@ class SetechoSet:
     est_rir: float | None
     corrected: bool
     seconds: int | None
+    started: datetime | None = None
+    ended: datetime | None = None
+    exercise: str | None = None
 
 
 @dataclass
@@ -156,7 +160,13 @@ def read_session(path: Path, tz: ZoneInfo) -> SetechoSession | None:
                 phone=rc.get("phone"),
                 velocity_loss=rc.get("velocityLossPct"),
                 est_rir=rc.get("estimatedRIR"),
-                corrected=any((e.get("field") or "").startswith("rep") for e in s.get("edits") or []),
+                corrected=any(
+                    (e.get("field") or "").startswith("rep") and (e.get("transcript") or "") != "measured"
+                    for e in s.get("edits") or []
+                ),
+                started=parse_date(s.get("startedAt"), tz),
+                ended=end,
+                exercise=s.get("exerciseId"),
                 seconds=s.get("seconds"),
             )
         )
@@ -168,6 +178,8 @@ def read_session(path: Path, tz: ZoneInfo) -> SetechoSession | None:
     for u in data.get("utterances") or []:
         if (u.get("kind") or "utterance") != "utterance":
             continue
+        if not (u.get("transcript") or "").strip():
+            continue  # silence, noise and too-short clips are not things he said
         out.utterances += 1
         if u.get("intent") and u.get("intent") not in ("none", "unclear") and not u.get("error"):
             out.understood += 1
@@ -214,6 +226,7 @@ class CountAgreement:
     exact: int = 0
     within_one: int = 0
     accepted_unverified: int = 0
+    disagreed_unverified: int = 0
     phone_verified: int = 0
     phone_exact: int = 0
 
@@ -233,6 +246,8 @@ def count_agreement(sessions: list[SetechoSession]) -> CountAgreement:
                     a.within_one += abs(s.measured - s.reps) <= 1
                 elif s.source == "measured":
                     a.accepted_unverified += 1
+                elif s.phone is not None and s.measured != s.phone:
+                    a.disagreed_unverified += 1
             if s.phone is not None and truth_known:
                 a.phone_verified += 1
                 a.phone_exact += s.phone == s.reps
@@ -247,6 +262,29 @@ def effort_pairs(sessions: list[SetechoSession]) -> list[tuple[float, float]]:
         for s in session.working_sets
         if s.est_rir is not None and s.rpe is not None
     ]
+
+
+def pacing(session: SetechoSession, away_factor: float = 2.5) -> dict:
+    """Gaps between consecutive sets: rest (same exercise), transition (new exercise) and away
+    (longer than `away_factor` × the session's median rest, or over 5 min)."""
+    timed = [s for s in session.sets if s.started and s.ended]
+    rest, trans, away = [], [], []
+    for a, b in pairwise(timed):
+        gap = (b.started - a.ended).total_seconds()
+        (rest if a.exercise == b.exercise else trans).append(gap)
+    if rest:
+        med = statistics.median(rest)
+        limit = max(away_factor * med, 300)
+        away = [g for g in rest + trans if g > limit]
+    work = sum((s.ended - s.started).total_seconds() for s in timed)
+    total = (session.ended - session.started).total_seconds()
+    return {
+        "rest": rest,
+        "transitions": trans,
+        "away": away,
+        "work_pct": 100 * work / total if total else 0,
+        "away_minutes": sum(away) / 60,
+    }
 
 
 def _pct(n: int, d: int) -> str:
@@ -338,6 +376,10 @@ def report(workouts: list[Workout], sessions: list[SetechoSession]) -> str:
             f"- SAM counts he accepted without saying a number: {a.accepted_unverified} "
             "(not verified, not counted above)."
         ),
+        (
+            f"- Sets where SAM and the phone disagreed and he said nothing: {a.disagreed_unverified} "
+            "(the phone's count stands, unverified)."
+        ),
         "",
     ]
 
@@ -354,6 +396,23 @@ def report(workouts: list[Workout], sessions: list[SetechoSession]) -> str:
             "",
         ]
 
+    lines += [
+        "## Pacing",
+        "",
+        "| Date | Rest between sets (median) | Between exercises (median) | Away (gaps over 2.5× rest) | Under load |",
+        "|---|---|---|---|---|",
+    ]
+    for s in sessions:
+        pc = pacing(s)
+        away = (
+            f"{len(pc['away'])} gaps, {pc['away_minutes']:.0f} min" if pc["away"] else "none"
+        )
+        lines.append(
+            f"| {s.started:%a %b %-d} | {_med(pc['rest'])} s | {_med(pc['transitions'])} s | {away} "
+            f"| {pc['work_pct']:.0f}% |"
+        )
+    lines.append("")
+
     counts = [x for s in sessions for x in s.count_latencies]
     voice = [x for s in sessions for x in s.voice_latencies]
     heard = sum(s.utterances for s in sessions)
@@ -367,7 +426,10 @@ def report(workouts: list[Workout], sessions: list[SetechoSession]) -> str:
     if voice:
         lines.append(f"- End of speech to understood: median {statistics.median(voice):.1f} s.")
     if heard:
-        lines.append(f"- Utterances acted on: {understood} of {heard} ({_pct(understood, heard)}).")
+        lines.append(
+            f"- Utterances with words that became an action: {understood} of {heard} ({_pct(understood, heard)}); "
+            "the rest were questions, chat or bystanders."
+        )
     lines.append("")
     return "\n".join(lines)
 
