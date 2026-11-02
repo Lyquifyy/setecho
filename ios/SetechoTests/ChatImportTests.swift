@@ -6,10 +6,8 @@ import Testing
 /// The WhatsApp history import (HANDOFF.md §9) on synthetic exports written by hand: no real chat,
 /// person, number or photo. Both date formats, multi-line messages, media lines, the check-in read
 /// through the form, photos linked by time, the coach's replies, and dedupe on re-import.
-private final class FixtureAnchor {}
-
 private func template() throws -> CheckInTemplate {
-    let url = try #require(Bundle(for: FixtureAnchor.self).url(forResource: "template", withExtension: "json"))
+    let url = try #require(SampleCoach.url("template"))
     return try JSONCoding.decoder.decode(CheckInTemplate.self, from: Data(contentsOf: url))
 }
 

@@ -100,7 +100,10 @@ final class CheckInCoordinator {
         do {
             let (start, end) = week
             var weekReadings = HealthService.Week(days: [], sources: [:])
-            if health.isAvailable {
+            if settings.sampleMode {
+                // The sample coach's week: Apple Health is never asked while the sample is on.
+                weekReadings = SampleCoach.healthWeek(from: start, to: end)
+            } else if health.isAvailable {
                 try? await health.requestAuthorization()
                 weekReadings = (try? await health.read(from: start, to: end)) ?? weekReadings
             }
@@ -117,7 +120,11 @@ final class CheckInCoordinator {
             let cardio = store.plan?.cardioProtocol.isEmpty == false ? store.plan!.cardioProtocol : settings.cardioProtocol
             withProtocol.cardioProtocol = cardio.isEmpty ? nil : cardio
             self.facts = withProtocol
-            if health.isAvailable { weightMissingToday = await !health.hasWeighIn(sinceHour: 4) }
+            if settings.sampleMode {
+                weightMissingToday = false
+            } else if health.isAvailable {
+                weightMissingToday = await !health.hasWeighIn(sinceHour: 4)
+            }
 
             let prs = Adherence.personalRecords(thisWeek: thisWeek, earlier: earlier).map { set in
                 PersonalRecord(exercise: store.currentProgram?.exerciseName(id: set.exerciseId) ?? set.exerciseId, loadLb: set.loadLb, reps: set.reps)
@@ -134,7 +141,7 @@ final class CheckInCoordinator {
             let draftId = draft?.id ?? UUID()
             let request = DraftRequest(
                 template: template, facts: withProtocol, notes: notes, training: training,
-                lastCheckIn: store.lastSentCheckIn, styleExamples: StyleExamples.load(), draftId: draftId.uuidString
+                lastCheckIn: store.lastSentCheckIn, styleExamples: StyleExamples.load(root: store.root), draftId: draftId.uuidString
             )
             var fresh = try await api.checkInDraft(request)
             // Keep answers the athlete already confirmed or spoke this week.
@@ -235,6 +242,11 @@ final class CheckInCoordinator {
 
     /// Re-queried at every step of Check-in morning and when Setecho comes back to the foreground.
     func refreshWeightToday() async {
+        if settings.sampleMode {
+            todayWeighInLb = SampleCoach.todayWeighInLb
+            weightMissingToday = false
+            return
+        }
         guard health.isAvailable else { weightMissingToday = false; return }
         todayWeighInLb = await health.weighInLb(sinceHour: 4)
         weightMissingToday = todayWeighInLb == nil

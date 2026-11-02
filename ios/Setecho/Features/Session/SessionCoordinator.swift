@@ -411,6 +411,8 @@ final class SessionCoordinator {
                 return
             } catch let error as APIError where (400..<500).contains(error.status) {
                 logCount(setId: setId, attempt: attempt, response: nil, error: String(describing: error), timing: timing())
+                // The demo budget is used up: the phone's count stands, and he hears why once.
+                if error.isOverBudget, let notice = DemoBudget.noticeOnce() { show(.init(speech: notice)) }
                 break // a bad clip will not get better with retries
             } catch {
                 logCount(setId: setId, attempt: attempt, response: nil, error: String(describing: error), timing: timing())

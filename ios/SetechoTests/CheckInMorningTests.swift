@@ -5,10 +5,8 @@ import Testing
 /// Check-in morning (HANDOFF.md §7): the step order, resuming after a relaunch, a pause, a
 /// two-field answer, a correction and a question for the coach, with every number taken from the
 /// transcript by the backend's validator (tested there) and every answer saved after each turn.
-private final class Anchor {}
-
 private func template() throws -> CheckInTemplate {
-    let url = try #require(Bundle(for: Anchor.self).url(forResource: "template", withExtension: "json"))
+    let url = try #require(SampleCoach.url("template"))
     return try JSONCoding.decoder.decode(CheckInTemplate.self, from: Data(contentsOf: url))
 }
 

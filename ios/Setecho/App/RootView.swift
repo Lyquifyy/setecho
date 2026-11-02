@@ -52,13 +52,19 @@ struct RootView: View {
         }
         .task {
             startMorningIfDue()
+            // The sample coach has no share inbox, no Withings and no watch (HANDOFF.md §7, Sample coach).
+            guard !Settings.shared.sampleMode else { return }
             await ShareInbox.drain(into: store)
             await WithingsService.shared.refreshIfDue()
         }
-        .onOpenURL { url in WatchService.shared.handle(url: url) }
+        .onOpenURL { url in
+            guard !Settings.shared.sampleMode else { return }
+            _ = WatchService.shared.handle(url: url)
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             store.refreshCycle()
             startMorningIfDue()
+            guard !Settings.shared.sampleMode else { return }
             Task { await ShareInbox.drain(into: store) }
             // Withings direct: at most one fetch every 10 minutes, so this is cheap to call.
             Task { await WithingsService.shared.refreshIfDue() }
@@ -69,9 +75,11 @@ struct RootView: View {
 extension RootView {
     /// Check-in morning with no tap on the due morning (MorningStart), once per day.
     fileprivate func startMorningIfDue() {
-        // First launch belongs to setup, even when today is the check-in day.
+        // First launch belongs to setup, even when today is the check-in day. The sample coach's
+        // morning runs only from "Talk it through" on the Check-in tab.
         guard store.currentTemplate != nil else { return }
         let settings = Settings.shared
+        guard !settings.sampleMode else { return }
         let schedule = CheckInSchedule(plan: store.plan, lastSentAt: store.lastSentCheckIn?.sentAt)
         guard MorningStart.shouldStart(schedule: schedule, lastSentAt: store.lastSentCheckIn?.sentAt,
                                        lastStartedDay: settings.lastMorningAutoStart) else { return }

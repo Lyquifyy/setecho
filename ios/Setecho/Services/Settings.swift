@@ -95,6 +95,10 @@ final class Settings {
     var checkInWakeTime: String { didSet { defaults.set(checkInWakeTime, forKey: "checkInWakeTime") } }
     /// The day (DayKey) Check-in morning last started itself, so it starts once per due day.
     var lastMorningAutoStart: String { didSet { defaults.set(lastMorningAutoStart, forKey: "lastMorningAutoStart") } }
+    /// Sample coach mode (HANDOFF.md §7, Sample coach): the app runs on the made-up athlete's own store.
+    var sampleMode: Bool { didSet { defaults.set(sampleMode, forKey: "sampleMode") } }
+    /// The athlete's own values for the settings the sample changes, kept while it's on (`SampleCoach`).
+    var settingsBeforeSample: Data? { didSet { defaults.set(settingsBeforeSample, forKey: "settingsBeforeSample") } }
 
     var loadSteps: RuleEngine.LoadSteps {
         RuleEngine.LoadSteps(barbell: barbellStepLb, dumbbell: dumbbellStepLb, machine: machineStepLb, cable: machineStepLb)
@@ -137,6 +141,8 @@ final class Settings {
         sessionsStarted = defaults.integer(forKey: "sessionsStarted")
         checkInWakeTime = defaults.string(forKey: "checkInWakeTime") ?? "06:30"
         lastMorningAutoStart = defaults.string(forKey: "lastMorningAutoStart") ?? ""
+        sampleMode = defaults.bool(forKey: "sampleMode")
+        settingsBeforeSample = defaults.data(forKey: "settingsBeforeSample")
     }
 
     var showDateOrNil: String? { showDate.trimmingCharacters(in: .whitespaces).isEmpty ? nil : showDate }

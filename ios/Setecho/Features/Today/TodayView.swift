@@ -37,6 +37,10 @@ struct TodayView: View {
             TitleBlock(eyebrow: Date.now.formatted(.dateTime.weekday(.wide).month(.wide).day()),
                        title: today == nil ? "Make room for training." : "Today",
                        subtitle: today == nil ? "Your coach brings the plan. Setecho handles the logging." : nil)
+            if Settings.shared.sampleMode {
+                // Stays on while the sample is on, so the demo video and a judge's screen say what the data is.
+                InfoPill(text: "Sample coach · made-up data", systemImage: "person.crop.circle.dashed")
+            }
             if let reply = store.pendingReply {
                 SectionCard("Coach reply", accessory: { TargetTag(text: "Review") }) {
                     Text(reply.summary(duration: reply.audioFile.flatMap { CoachReplyModel.duration(of: store.mediaDirectory.appendingPathComponent($0)) }))
@@ -87,8 +91,10 @@ struct TodayView: View {
             }
         } footer: {
             if today == nil {
-                // First run: importing the program is the one thing to do.
+                // First run: importing the program is the one thing to do. Or the sample coach, for a look round.
                 Button("Set up with your coach’s plan", systemImage: "arrow.right") { AppRouter.shared.showImport = true }.buttonStyle(.setechoPrimary)
+                Button("Try it with a sample coach", systemImage: "person.crop.circle.dashed") { try? StoreHolder.shared.enterSample() }
+                    .buttonStyle(.setechoOutline)
             } else {
                 // The only tap of a training day.
                 Button("Start session", systemImage: "play.fill") {
@@ -116,6 +122,8 @@ struct TodayView: View {
         }
         .onAppear {
             store.refreshCycle()
+            // The sample coach gets no reminders and no deadline: its morning runs from the Check-in tab.
+            guard !Settings.shared.sampleMode else { return }
             Task {
                 // Ask for reminders only once there is a check-in to remind the athlete about.
                 guard store.currentTemplate != nil else { return }

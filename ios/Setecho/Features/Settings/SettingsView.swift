@@ -40,6 +40,15 @@ struct SettingsView: View {
         ScreenScaffold(onClose: { dismiss() }) {
             TitleBlock(title: "Make it yours", subtitle: "Your routine, your voice, your preferences.")
 
+            if settings.sampleMode {
+                SectionCard("Sample coach") {
+                    Note("You're trying Setecho with a made-up athlete and coach. Every number is invented, and your own log is untouched.")
+                    LinkButton(title: "Start the sample over", chevron: .none) { try? StoreHolder.shared.enterSample() }
+                    LinkButton(title: "Leave the sample", chevron: .none) { StoreHolder.shared.leaveSample() }
+                    Note("Leaving brings back your own plan, log and settings exactly as they were.")
+                }
+            }
+
             SectionCard("You") {
                 SettingsField(placeholder: "First name", text: $settings.athleteFirstName)
                     .textContentType(.givenName)

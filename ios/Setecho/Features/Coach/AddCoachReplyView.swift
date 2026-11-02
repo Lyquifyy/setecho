@@ -31,6 +31,11 @@ struct AddCoachReplyView: View {
                     .padding(Theme.Space.xs)
                     .background(Theme.nearWhite, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+                if Settings.shared.sampleMode {
+                    // The sample coach: a made-up message (one load change, one swap) to watch Muse Spark read.
+                    Button("Use an example reply", systemImage: "text.quote") { text = SampleCoach.exampleReply }
+                        .buttonStyle(.setechoTonal)
+                }
             }
             SectionCard("Or his voice note") {
                 Text("In WhatsApp: long-press the note → Forward → Share → Save to Files, then pick it here. Or share it straight to Setecho.")

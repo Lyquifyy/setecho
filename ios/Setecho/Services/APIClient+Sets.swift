@@ -89,7 +89,8 @@ extension APIClient {
         // when the clip could not be counted (already a 200: the stream had started).
         let payload = Data(String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines).utf8)
         if let failure = try? JSONDecoder().decode(ErrorBody.self, from: payload) {
-            throw APIError(status: 422, message: failure.error)
+            // The spend guard's line arrives inside the stream too; it is the 429 it would have been.
+            throw APIError(status: failure.error == DemoBudget.errorKey ? 429 : 422, message: failure.error)
         }
         return try JSONCoding.decoder.decode(CountResponse.self, from: payload)
     }

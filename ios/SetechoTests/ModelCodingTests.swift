@@ -6,8 +6,9 @@ import Testing
 /// synthetic inputs) and round-trip through the Store's files.
 private final class FixtureAnchor {}
 
+/// The backend's saved outputs: the test bundle's, or the sample coach's copy in the app (template).
 private func fixture(_ name: String) throws -> Data {
-    let url = try #require(Bundle(for: FixtureAnchor.self).url(forResource: name, withExtension: "json"))
+    let url = try #require(Bundle(for: FixtureAnchor.self).url(forResource: name, withExtension: "json") ?? SampleCoach.url(name))
     return try Data(contentsOf: url)
 }
 

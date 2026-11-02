@@ -80,6 +80,25 @@ struct APIError: LocalizedError, Equatable {
     let status: Int
     let message: String
     var errorDescription: String? { message }
+
+    /// The backend's spend guard said no (429 {"error": "budget"}): the phone's count or his spoken
+    /// number stands, as when offline, and the session says why once (`DemoBudget`).
+    var isOverBudget: Bool { status == 429 && message == DemoBudget.errorKey }
+}
+
+/// HANDOFF.md §5, the spend guard: the one spoken notice per app run when the demo budget is used up.
+@MainActor
+enum DemoBudget {
+    nonisolated static let errorKey = "budget"
+    nonisolated static let line = "Setecho's demo budget is used up for today."
+    private static var said = false
+
+    /// The line the first time, nil after.
+    static func noticeOnce() -> String? {
+        guard !said else { return nil }
+        said = true
+        return line
+    }
 }
 
 /// multipart/form-data body builder.

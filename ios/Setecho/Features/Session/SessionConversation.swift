@@ -270,9 +270,11 @@ final class SessionConversation {
             }
         } catch {
             // A failed or slow request is never a spoken error: the HUD says so and the mic carries on.
+            // The one exception is the demo budget, said once so a judge knows why the spotter went quiet.
             log.error = String(describing: error)
             record(log)
-            show(.init(heard: "Didn't catch that"))
+            let notice = (error as? APIError)?.isOverBudget == true ? DemoBudget.noticeOnce() : nil
+            show(.init(speech: notice, heard: "Didn't catch that"))
             return
         }
         log.transcript = turn.transcript

@@ -139,7 +139,12 @@ struct ReviewSendView: View {
         ScreenScaffold(onClose: { dismiss() }) {
             TitleBlock(title: "Review and send", subtitle: "Exactly what your coach receives, in his format.")
             // Turned on in Settings → Developer; shown here only while it's on, so a rehearsal is never mistaken for the real send.
-            if settings.rehearsalMode {
+            if settings.sampleMode {
+                SectionCard("Sample mode") {
+                    Text("Sample mode: this goes wherever you choose, never to a coach.").font(.subheadline).foregroundStyle(Theme.navy)
+                    Text("The share sheet opens as it would for a real check-in. Pick any chat, or just close it.").font(.footnote).secondaryText()
+                }
+            } else if settings.rehearsalMode {
                 SectionCard("Rehearsal") {
                     Toggle("Send to my own chat, not his", isOn: Bindable(settings).rehearsalMode)
                         .tint(Theme.cobalt).font(.subheadline).foregroundStyle(Theme.navy)

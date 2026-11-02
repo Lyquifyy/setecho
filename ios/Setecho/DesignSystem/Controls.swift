@@ -175,6 +175,26 @@ struct TargetTag: View {
     }
 }
 
+/// A quiet standing label, never the next thing: "Sample coach · made-up data". White on the page, with the hairline.
+struct InfoPill: View {
+    let text: String
+    var systemImage: String?
+
+    var body: some View {
+        Label {
+            Text(text).font(.footnote.weight(.semibold))
+        } icon: {
+            if let systemImage { Image(systemName: systemImage).font(.footnote.weight(.semibold)) }
+        }
+        .foregroundStyle(Theme.textSecondary)
+        .padding(.horizontal, Theme.Space.s)
+        .frame(minHeight: 32)
+        .background(Theme.surface, in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
+        .accessibilityElement(children: .combine)
+    }
+}
+
 // MARK: - Metrics
 
 /// "220 lb × 8" with tabular digits and smaller units.

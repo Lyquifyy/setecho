@@ -36,9 +36,12 @@ struct BrandHeader: View {
                     AppRouter.shared.showImport = true
                 }
                 Button("Add coach reply", systemImage: "text.bubble") { AppRouter.shared.showAddReply = true }
-                Button("Import WhatsApp chat", systemImage: "bubble.left.and.text.bubble.right") { AppRouter.shared.showChatImport = true }
-                Button("Import Liftoff and Garmin", systemImage: "dumbbell") { AppRouter.shared.showHistoryImport = true }
-                Button("Connections", systemImage: "link") { AppRouter.shared.showConnections = true }
+                // The sample coach has no chat, no past apps and no scale to connect (HANDOFF.md §7, Sample coach).
+                if !Settings.shared.sampleMode {
+                    Button("Import WhatsApp chat", systemImage: "bubble.left.and.text.bubble.right") { AppRouter.shared.showChatImport = true }
+                    Button("Import Liftoff and Garmin", systemImage: "dumbbell") { AppRouter.shared.showHistoryImport = true }
+                    Button("Connections", systemImage: "link") { AppRouter.shared.showConnections = true }
+                }
             }
             Section {
                 Button("Settings", systemImage: "gearshape") { AppRouter.shared.showSettings = true }
