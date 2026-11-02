@@ -91,6 +91,23 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: Setecho
+  # Drives the real import flow on the simulator for the demo video's Setup footage
+  # (ios/scripts/record_setup.sh). Its own scheme, so `make ios-test` never runs it: every run
+  # costs live Muse Spark calls and takes minutes.
+  SetechoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - SetechoUITests
+      # The synthetic coach's three files, pasted into the flow exactly as the fixtures hold them.
+      - path: ../backend/tests/fixtures/import
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: Setecho
   # Throwaway M0 gate probes (audio, Health, share). Shares the design system; ships nothing.
   Probes:
     type: application
@@ -125,3 +142,11 @@ schemes:
     build:
       targets:
         Probes: all
+  # The Setup recording (ios/scripts/record_setup.sh); not part of the Setecho scheme's tests.
+  SetechoUITests:
+    build:
+      targets:
+        Setecho: all
+        SetechoUITests: [test]
+    test:
+      targets: [SetechoUITests]
