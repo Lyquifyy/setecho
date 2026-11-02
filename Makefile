@@ -17,6 +17,9 @@ test:       ## offline tests only; never hits Meta
 lint:
 	cd backend && uv run ruff check . && uv run ruff format --check .
 
+replay:     ## SAM 3.1's saved tracks of real sets, counted offline: no key, no network
+	cd backend && uv run python -m scripts.replay
+
 smoke:      ## one cheap live call: key, base URL, model ids
 	cd backend && uv run $(ENV_FILE) python -m scripts.smoke
 
