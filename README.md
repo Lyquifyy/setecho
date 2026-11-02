@@ -222,6 +222,8 @@ WhatsApp share run on the phone from the `Probes` scheme, or in the app under Se
 
 ## Built with
 
+Setecho's own code is under the [PolyForm Noncommercial License 1.0.0](LICENSE.md): use it, change it and share it for any noncommercial purpose, keeping the notice at the top of that file. Everything below keeps its own terms.
+
 Only what the code uses, by the file that declares it. No other model, service or provider is called at runtime.
 
 **Meta models**, all through Meta Model API (`https://api.meta.ai/v1`) on the Standard tier, under the Meta Model API terms at [dev.meta.ai](https://dev.meta.ai); the modules that call them are `backend/app/meta.py` and the realtime transcription relay in `backend/app/realtime.py`:
