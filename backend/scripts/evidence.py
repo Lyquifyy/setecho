@@ -460,9 +460,7 @@ def report(workouts: list[Workout], sessions: list[SetechoSession]) -> str:
     ]
     for s in sessions:
         pc = pacing(s)
-        away = (
-            f"{len(pc['away'])} gaps, {pc['away_minutes']:.0f} min" if pc["away"] else "none"
-        )
+        away = f"{len(pc['away'])} gaps, {pc['away_minutes']:.0f} min" if pc["away"] else "none"
         lines.append(
             f"| {s.started:%a %b %-d} | {_med(pc['rest'])} s | {_med(pc['transitions'])} s | {away} "
             f"| {pc['work_pct']:.0f}% |"

@@ -1,12 +1,15 @@
-.PHONY: dev test lint smoke ios ios-test screens testflight watch watch-sim
+.PHONY: dev test lint smoke replay ios ios-test screens testflight watch watch-sim
 
 SIM ?= iPhone 17 Pro
 DD := /tmp/setecho-derived-data
 ARCHIVE_DIR := /tmp/setecho-archive
 BUILD_NUMBER ?= $(shell date +%Y%m%d%H%M)
+# backend/.env (gitignored; see backend/.env.example) is loaded by the live targets when it exists.
+# A variable already in the shell wins over the file.
+ENV_FILE := $(if $(wildcard backend/.env),--env-file .env,)
 
 dev:        ## backend on your LAN so the phone can reach it
-	cd backend && uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	cd backend && uv run $(ENV_FILE) uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 test:       ## offline tests only; never hits Meta
 	cd backend && uv run pytest -q
@@ -15,7 +18,7 @@ lint:
 	cd backend && uv run ruff check . && uv run ruff format --check .
 
 smoke:      ## one cheap live call: key, base URL, model ids
-	cd backend && uv run python -m scripts.smoke
+	cd backend && uv run $(ENV_FILE) python -m scripts.smoke
 
 ios:        ## regenerate and open the Xcode project
 	cd ios && xcodegen generate && open Setecho.xcodeproj

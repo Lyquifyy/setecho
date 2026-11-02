@@ -77,7 +77,9 @@ def _session(tmp_path):
     written_back = _set(m(15), reps=7, source="measured", measured=7, edits=[1])
     written_back["edits"][0].update({"from": "8", "to": "7", "transcript": "measured"})
     sets.append(written_back)  # SAM's own write-back, also accepted, not his word
-    sets.append(_set(m(16), reps=6, source="phone", measured=13, phone=6))  # SAM and phone disagree, he said nothing
+    sets.append(
+        _set(m(16), reps=6, source="phone", measured=13, phone=6)
+    )  # SAM and phone disagree, he said nothing
     sets += [_set(t0 + timedelta(minutes=18 + 2 * i), reps=12, source="spoken") for i in range(10)]
     data = {
         "session": {
