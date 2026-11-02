@@ -219,3 +219,41 @@ WhatsApp share run on the phone from the `Probes` scheme, or in the app under Se
 (turn on Developer tools first); see `ios/Probes/README.md`.
 
 `DESIGN.md` covers the design system and the screen specs. `AGENTS.md` has the repo rules.
+
+## Built with
+
+Only what the code uses, by the file that declares it. No other model, service or provider is called at runtime.
+
+**Meta models**, all through Meta Model API (`https://api.meta.ai/v1`) on the Standard tier, under the Meta Model API terms at [dev.meta.ai](https://dev.meta.ai); the modules that call them are `backend/app/meta.py` and the realtime transcription relay in `backend/app/realtime.py`:
+
+| Model | Setecho uses it for |
+|---|---|
+| **Muse Spark 1.3** (`muse-spark-1.3`) | Reading the coach's sheet, form and rules into structured data; drafting the check-in with tool calls; turning the coach's replies into proposed changes; the between-set and check-in-morning conversations; the spotter's spoken lines, from facts code computed. |
+| **Muse Voice Transcribe 1.0** (`muse-voice-transcribe-1.0`) | The athlete's voice in the gym and on check-in morning (realtime over WebSocket, file mode as fallback); the coach's voice notes. |
+| **SAM 3.1** (`sam-3.1`) | Tracking the plate, dumbbell, weight stack or the athlete's hands through each measured set, as boxes per frame that `backend/app/reps.py` counts. |
+
+**Backend** (`backend/pyproject.toml`; Python 3.12, run with [uv](https://github.com/astral-sh/uv), Apache-2.0/MIT):
+
+| Package | License | Used for |
+|---|---|---|
+| [FastAPI](https://github.com/fastapi/fastapi) | MIT | the API |
+| [uvicorn](https://github.com/encode/uvicorn) | BSD-3-Clause | serving it |
+| [httpx](https://github.com/encode/httpx) | BSD-3-Clause | Meta's transcription and SAM endpoints, Withings |
+| [openai](https://github.com/openai/openai-python) (the Python SDK, pointed at Meta's endpoint) | Apache-2.0 | Muse Spark calls |
+| [meta-sam-parser](https://github.com/meta-models/meta-sam) | SAM License (Meta) | reading SAM 3.1's streamed output |
+| [NumPy](https://github.com/numpy/numpy) | BSD-3-Clause | the rep count math |
+| [SciPy](https://github.com/scipy/scipy) | BSD-3-Clause | peak finding and smoothing in the rep count |
+| [opencv-python-headless](https://github.com/opencv/opencv-python) | Apache-2.0 | the check-in photo masks |
+| [openpyxl](https://foss.heptapod.net/openpyxl/openpyxl) | MIT | the coach's .xlsx sheets |
+| [python-multipart](https://github.com/Kludex/python-multipart) | Apache-2.0 | file uploads |
+| [websockets](https://github.com/python-websockets/websockets) | BSD-3-Clause | the realtime transcription relay |
+| [garmin-fit-sdk](https://github.com/garmin/fit-python-sdk) | Garmin FIT Protocol License | importing the athlete's Garmin history |
+| [tzdata](https://github.com/python/tzdata) | Apache-2.0 | the Central-time daily reset |
+
+Development only: [pytest](https://github.com/pytest-dev/pytest) (MIT) and [ruff](https://github.com/astral-sh/ruff) (MIT). [FFmpeg](https://ffmpeg.org) (LGPL-2.1+, called as a command) prepares each set's clip for SAM and reads its real frame timestamps.
+
+**iPhone** (`ios/project.yml`; Swift 6, SwiftUI, iOS 26). Apple frameworks, all on-device and none a model call: **SwiftUI** and **Swift Charts** for the screens; **AVFoundation** for the camera, the microphone and `AVSpeechSynthesizer`, which speaks every line (Meta has no text-to-speech); **Vision** for `VNDetectHumanBodyPoseRequest` (set detection and the fallback rep count) and `VNGeneratePersonSegmentationRequest` (the camera preview follows only the athlete); **HealthKit**, read-only, for body mass, dietary energy, protein, carbohydrates, fat, steps, sleep and workouts; **App Intents** for the Siri shortcuts; **AuthenticationServices** for the Withings sign-in; **CryptoKit** for content hashes (the spoken-line cache, the chat import); **UserNotifications** for the check-in reminder. One Swift package: Garmin's [Connect IQ Companion SDK](https://github.com/garmin/connectiq-companion-app-sdk-ios), under Garmin's license, for the watch app's messages.
+
+**Garmin watch app** (`watch/`, a stretch): Monkey C on the [Connect IQ SDK](https://developer.garmin.com/connect-iq/sdk/), under Garmin's Connect IQ SDK license. It makes no model or network calls.
+
+**Demo video graphics** (`marketing/motion/package.json`, not part of the app): [Remotion](https://github.com/remotion-dev/remotion) 4.0.539 under the [Remotion license](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md) (free for individuals and companies of up to three people; this is one person's project), with [React](https://github.com/facebook/react) 19 (MIT) and [TypeScript](https://github.com/microsoft/TypeScript) (Apache-2.0).
