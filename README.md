@@ -46,6 +46,7 @@ My coach programs every **top set** (the heaviest set of an exercise) to **failu
 
 With the phone on a tripod, **SAM 3.1** tracks the weight plate through the set, frame by frame. Code turns that track into a rep count and each rep's speed, then measures how much the last reps slowed against the first. Slowdown is how sports science estimates reps left in reserve ([Rodríguez-Rosell et al., 2020](https://www.uloyola.es/en/research-transfer/publications/relationship-between-velocity-loss-and-repetitions-in-reserve-in-the-bench-press-and-back-squat-exercises-article)): over about 40%, there was nothing left. Setecho calibrates that map per exercise against how hard I say each set felt (RPE, a 1–10 rating).
 
+<!-- EVIDENCE: true only once SAM has measured a bench top set (the Nov 2 shoot). Until then, say "lines like this one (an example)". -->
 So at the bench, during rest, I hear lines like this one: *"Eleven reps, measured. Slowed 46%, that's failure, his target. Back-off at 170, his rule: 20 to 25% lighter."* I say "go with it" and load the bar.
 
 <!-- KEEP ONLY IF the measured top sets ship in the check-in (design/handoff-oct30-evening.md, item 1). -->
@@ -80,16 +81,34 @@ Every model the app calls at runtime is Meta's, on the Standard tier. Meta has n
 
 ## What it can't do (yet)
 
-- **SAM is slower than a rep.** Its count lands after the set, often within a minute and sometimes nearer two. The phone's instant pose count and the athlete's voice cover the gap, and a late slowdown is still said during rest.
-- **SAM is most reliable on plate-loaded and barbell lifts.** On cables and dumbbells it can miss; the phone's count or the athlete's spoken number then stands, and every correction is logged.
+- **SAM is slower than a rep.** Its count lands 71–111 s after the set (median 85 s over five sets). The athlete's word, or a confident phone count, covers the gap, and a late slowdown is still said during rest.
+- **SAM is best so far on a barbell's plates** (two deadlift sets, one checked). Counting by the hands on dumbbells, cables and machines has missed; the phone's count or the athlete's spoken number then stands, and every correction is logged.
 - **Effort is an estimate.** It's always labelled "estimated" and calibrated per exercise against spoken RPE. It never replaces the coach's eye; the two videos are there for that.
 - **One athlete, one coach, iPhone, English.** Check-in photos never leave the phone except in the WhatsApp send.
 
 ## How well it measures
 
-From the session exports so far (`backend/scripts/evidence.py`, aggregates only), misses included:
+From the session exports so far. `backend/scripts/evidence.py` rebuilds everything here from the raw exports, misses included.
 
-- **Rep counts on camera sets:** on the sets where I also said a number, SAM 3.1 matched 1 of 2. It counted two more (Oct 31, deadlifts of 2 and 4) that I accepted without saying a number, so they aren't counted here. On a chest-supported row SAM counted my hands as 13 against my 6, at confidence 0.51: under the 0.6 bar, so the phone's count stood and nothing wrong was spoken. Small numbers so far; the misses are listed so they can be checked.
+**Every set SAM 3.1 has counted** (confidence in brackets; under 0.6 is never used):
+
+<!-- EVIDENCE: after the Nov 2 shoot, rerun `uv run python -m scripts.evidence` and paste its "Every camera set" table here. -->
+| Date | Lift | Set | SAM 3.1 | Phone | Logged | Result |
+|---|---|---|---|---|---|---|
+| Oct 30 | Seated DB shoulder press | top | 0 (0.00) | — | 8 | missed: I said 8 |
+| Oct 31 | Deadlift | top | 2 (1.00) | 5 | 2 | matched my count |
+| Oct 31 | Deadlift | back-off | 4 (0.88) | — | 4 | accepted, not verified |
+| Oct 31 | Chest-supported row | top | 13 (0.51) | 6 | 6 | under the bar: the phone's 6 stood, not verified |
+| Oct 31 | Chest-supported row | back-off | 7 (0.71) | — | 7 | accepted, not verified |
+
+One count is known to be wrong: 0 on the shoulder press, where I said 8. On the row SAM said 13 and the phone 6, and I didn't say which was right. Neither SAM count became my logged reps. Each miss changed the code; the changes are in the latest build and haven't been tested in a session yet:
+
+- **The shoulder press:** SAM tracked a dumbbell sitting on the rack, which never moved, and counted 0 at confidence 0. It now keeps the object that moves and looks at my hands when nothing does.
+- **The row:** SAM's look at my hands counted 13 at 0.51, under the bar, so the phone's 6 stood. That track still left "slowed 36%, failure" on the set; a track that loses to another count no longer stores its slowdown.
+- **The one wrong rep count I heard** came from the phone, not SAM: its pose count said 5 on a 2-rep deadlift before SAM's 2 arrived, and I corrected it out loud. A doubtful phone count now waits for SAM.
+
+**Effort, speed and time:**
+
 - **Effort:** on the row's back-off set, "slowed 28%, about 2 left" matched what I felt. On the deadlifts the two slow reps read as no slowdown, which is right for a 2-rep set and useless for effort; the rule only fires from 3 reps.
 - **Speed:** set end to SAM's count, median 85 s, slowest 111 s, over 5 sets. The clip reaches the phone's export in 7–9 s; the rest is the upload (3–27 s at the gym), the crop (11 s) and SAM itself (31–49 s). The phone's own count covers the gap, and a doubtful phone count now waits for SAM instead of being spoken.
 - **Hearing:** end of speech to understood, median 3.0 s; 56 of 116 utterances with words became an action, the rest were questions, chat or people nearby.

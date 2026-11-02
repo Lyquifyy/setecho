@@ -48,6 +48,8 @@ number comes from code, Apple Health or the athlete's own words, never from a mo
   down from 385 × 5 the three weeks before; the back-off set dropped from 6 to 4. Every number is from
   the log, and the check-in says it in one line.
 - Works with any coach's material: the import reads a second coach's program and form the same way.
+- [Fill only if it happens: my coach's one line on the measured top sets, quoted with his permission.]
+- [Fill only if it happens: a second athlete with a different coach, her program imported and one session logged hands-free.]
 
 ## Use of Meta AI tooling
 
@@ -62,29 +64,36 @@ synthesizer behind one swappable component.
 
 ## Technical depth
 
-- **Validators between the model and the user.** A line from Spark is spoken only if every number in it is in
-  the facts code computed or in the athlete's words, it gives no advice and rates nothing; a refused line is
-  asked again once, then falls back to a template. The coach-reply validator keeps only changes whose quote is
-  in the transcript and whose path exists in the plan; before/after values are computed by code.
-- **Measurement in code:** OpenCV, NumPy and SciPy on SAM's per-frame masks with the video's real timestamps
-  (iPhone video has a variable frame rate); the phone's own pose count is the silent fallback and is tested
-  against the same fixtures as the backend.
+- **Effort measured from video, not guessed.** SAM 3.1 tracks the moving weight (or the athlete's hands on
+  dumbbells, cables and machines) frame by frame. OpenCV, NumPy and SciPy turn the track into reps, each rep's
+  speed on the video's real timestamps (iPhone video has a variable frame rate) and the velocity loss between
+  the first reps and the last. Velocity loss maps to reps in reserve, calibrated per exercise against the
+  athlete's spoken RPE. Tracker artifacts (a rep over twice the set's median speed) are left out of the slowdown.
+- **A count is used only when it's trustworthy.** SAM's confidence comes from the tracked-frame share and the
+  regularity of the rep intervals; under 0.6 it is never used. In the latest build (not yet tested in a
+  session), a doubtful phone count also waits for SAM, and a top-set count far from the athlete's usual is
+  asked about out loud before it is stored. Every camera set so far, misses included, is in the README
+  ("How well it measures").
+- **Hands-free in a real gym.** Realtime Voice Transcribe through the backend, a voice detector tuned for gym
+  noise, sets that start on the athlete's word, a camera that locks onto him among other people, and every
+  voice action said back and undoable. A quiet mode for when a friend is talking is in the latest build, not
+  yet tested in a session.
+- **Validators between the model and the user.** A spoken line must carry only numbers that code computed or
+  the athlete said; the coach-reply validator keeps only changes whose quote is in the transcript and whose
+  path exists in the plan, with before/after values computed by code.
 - **Stateless backend** (FastAPI on Fly.io) that holds only the API key; the phone owns every record as JSON and
   media files. 730 offline backend tests on saved model output, 310 iOS tests.
-- **Hands-free by design:** sets start on the athlete's word, the camera locks onto him in a busy gym, and every
-  voice action is said back and undoable.
 
 ## What it can't do yet
 
-SAM's count lands after the set, often within a minute and sometimes nearer two (median 85 s over five
-sets). It is most reliable on plate-loaded lifts; on cables and dumbbells it can miss, and the phone's count
-or the athlete's spoken number then stands. Of the two camera sets where I also said a number, SAM matched
-one; two more it counted I accepted without checking. On one row set SAM and the phone disagreed (13 against
-6) and nothing asked me which was right — the next build holds a doubtful count and asks. Effort is an
-estimate, always labelled, calibrated against spoken RPE; it has no value on a set of two reps. The rest
-cue is a flat three minutes from the program and I rested through it at 96 s; it should learn per lift.
-When the earbuds dropped mid-session the phone's microphone heard the gym, and Spark answered people who
-weren't talking to it until the earbuds came back. One athlete, one coach, iPhone, English.
+SAM's count lands 71–111 s after the set (median 85 s over five sets); the athlete's word or a confident
+phone count covers the gap. Five camera sets is too few to quote an accuracy rate: SAM matched one of the
+two counts I checked out loud, missed the other (0 against my 8), and disagreed with the phone on a third
+that nobody checked. It is best so far on a barbell's plates; counting by the hands on dumbbells, cables and
+machines has missed. Effort is an estimate, always labelled and calibrated against spoken RPE. When the
+earbuds dropped mid-session, the phone's microphone heard the gym and Spark answered people who weren't
+talking to it; the reconnect and quiet mode for that are in the latest build, untested. One athlete, one
+coach, iPhone, English.
 
 ## Built during the hackathon
 

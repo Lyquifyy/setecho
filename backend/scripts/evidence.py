@@ -114,6 +114,7 @@ class SetechoSet:
     started: datetime | None = None
     ended: datetime | None = None
     exercise: str | None = None
+    confidence: float | None = None
 
 
 @dataclass
@@ -168,6 +169,7 @@ def read_session(path: Path, tz: ZoneInfo) -> SetechoSession | None:
                 ended=end,
                 exercise=s.get("exerciseId"),
                 seconds=s.get("seconds"),
+                confidence=rc.get("confidence"),
             )
         )
     ended = parse_date(session.get("endedAt"), tz) or last_end
@@ -252,6 +254,47 @@ def count_agreement(sessions: list[SetechoSession]) -> CountAgreement:
                 a.phone_verified += 1
                 a.phone_exact += s.phone == s.reps
     return a
+
+
+ROLE_NAMES = {"top": "top", "backOff": "back-off", "restPause": "rest-pause"}
+
+
+def lift_name(exercise_id: str | None) -> str:
+    """`w1_day_6_chest_supported_machine_rows` → "Chest supported machine rows"."""
+    name = re.sub(r"^w\d+_day_\d+_", "", exercise_id or "").replace("_", " ").strip()
+    name = " ".join("DB" if w == "db" else w for w in name.split())
+    return name[:1].upper() + name[1:] if name else "—"
+
+
+def camera_sets(sessions: list[SetechoSession]) -> list[dict]:
+    """Every working set SAM counted, with what was logged and how SAM's count fared against it.
+    Lift names and rep counts only: no load, note or transcript."""
+    rows = []
+    for session in sessions:
+        for s in session.working_sets:
+            if s.measured is None or s.seconds:
+                continue
+            conf = f" ({s.confidence:.2f})" if s.confidence is not None else ""
+            if s.source == "spoken" or s.corrected:
+                result = "matched his count" if s.measured == s.reps else f"missed: he said {s.reps}"
+            elif s.source == "measured":
+                result = "accepted, not verified"
+            elif s.source == "phone" and s.phone is not None and s.measured != s.phone:
+                result = "under the confidence bar: the phone's count stood, not verified"
+            else:
+                result = "—"
+            rows.append(
+                {
+                    "date": f"{s.started or session.started:%a %b %-d}",
+                    "lift": lift_name(s.exercise),
+                    "role": ROLE_NAMES.get(s.role or "", "working"),
+                    "sam": f"{s.measured}{conf}",
+                    "phone": "—" if s.phone is None else str(s.phone),
+                    "logged": str(s.reps),
+                    "result": result,
+                }
+            )
+    return rows
 
 
 def effort_pairs(sessions: list[SetechoSession]) -> list[tuple[float, float]]:
@@ -382,6 +425,19 @@ def report(workouts: list[Workout], sessions: list[SetechoSession]) -> str:
         ),
         "",
     ]
+    rows = camera_sets(sessions)
+    if rows:
+        lines += [
+            "Every camera set, misses included (SAM's confidence in brackets; under 0.6 is not used):",
+            "",
+            "| Date | Lift | Set | SAM 3.1 | Phone | Logged | Result |",
+            "|---|---|---|---|---|---|---|",
+        ]
+        lines += [
+            f"| {r['date']} | {r['lift']} | {r['role']} | {r['sam']} | {r['phone']} | {r['logged']} | {r['result']} |"
+            for r in rows
+        ]
+        lines.append("")
 
     pairs = effort_pairs(sessions)
     if pairs:

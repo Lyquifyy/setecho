@@ -135,6 +135,28 @@ def test_counts_are_checked_only_against_his_number(tmp_path):
     assert (a.phone_verified, a.phone_exact) == (3, 2)
 
 
+def test_every_camera_set_is_listed_with_its_result(tmp_path):
+    rows = evidence.camera_sets(evidence.read_sessions(_session(tmp_path), TZ))
+    assert [r["result"] for r in rows] == [
+        "matched his count",  # top set, 9 said, SAM 9
+        "missed: he said 11",  # back-off, SAM 10
+        "matched his count",  # corrected to 10, SAM 10
+        "accepted, not verified",
+        "accepted, not verified",  # SAM's own write-back is not his word
+        "under the confidence bar: the phone's count stood, not verified",
+    ]
+    assert rows[0]["role"] == "top" and rows[1]["role"] == "back-off" and rows[2]["role"] == "working"
+    assert rows[-1]["sam"] == "13" and rows[-1]["phone"] == "6" and rows[-1]["logged"] == "6"
+
+
+def test_lift_names_drop_the_plan_prefix():
+    assert evidence.lift_name("w1_day_6_chest_supported_machine_rows_plate_loaded") == (
+        "Chest supported machine rows plate loaded"
+    )
+    assert evidence.lift_name("w1_day_5_db_seated_shoulder_press") == "DB seated shoulder press"
+    assert evidence.lift_name(None) == "—"
+
+
 def test_effort_pairs_and_report(tmp_path):
     workouts = evidence.read_liftoff(_liftoff(tmp_path), TZ)
     sessions = evidence.read_sessions(_session(tmp_path), TZ)
@@ -145,6 +167,7 @@ def test_effort_pairs_and_report(tmp_path):
     assert "median 60 s, slowest 111 s" in text
     assert "1 of 2" in text  # the near miss and the wordless clip aren't utterances
     assert "## Pacing" in text
+    assert "| Fri Oct 30 | E | top | 9 | 8 | 9 | matched his count |" in text
 
     for private in ("137.5", "Lift 0", "that was"):
         assert private not in text.split("## With Setecho")[1]
