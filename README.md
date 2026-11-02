@@ -20,6 +20,57 @@ Setecho takes the paperwork away and leaves the coaching to the coach:
 
 <sub>Today · a set recording · the rest after a measured set · check-in morning, done · the coach's reply. Rendered from the app with the repo's synthetic fixtures (`make screens`).</sub>
 
+## For judges
+
+Three ways in, from no setup to a phone. Every model the app calls is Meta's, and everything the tests and the replay need from the models is saved under `backend/tests/fixtures/`, so the first path needs no key and no network.
+
+**1. No key, five minutes.** Requires [uv](https://docs.astral.sh/uv/) (`brew install uv` on macOS); it fetches Python 3.12 and the dependencies itself.
+
+```sh
+git clone https://github.com/Lyquifyy/setecho && cd setecho
+make test       # 749 offline tests on saved Muse Spark, Muse Voice Transcribe and SAM 3.1 output
+make replay     # SAM 3.1's saved tracks of a real set, counted by app/reps.py: no key, no network
+```
+
+`make replay` is the recorded sample run: my Smith-machine bench set from Oct 27, hand count 7, filmed on a tripod and sent through SAM 3.1 twice. Each pass is saved as the per-frame centroid of the plate SAM tracked, with the clip's real frame timestamps. The output below is what it prints today; as more real sets are saved, they appear in it automatically.
+
+| Set | Hand count | SAM 3.1 | Rep times (s) | Rep speeds (px/s) | Velocity loss | Confidence |
+|---|---|---|---|---|---|---|
+| bench_smith_7_a | 7 | **7** | 8.0 · 9.4 · 11.0 · 12.2 · 14.6 · 16.6 · 18.9 | 364 · 345 · 302 · 126 · 297 · 240 · 138 | 48.2% | 0.75 |
+| bench_smith_7_b | 7 | **7** | 8.0 · 9.4 · 11.0 · 12.2 · 14.6 · 16.6 · 18.9 | 363 · 345 · 302 · 125 · 300 · 239 · 140 | 47.8% | 0.75 |
+
+Both passes count 7 of 7 and read the slowdown within half a point of each other. Rep 4 is the grind (a third of the speed of rep 1, then a recovery), and the last two reps against the first two give the 48% that the spotter line calls failure. Then read [How well it measures](#how-well-it-measures): every camera set from my real sessions, misses included, rebuilt from the raw exports by `backend/scripts/evidence.py`.
+
+**2. Your own Meta key.** Requires macOS, Xcode 26+ and Homebrew for the phone side.
+
+```sh
+brew install uv ffmpeg xcodegen
+cp backend/.env.example backend/.env    # put your key from dev.meta.ai in MODEL_API_KEY (Standard tier)
+make smoke                              # one live call: lists the models, one Muse Spark reply
+make dev                                # the API on http://0.0.0.0:8000, OpenAPI docs at /docs
+```
+
+Then the phone: `cp ios/Config/Local.example.xcconfig ios/Config/Local.xcconfig`, set `SETECHO_API_BASE` to your Mac's address (`http://localhost:8000` for the simulator) and your team id, and `make ios` opens the generated project in Xcode. On the first screen, "Try it with a sample coach" seeds a made-up athlete and coach and walks the whole loop against your backend; "Set up with your coach's plan" imports a coach's real material. The synthetic coach in `backend/tests/fixtures/import/` (`synthetic_program.csv`, `synthetic_form.txt`, `synthetic_rules_email.txt`) is the one the tests use; the app imports it from Files, or straight against the API:
+
+```sh
+cd backend/tests/fixtures/import
+curl -s -F file=@synthetic_program.csv http://localhost:8000/import/program | head -c 600   # Muse Spark reads the sheet into a Program
+curl -s -F file=@synthetic_form.txt http://localhost:8000/import/form | head -c 600        # the 22-field check-in template
+```
+
+The API has a per-address and a daily cap (`backend/app/budget.py`, HTTP 429 `{"error": "budget"}` over them); the defaults are in `.env.example`.
+
+**3. An iPhone, no setup.**
+<!-- TESTFLIGHT: replace this paragraph with the public link once Apple approves the external build (TestFlight 202611011916, the "Judges" group). Until then it stays as it is. -->
+*TestFlight public link: pending Apple's Beta App Review.* Once it's live: install, tap "Try it with a sample coach" on the first screen, and the sample athlete's day, a measured set, check-in morning and the coach's reply are all there in five minutes, with no coach, no Apple Health data and no WhatsApp needed. The sample runs against the hosted backend at `https://setecho-api.fly.dev`, behind the same caps.
+
+**Provenance.** How to check the claims above:
+
+- **The commit history.** Every line in this repo was written between the kickoff (12:24 PM ET, Oct 26) and the deadline (Nov 4), in small commits; `git log` is the record, and [Built during the hackathon](#built-during-the-hackathon) is the day-by-day.
+- **`backend/scripts/evidence.py`.** Rebuilds every table in [How well it measures](#how-well-it-measures) and [What it changed in the first week](#what-it-changed-in-the-first-week) from the raw exports: my Liftoff history and the session exports from the phone. The exports hold personal data and stay out of the repo; the script, its tests on made-up exports (`backend/tests/test_evidence.py`) and the aggregates it prints are in.
+- **The saved model output in `backend/tests/fixtures/`.** Raw Muse Spark, Muse Voice Transcribe and SAM 3.1 responses, saved from live runs on synthetic inputs and on my own sets, that the tests and `make replay` run on. Tests never call the live API.
+- **The video.** Each measured set in the demo is one unbroken take from the lift to the spoken count; nothing in it is staged after the fact.
+
 **Why I built it.** I'm training for a bodybuilding competition with an online coach. Every week I typed my check-in through an entire 25-minute cardio session, and I tapped my phone between every set. I built Setecho for myself and used it for real during the hackathon: my coach's real program, a real week of training, and a real check-in sent to him through Setecho on Thursday, Oct 29.
 
 ## What it changed in the first week
