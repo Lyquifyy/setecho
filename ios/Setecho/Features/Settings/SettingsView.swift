@@ -190,6 +190,13 @@ struct SettingsView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    if !settings.sampleMode {
+                        // The judges' demo on a phone that already has a plan: the first-run button is gone, and
+                        // the athlete's own store stays untouched (HANDOFF.md §7, Sample coach).
+                        CardDivider()
+                        LinkButton(title: "Try the sample coach", chevron: .none) { try? StoreHolder.shared.enterSample(); dismiss() }
+                        Note("Your own plan, log and settings stay as they are. Leave the sample from the card at the top of Settings.")
+                    }
                 }
             }
 
