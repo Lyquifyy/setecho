@@ -87,6 +87,28 @@ private func temporaryRoot(_ name: String) -> URL {
     relaunched.leaveSample()
 }
 
+/// The seed writes the sample's cardio protocol into `Settings.shared` (through `Store.saveTemplate`), so
+/// the backup has to be taken first, or leaving the sample hands his cardio back as the sample's.
+@MainActor
+@Test func hisCardioProtocolComesBackAfterTheSample() throws {
+    let realRoot = temporaryRoot("sample-real-shared"), sampleRoot = temporaryRoot("sample-sample-shared")
+    defer { try? FileManager.default.removeItem(at: realRoot); try? FileManager.default.removeItem(at: sampleRoot) }
+    let shared = Settings.shared
+    let before = (shared.cardioProtocol, shared.athleteFirstName, shared.sampleMode, shared.settingsBeforeSample)
+    defer {
+        shared.cardioProtocol = before.0; shared.athleteFirstName = before.1
+        shared.sampleMode = before.2; shared.settingsBeforeSample = before.3
+    }
+    shared.cardioProtocol = "25 min LISS × 2 on rest days, his words"
+    shared.settingsBeforeSample = nil
+
+    let holder = StoreHolder(realRoot: realRoot, sampleRoot: sampleRoot, settings: shared)
+    try holder.enterSample()
+    #expect(shared.cardioProtocol == SampleCoach.cardioProtocol)
+    holder.leaveSample()
+    #expect(shared.cardioProtocol == "25 min LISS × 2 on rest days, his words")
+}
+
 @MainActor
 @Test func theSyntheticHealthWeekFillsTheFacts() throws {
     let calendar = Calendar.current

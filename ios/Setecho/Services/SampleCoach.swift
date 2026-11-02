@@ -438,10 +438,12 @@ final class StoreHolder {
 
     /// "Try it with a sample coach", and "Start the sample over": a fresh sample store, seeded, in front.
     func enterSample(now: Date = .now) throws {
+        // His settings are backed up before the seed: `Store.saveTemplate` writes the sample's cardio
+        // protocol into `Settings.shared`, and the backup must hold his own words (seen on his phone, Nov 1).
+        SampleCoach.applySettings(settings, now: now)
         try? FileManager.default.removeItem(at: sampleRoot)
         let fresh = Store(root: sampleRoot)
-        try SampleCoach.seed(into: fresh, now: now)
-        SampleCoach.applySettings(settings, now: now)
+        do { try SampleCoach.seed(into: fresh, now: now) } catch { SampleCoach.restoreSettings(settings); throw error }
         settings.sampleMode = true
         store = fresh
     }
