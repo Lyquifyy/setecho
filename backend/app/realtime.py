@@ -21,6 +21,8 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app import budget
+
 router = APIRouter()
 log = logging.getLogger(__name__)
 
@@ -75,6 +77,20 @@ async def voice_stream(phone: WebSocket) -> None:
         await phone.send_json({"type": "error", "message": "no key"})
         await phone.close()
         return
+    # The spend guard: a few sockets at once, the rest fall back to file mode on the phone.
+    if not budget.budget.acquire_socket():
+        await phone.send_json(
+            {"type": "error", "message": f"{budget.ERROR}: realtime sockets are all in use"}
+        )
+        await phone.close()
+        return
+    try:
+        await _relay(phone, key)
+    finally:
+        budget.budget.release_socket()
+
+
+async def _relay(phone: WebSocket, key: str) -> None:
     try:
         meta_ws = await connect_meta()
     except Exception as e:  # noqa: BLE001 - any failure here means the file-mode fallback

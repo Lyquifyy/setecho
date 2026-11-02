@@ -20,7 +20,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pydantic import Field
 
-from app import meta, reps, video
+from app import budget, meta, reps, video
 from app.schemas import StrictModel
 
 router = APIRouter()
@@ -106,6 +106,8 @@ async def count_clip(data: bytes, context: CountContext) -> CountResponse:
             raise ClipError(f"clip has only {len(times)} frames")
         if len(times) > video.MAX_COUNT_FRAMES:
             raise ClipError(f"clip has {len(times)} frames; the limit is {video.MAX_COUNT_FRAMES}")
+        # The spend guard: SAM bills per frame, and the hands look costs the frames a second time.
+        budget.budget.charge_sam_frames(len(times) * (2 if context.equipment in reps.HANDS_ALONGSIDE else 1))
         # The upload and the mask decoding take seconds: off the event loop, so /health keeps answering.
         t1 = time.monotonic()
         file_id = await run_in_threadpool(meta.upload_video, path)
@@ -195,6 +197,9 @@ async def sets_count(
             result = task.result()
         except ClipError as e:
             yield json.dumps({"error": str(e)})
+            return
+        except budget.BudgetExceeded as e:
+            yield json.dumps(e.body())
             return
         except Exception as e:  # the stream has started: the error must reach the phone as JSON
             logging.getLogger(__name__).exception("count failed")

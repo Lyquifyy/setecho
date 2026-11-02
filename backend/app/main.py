@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 from app import (
     audio,
+    budget,
     checkin_api,
     checkin_turn,
     coach,
@@ -45,6 +46,24 @@ app.include_router(withings.router)
 app.include_router(history.router)
 
 
+@app.middleware("http")
+async def _spend_guard(request: Request, call_next):
+    """The per-address limit (budget.py): one answer, 429 {"error": "budget"}, never a model call."""
+    if request.url.path not in budget.EXEMPT_PATHS:
+        ip = budget.client_ip(request.headers.get, request.client.host if request.client else None)
+        try:
+            budget.budget.check_ip(ip)
+        except budget.BudgetExceeded as e:
+            return JSONResponse(status_code=429, content=e.body())
+    return await call_next(request)
+
+
+@app.exception_handler(budget.BudgetExceeded)
+async def _over_budget(_: Request, exc: budget.BudgetExceeded) -> JSONResponse:
+    """A daily cap reached inside a model call: the phone treats it like being offline."""
+    return JSONResponse(status_code=429, content=exc.body())
+
+
 @app.exception_handler(importing.ImportError_)
 @app.exception_handler(photos_api.NoPersonError)
 @app.exception_handler(sets_api.ClipError)
@@ -68,6 +87,7 @@ def health() -> dict:
     return {
         "ok": True,
         "models": {"spark": meta.SPARK_MODEL, "transcribe": meta.TRANSCRIBE_MODEL, "sam": meta.SAM_MODEL},
+        "budget": budget.budget.snapshot(),
     }
 
 

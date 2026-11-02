@@ -26,6 +26,8 @@ from typing import Any
 import httpx
 from openai import AsyncOpenAI, OpenAI, OpenAIError
 
+from app import budget
+
 BASE_URL = "https://api.meta.ai/v1"
 SPARK_MODEL = os.environ.get("SETECHO_SPARK_MODEL", "muse-spark-1.3")
 SAM_MODEL = "sam-3.1"
@@ -103,6 +105,7 @@ def spark_json(
     `effort` ("low") and `max_tokens` keep the quick calls quick (/checkin/turn, /voice/command,
     /spotter/line). If the server rejects the effort parameter, the call is retried without it.
     """
+    budget.budget.charge_spark()
     kwargs: dict[str, Any] = {
         "model": SPARK_MODEL,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
