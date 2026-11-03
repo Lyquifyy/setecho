@@ -48,8 +48,8 @@ number comes from code, Apple Health or the athlete's own words, never from a mo
   down from 385 × 5 the three weeks before; the back-off set dropped from 6 to 4. Every number is from
   the log, and the check-in says it in one line.
 - Works with any coach's material: the import reads a second coach's program and form the same way.
-- [Fill only if it happens: my coach's one line on the measured top sets, quoted with his permission.]
-- [Fill only if it happens: a second athlete with a different coach, her program imported and one session logged hands-free.]
+- The demo video's measured set is real: on Nov 2 the Smith bench top set came back from SAM 3.1 as 11 reps,
+  slowed 45%, the count I had confirmed out loud, in one unbroken take.
 
 ## Use of Meta AI tooling
 
@@ -82,14 +82,14 @@ synthesizer behind one swappable component.
   the athlete said; the coach-reply validator keeps only changes whose quote is in the transcript and whose
   path exists in the plan, with before/after values computed by code.
 - **Stateless backend** (FastAPI on Fly.io) that holds only the API key; the phone owns every record as JSON and
-  media files. 730 offline backend tests on saved model output, 310 iOS tests.
+  media files. 749 offline backend tests on saved model output, 335 iOS tests.
 
 ## What it can't do yet
 
-SAM's count lands 71–111 s after the set (median 85 s over five sets); the athlete's word or a confident
-phone count covers the gap. Five camera sets is too few to quote an accuracy rate: SAM matched one of the
-two counts I checked out loud, missed the other (0 against my 8), and disagreed with the phone on a third
-that nobody checked. It is best so far on a barbell's plates; counting by the hands on dumbbells, cables and
+SAM's count lands 71–111 s after the set (median 75 s over seven sets); the athlete's word or a confident
+phone count covers the gap. Seven camera sets is too few to quote an accuracy rate: SAM matched two of the
+three counts I checked out loud (a deadlift top set and the Smith bench top set in the video), missed the
+other (0 against my 8), and disagreed with the phone on a fourth that nobody checked. It is best so far on a barbell's plates; counting by the hands on dumbbells, cables and
 machines has missed. Effort is an estimate, always labelled and calibrated against spoken RPE. When the
 earbuds dropped mid-session, the phone's microphone heard the gym and Spark answered people who weren't
 talking to it; the reconnect and quiet mode for that are in the latest build, untested. One athlete, one
@@ -97,5 +97,5 @@ coach, iPhone, English.
 
 ## Built during the hackathon
 
-Every line was written between the kickoff (12:24 PM ET, Oct 26) and the deadline. [N] commits over ten days;
+Every line was written between the kickoff (12:24 PM ET, Oct 26) and the deadline. Over 250 commits in ten days;
 the README has the day-by-day timeline. Repo: https://github.com/Lyquifyy/setecho
