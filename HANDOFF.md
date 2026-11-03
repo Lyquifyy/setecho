@@ -1192,12 +1192,12 @@ In the order above. Specs:
 - [ ] Feature freeze tonight.
 
 ### P8 — Film (Tue Nov 3)
-- [ ] The human films the gym and photo segments. The check-in and coach reply segments use the P3 recordings.
+- [x] Filmed Mon Nov 2 (gym, the fly take, the measured Smith bench); the check-in and coach reply segments use the Oct 29 and Oct 30 recordings. The edit lives outside the repo (`~/Documents/setecho-edit`, its own handoff); v16 approved Nov 3.
 
 ### P9 — Submit (Wed Nov 4)
-- [ ] The README states what was built during Oct 26 – Nov 4 and which Meta model does what.
-- [ ] `design/` purged from git history (§11), with the human's go-ahead, before the first push.
-- [ ] Repo flipped public. Video and write-up submitted by 9:00 PM ET. The human edits the video.
+- [x] The README states what was built during Oct 26 – Nov 4 and which Meta model does what; its numbers come from `scripts/evidence.py` on the Oct 30, Oct 31 and Nov 2 exports (Nov 3).
+- [x] `design/` never reached `main`'s history; the two local branches that carried it were deleted on Nov 3. Nothing from it is pushed.
+- [ ] Repo flipped public. Video at a public link and write-up (`docs/SUBMISSION.md`) submitted by 9:00 PM ET. Both are the human's.
 
 ---
 

@@ -60,9 +60,7 @@ curl -s -F file=@synthetic_form.txt http://localhost:8000/import/form | head -c 
 
 The API has a per-address and a daily cap (`backend/app/budget.py`, HTTP 429 `{"error": "budget"}` over them); the defaults are in `.env.example`.
 
-**3. An iPhone, no setup.**
-<!-- TESTFLIGHT: replace this paragraph with the public link once Apple approves the external build (TestFlight 202611011916, the "Judges" group). Until then it stays as it is. -->
-*TestFlight public link: pending Apple's Beta App Review.* Once it's live: install, tap "Try it with a sample coach" on the first screen, and the sample athlete's day, a measured set, check-in morning and the coach's reply are all there in five minutes, with no coach, no Apple Health data and no WhatsApp needed. The sample runs against the hosted backend at `https://setecho-api.fly.dev`, behind the same caps.
+**3. An iPhone, no setup.** The sample coach is built into the app: on the first screen, "Try it with a sample coach" loads a made-up athlete and coach, so the whole loop (Today, a measured set, check-in morning, the coach's reply turned into plan changes) runs with no coach, no Apple Health data and no WhatsApp, against the hosted backend at `https://setecho-api.fly.dev`, behind the same caps. A TestFlight public link is with Apple's Beta App Review; until it is approved, path 2 builds the same app from this repo.
 
 **Provenance.** How to check the claims above:
 
@@ -81,11 +79,7 @@ The API has a per-address and a daily cap (`backend/app/budget.py`, HTTP 429 `{"
 | **Weekly check-in** | a whole 25-minute cardio session typing 22 questions into WhatsApp | 7 min 26 s by voice, start to finish, weigh-in and four photos included; I spoke for just over a minute of it (a practice run on my real data on Oct 30, two days into the week, so I answered 19 of the 22 fields out loud) |
 | **Typing between sets** | every set, during rest | none |
 
-<!-- EVIDENCE: replace the Setecho column with `uv run python -m scripts.evidence` output once the session
-exports are in backend/private/sessions/ (HANDOFF.md §9). The Day 5 row is the Oct 30 export: 52.8 min start to
-end, 2.9 min per set against 3.6 before. -->
-
-The "before" numbers come straight from my Liftoff export. `backend/scripts/evidence.py` rebuilds this table from the raw exports, matching each Setecho session to the same program day before Setecho.
+The "before" numbers come straight from my Liftoff export. `backend/scripts/evidence.py` rebuilds this table from the raw exports, matching each Setecho session to the same program day before Setecho. The third Setecho session, Mon Nov 2, was the filming day for the demo video (three cameras, retakes, talking to the camera): 96 min for 19 sets. It is in the evidence report, and it is not a training-time comparison.
 
 My coach replied to that first check-in with a 1:19 WhatsApp voice note. Setecho transcribed it, read it against my plan and found nothing to change. In his words, quoted with his permission:
 
@@ -97,10 +91,8 @@ My coach programs every **top set** (the heaviest set of an exercise) to **failu
 
 With the phone on a tripod, **SAM 3.1** tracks the weight plate through the set, frame by frame. Code turns that track into a rep count and each rep's speed, then measures how much the last reps slowed against the first. Slowdown is how sports science estimates reps left in reserve ([Rodríguez-Rosell et al., 2020](https://www.uloyola.es/en/research-transfer/publications/relationship-between-velocity-loss-and-repetitions-in-reserve-in-the-bench-press-and-back-squat-exercises-article)): over about 40%, there was nothing left. Setecho calibrates that map per exercise against how hard I say each set felt (RPE, a 1–10 rating).
 
-<!-- EVIDENCE: true only once SAM has measured a bench top set (the Nov 2 shoot). Until then, say "lines like this one (an example)". -->
-So at the bench, during rest, I hear lines like this one: *"Eleven reps, measured. Slowed 46%, that's failure, his target. Back-off at 170, his rule: 20 to 25% lighter."* I say "go with it" and load the bar.
+On Nov 2 the Smith-machine close-grip bench top set, filmed for the demo, came back from SAM 3.1 as 11 reps, slowed 45%: failure, his target, and the same count I had just confirmed out loud. So at the bench, during rest, I hear a line built from code's numbers, like: *"Eleven reps, measured. Slowed 45%, that's failure, his target."* Then the back-off weight by his rule, and I say "go with it" and load the bar.
 
-<!-- KEEP ONLY IF the measured top sets ship in the check-in (design/handoff-oct30-evening.md, item 1). -->
 In the check-in, each top set goes to him with its measured reps and slowdown, in his own notes field, plus the two videos he asks for, cropped to just the reps. An honor system becomes a measurement, and he still makes every call.
 
 ## Not an analyzer, not a coach
@@ -132,8 +124,8 @@ Every model the app calls at runtime is Meta's, on the Standard tier. Meta has n
 
 ## What it can't do (yet)
 
-- **SAM is slower than a rep.** Its count lands 71–111 s after the set (median 85 s over five sets). The athlete's word, or a confident phone count, covers the gap, and a late slowdown is still said during rest.
-- **SAM is best so far on a barbell's plates** (two deadlift sets, one checked). Counting by the hands on dumbbells, cables and machines has missed; the phone's count or the athlete's spoken number then stands, and every correction is logged.
+- **SAM is slower than a rep.** Its count lands 71–111 s after the set (median 75 s over seven sets). The athlete's word, or a confident phone count, covers the gap, and a late slowdown is still said during rest.
+- **SAM is best so far on a barbell's plates** (two deadlift sets and the Smith bench top set, two of them checked). Counting by the hands on dumbbells, cables and machines has missed; the phone's count or the athlete's spoken number then stands, and every correction is logged.
 - **Effort is an estimate.** It's always labelled "estimated" and calibrated per exercise against spoken RPE. It never replaces the coach's eye; the two videos are there for that.
 - **One athlete, one coach, iPhone, English.** Check-in photos never leave the phone except in the WhatsApp send.
 
@@ -143,7 +135,6 @@ From the session exports so far. `backend/scripts/evidence.py` rebuilds everythi
 
 **Every set SAM 3.1 has counted** (confidence in brackets; under 0.6 is never used):
 
-<!-- EVIDENCE: after the Nov 2 shoot, rerun `uv run python -m scripts.evidence` and paste its "Every camera set" table here. -->
 | Date | Lift | Set | SAM 3.1 | Phone | Logged | Result |
 |---|---|---|---|---|---|---|
 | Oct 30 | Seated DB shoulder press | top | 0 (0.00) | — | 8 | missed: I said 8 |
@@ -151,18 +142,20 @@ From the session exports so far. `backend/scripts/evidence.py` rebuilds everythi
 | Oct 31 | Deadlift | back-off | 4 (0.88) | — | 4 | accepted, not verified |
 | Oct 31 | Chest-supported row | top | 13 (0.51) | 6 | 6 | under the bar: the phone's 6 stood, not verified |
 | Oct 31 | Chest-supported row | back-off | 7 (0.71) | — | 7 | accepted, not verified |
+| Nov 2 | Smith close-grip bench | top | 11 (0.46) | 11 (asked, I said yes) | 11 | matched my count |
 
-One count is known to be wrong: 0 on the shoulder press, where I said 8. On the row SAM said 13 and the phone 6, and I didn't say which was right. Neither SAM count became my logged reps. Each miss changed the code; the changes are in the latest build and haven't been tested in a session yet:
+Against the counts I said or confirmed out loud, SAM 3.1 is 2 of 3 exact. One count is known to be wrong: 0 on the shoulder press, where I said 8. On the row SAM said 13 and the phone 6, and I didn't say which was right. Neither SAM count became my logged reps. Each miss changed the code; the changes are in the latest build and haven't been tested in a session yet:
 
 - **The shoulder press:** SAM tracked a dumbbell sitting on the rack, which never moved, and counted 0 at confidence 0. It now keeps the object that moves and looks at my hands when nothing does.
 - **The row:** SAM's look at my hands counted 13 at 0.51, under the bar, so the phone's 6 stood. That track still left "slowed 36%, failure" on the set; a track that loses to another count no longer stores its slowdown.
 - **The one wrong rep count I heard** came from the phone, not SAM: its pose count said 5 on a 2-rep deadlift before SAM's 2 arrived, and I corrected it out loud. A doubtful phone count now waits for SAM.
+- **The bench, Nov 2:** the phone's count was doubtful, so it asked "Set 1, was that 11?" during rest and I said yes; SAM's 11 arrived at 0.46, under the bar, so my word was the record and SAM confirmed it, with the slowdown measured at 45%. It is the set in the demo video, one unbroken take.
 
 **Effort, speed and time:**
 
 - **Effort:** on the row's back-off set, "slowed 28%, about 2 left" matched what I felt. On the deadlifts the two slow reps read as no slowdown, which is right for a 2-rep set and useless for effort; the rule only fires from 3 reps.
-- **Speed:** set end to SAM's count, median 85 s, slowest 111 s, over 5 sets. The clip reaches the phone's export in 7–9 s; the rest is the upload (3–27 s at the gym), the crop (11 s) and SAM itself (31–49 s). The phone's own count covers the gap, and a doubtful phone count now waits for SAM instead of being spoken.
-- **Hearing:** end of speech to understood, median 3.0 s; 56 of 116 utterances with words became an action, the rest were questions, chat or people nearby.
+- **Speed:** set end to SAM's count, median 75 s, slowest 111 s, over 7 sets. The clip reaches the phone's export in 7–9 s; the rest is the upload (3–27 s at the gym), the crop (11 s) and SAM itself (31–49 s). The phone's own count covers the gap, and a doubtful phone count now waits for SAM instead of being spoken.
+- **Hearing:** end of speech to understood, median 3.0 s over the two training days; 5.2 s with the filming day, when the camera phones and the people around them were in the mix. 133 of 410 utterances with words became an action; the rest were questions, chat, people nearby or me talking to the camera.
 - **Time:** Day 6 on Oct 31 ran 52 min for 17 working sets against a 74-minute median (61–78) for the same day in Liftoff, 32% less per set.
 
 ## Built during the hackathon
@@ -175,7 +168,10 @@ Every line of code in this repo was written between the kickoff (12:24 PM ET, Oc
 - **Oct 29:** the first real check-in sent through Setecho; Withings direct; the WhatsApp history import; Liftoff and Garmin history, so Last time is real from the first session; camera sets for flyes, one-arm and bodyweight lifts.
 - **Oct 30:** the first camera sets counted end to end in a real session; SAM follows the moving dumbbell and watches the hands on cables and machines; talking to it mid-set; a tighter counting clip; the slowdown said even when SAM's answer arrives late; the evidence script against the pre-Setecho baseline.
 - **Oct 31:** the measured top sets reach the coach in the check-in's notes field; check-in morning fixes from a practice run (finished days only, no spoken deltas); a refused spotter reply is asked again once; a set's clip can be shared for SAM tuning; the screens in this README.
-- **Nov 1 – Nov 4:** *(to fill in as it lands)*
+- **Nov 1:** the judge path (`.env.example`, `make replay`, this README's For judges section and the Built with disclosure); the sample coach mode, so a judge sees the whole loop with no coach or data of their own; the spend guard on the hosted API; the LICENSE; the Simulator recordings of the import flow.
+- **Nov 2:** the gym shoot for the demo video, with the measured Smith bench top set in the table above.
+- **Nov 3:** the demo video edit; this README's numbers refreshed from the Nov 2 export.
+- **Nov 4:** submission.
 
 ## Run it
 
