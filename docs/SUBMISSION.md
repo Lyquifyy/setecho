@@ -5,6 +5,8 @@ or the README; fill the bracketed ones from the session exports before posting.
 
 **Tagline:** Train with your coach. Skip the paperwork.
 
+**Demo video (3 min):** https://youtu.be/6Q68cvNYVKc (unlisted)
+
 **One line:** Setecho is an iPhone app for athletes who train under a human coach. It logs every workout from
 the athlete's voice and the phone's camera, fills in the weekly check-in the coach asks for, sends it to
 WhatsApp in his exact format, and turns his reply into plan changes the athlete approves.

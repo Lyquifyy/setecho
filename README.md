@@ -1,6 +1,6 @@
 <p><img src="ios/Setecho/Assets.xcassets/Lockup.imageset/Lockup.svg" alt="Setecho" width="320"></p>
 
-**Train with your coach. Skip the paperwork.**
+**Train with your coach. Skip the paperwork.** [Demo video, 3 minutes](https://youtu.be/6Q68cvNYVKc).
 
 Setecho is an iPhone app for athletes who train under a human coach, like a bodybuilder getting ready for a competition with an online coach. That kind of coaching runs on paperwork. The athlete writes down every set of every workout. Once a week they retype the whole week into the coach's questionnaire, the **check-in**: body weight, food, sleep, how training went and four progress photos. Then they send it on WhatsApp, and the coach replies with changes to the plan.
 
